@@ -7,11 +7,14 @@ GHCR_USER = "maxexcloo"
 [tools]
 actionlint = "1.7.12"
 hadolint = "2.15.1"
+"pipx:modal" = "1.5.3"
 prek = "0.4.12"
 prettier = "3.9.6"
 python = "3.13"
 ruff = "0.16.1"
+"ubi:runpod/runpodctl" = "2.8.1"
 uv = "0.12.1"
+"pipx:vastai" = "1.5.2"
 
 [tasks.check]
 description = "Run all repository checks"
@@ -40,33 +43,33 @@ docker push "${IMAGE_NAME}:latest"
 
 [tasks.deploy-modal]
 description = "Deploy the Modal app"
-run = """
-uvx modal deploy deploy/modal_app.py
-"""
+run = "modal deploy deploy/modal_app.py"
 
 [tasks.deploy-runpod]
 description = "Create a RunPod pod from the template"
 run = """
 runpodctl create pod \
-  --name comfy-cloud \
-  --imageName "${IMAGE_NAME}:latest" \
   --containerDiskSize 100 \
-  --ports 8000/http \
-  --env MODE=pod \
   --env "API_KEY=${API_KEY}" \
+  --env "COMFY_UI_PASSWORD=${COMFY_UI_PASSWORD}" \
   --env COMFY_UI_USERNAME="${COMFY_UI_USERNAME:-comfy}" \
-  --env "COMFY_UI_PASSWORD=${COMFY_UI_PASSWORD}"
+  --env MODE=pod \
+  --imageName "${IMAGE_NAME}:latest" \
+  --name comfy-cloud \
+  --ports 8000/http
 """
 
 [tasks.deploy-vast]
 description = "Create a Vast.ai instance from the template"
 run = """
-vastai create instance --onstart-cmd 'python3 -m comfy_cloud.supervisor' \
-  --image "${IMAGE_NAME}:latest" --disk 100 --label comfy-cloud \
-  --env MODE=pod \
+vastai create instance --disk 100 \
   --env "API_KEY=${API_KEY}" \
-  --env COMFY_UI_USERNAME="${COMFY_UI_USERNAME:-comfy}" \
   --env "COMFY_UI_PASSWORD=${COMFY_UI_PASSWORD}" \
+  --env COMFY_UI_USERNAME="${COMFY_UI_USERNAME:-comfy}" \
+  --env MODE=pod \
+  --image "${IMAGE_NAME}:latest" \
+  --label comfy-cloud \
+  --onstart-cmd 'python3 -m comfy_cloud.supervisor' \
   "${VAST_OFFER_ID:?set VAST_OFFER_ID to an offer from `vastai search offers`}"
 """
 
@@ -78,26 +81,6 @@ ruff check --fix --select I .
 ruff format .
 """
 
-[tasks.providers]
-description = "Install provider CLIs (modal, vastai via uvx; runpodctl binary)"
-run = """
-uvx modal --version
-uvx vastai --version
-if [[ ! -f .mise.tmp/runpodctl ]]; then
-  mkdir -p .mise.tmp
-  curl -fsSL -o .mise.tmp/runpodctl "https://github.com/runpod/runpodctl/releases/download/v2.8.1/runpodctl-darwin-arm64"
-  chmod +x .mise.tmp/runpodctl
-fi
-echo "runpodctl at .mise.tmp/runpodctl (add .mise.tmp to PATH)"
-"""
-
 [tasks.setup]
 description = "Copy local env template if missing, then install Git hooks"
-run = """
-if [[ ! -f .mise.local.toml ]]; then
-  cp .mise.local.toml.default .mise.local.toml
-  echo "Created .mise.local.toml - please add your secrets"
-  exit 1
-fi
-prek install
-"""
+run = "if [[ ! -f .mise.local.toml ]]; then cp .mise.local.toml.default .mise.local.toml && echo 'Created .mise.local.toml - please add your secrets' && exit 1; fi; prek install"

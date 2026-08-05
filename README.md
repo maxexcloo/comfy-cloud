@@ -26,7 +26,6 @@ Development is driven by mise, matching the homelab repos:
 mise run setup   # creates .mise.local.toml from the template, then installs pre-commit hooks
 mise run check   # pre-commit hooks + pytest
 mise run fmt     # prettier + ruff format
-mise run providers  # install provider CLIs (modal, vastai, runpodctl)
 mise run deploy  # deploy to a provider (set PROVIDER=modal|runpod|vast)
 ```
 
@@ -36,7 +35,9 @@ and the provider values (`PROVIDER`, `MODAL_TOKEN_ID/SECRET`, `RUNPOD_API_KEY`,
 `VAST_API_KEY`, `VAST_OFFER_ID`). Non-secret defaults live in the `[env]`
 section of `.mise.toml`.
 
-`mise run deploy` dispatches on `PROVIDER` to the per-provider task:
+`mise run deploy` dispatches on `PROVIDER` to the per-provider task. The provider
+CLIs are managed by mise: `modal` and `vastai` via pipx, `runpodctl` via ubi.
+`mise install` fetches all tools from `.mise.toml`.
 
 - `deploy-modal`: `modal deploy deploy/modal_app.py`
 - `deploy-runpod`: `runpodctl create pod ...` from the template values
