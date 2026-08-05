@@ -1,4 +1,7 @@
 [env]
+# Image reference for `mise run deploy-runpod` / `deploy-vast`
+IMAGE_NAME = "ghcr.io/maxexcloo/comfy-cloud:latest"
+
 # Gateway
 API_KEY = "REPLACE_ME"
 COMFY_UI_PASSWORD = "REPLACE_ME"
