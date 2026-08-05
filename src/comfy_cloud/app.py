@@ -123,6 +123,15 @@ class Runtime:
         self.jobs: dict[str, VideoJob] = {}
         self.job_store = JobStore(settings.jobs_dir)
         self.inference_lock = asyncio.Lock()
+        self.metrics: dict[str, int | float] = {
+            "requests_total": 0,
+            "requests_by_status": {},
+            "generations_total": 0,
+            "generation_seconds_total": 0.0,
+            "video_jobs_created": 0,
+            "video_jobs_completed": 0,
+            "video_jobs_failed": 0,
+        }
         for record in self.job_store.load():
             job = VideoJob.from_record(record)
             if job.status in {"queued", "in_progress"}:
@@ -200,6 +209,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return None
 
+    @app.middleware("http")
+    async def request_context(request: Request, call_next):
+        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        response = await call_next(request)
+        response.headers["x-request-id"] = request_id
+        status = str(response.status_code)
+        runtime.metrics["requests_total"] = int(runtime.metrics["requests_total"]) + 1
+        by_status: dict = runtime.metrics["requests_by_status"]
+        by_status[status] = int(by_status.get(status, 0)) + 1
+        return response
+
+    @app.get("/health/live")
+    async def live() -> JSONResponse:
+        return JSONResponse({"status": "alive"})
+
+    @app.get("/health/ready")
+    async def ready() -> JSONResponse:
+        ready = await runtime.comfy.ready()
+        return JSONResponse(
+            {"status": "ready" if ready else "starting"},
+            status_code=200 if ready else 503,
+        )
+
     @app.get("/health")
     async def health() -> JSONResponse:
         ready = await runtime.comfy.ready()
@@ -213,6 +245,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
             status_code=200 if ready else 503,
         )
+
+    @app.get("/metrics")
+    async def metrics() -> Response:
+        m = runtime.metrics
+        lines = [
+            "# HELP comfy_cloud_requests_total Total HTTP requests served.",
+            "# TYPE comfy_cloud_requests_total counter",
+            f"comfy_cloud_requests_total {m['requests_total']}",
+            "# HELP comfy_cloud_requests_by_status HTTP requests by response status.",
+            "# TYPE comfy_cloud_requests_by_status counter",
+        ]
+        for status, count in sorted(m["requests_by_status"].items()):
+            lines.append(f'comfy_cloud_requests_by_status{{status="{status}"}} {count}')
+        lines += [
+            "# HELP comfy_cloud_generations_total Completed image generations.",
+            "# TYPE comfy_cloud_generations_total counter",
+            f"comfy_cloud_generations_total {m['generations_total']}",
+            "# HELP comfy_cloud_generation_seconds_total Cumulative generation time.",
+            "# TYPE comfy_cloud_generation_seconds_total counter",
+            f"comfy_cloud_generation_seconds_total {m['generation_seconds_total']:.3f}",
+            "# HELP comfy_cloud_video_jobs Video jobs by terminal state.",
+            "# TYPE comfy_cloud_video_jobs gauge",
+            f'comfy_cloud_video_jobs{{state="completed"}} {m["video_jobs_completed"]}',
+            f'comfy_cloud_video_jobs{{state="failed"}} {m["video_jobs_failed"]}',
+        ]
+        return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
     @app.get("/ping", include_in_schema=False)
     async def ping() -> Response:
@@ -315,11 +373,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return openai_error("n must be between 1 and 4", 400, "invalid_value", "n")
         response_format = body.get("response_format", "b64_json")
         try:
+            started = time.monotonic()
             refs: list[OutputRef] = []
             for index in range(count):
                 if values["seed"] is not None:
                     values["seed"] = int(values["seed"]) + index
                 refs.extend(await runtime.run(model, values))
+            runtime.metrics["generations_total"] = (
+                int(runtime.metrics["generations_total"]) + 1
+            )
+            runtime.metrics["generation_seconds_total"] = float(
+                runtime.metrics["generation_seconds_total"]
+            ) + (time.monotonic() - started)
             return JSONResponse(
                 {
                     "created": int(time.time()),
@@ -395,11 +460,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "steps": steps,
         }
         try:
+            started = time.monotonic()
             refs: list[OutputRef] = []
             for index in range(count):
                 if seed is not None:
                     values["seed"] = seed + index
                 refs.extend(await runtime.run(model, values))
+            runtime.metrics["generations_total"] = (
+                int(runtime.metrics["generations_total"]) + 1
+            )
+            runtime.metrics["generation_seconds_total"] = float(
+                runtime.metrics["generation_seconds_total"]
+            ) + (time.monotonic() - started)
             return JSONResponse(
                 {
                     "created": int(time.time()),
@@ -450,10 +522,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await runtime.upload_output(job)
             job.status = "completed"
             runtime.store_job(job)
+            runtime.metrics["video_jobs_completed"] = (
+                int(runtime.metrics["video_jobs_completed"]) + 1
+            )
         except Exception as exc:  # noqa: BLE001 - task boundary exposes errors through job status
             job.status = "failed"
             job.error = str(exc)
             runtime.store_job(job)
+            runtime.metrics["video_jobs_failed"] = (
+                int(runtime.metrics["video_jobs_failed"]) + 1
+            )
 
     @app.post("/v1/videos")
     async def create_video(request: Request) -> Response:
@@ -536,6 +614,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         job = VideoJob(id=f"video_{uuid.uuid4().hex}", model=model.id)
         runtime.jobs[job.id] = job
         runtime.store_job(job)
+        runtime.metrics["video_jobs_created"] = (
+            int(runtime.metrics["video_jobs_created"]) + 1
+        )
         asyncio.create_task(execute_video(job, model, values))
         return JSONResponse(
             {

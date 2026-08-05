@@ -238,6 +238,31 @@ async def test_model_with_unregistered_nodes_is_not_advertised():
 
 
 @pytest.mark.asyncio
+async def test_health_live_ready_and_metrics():
+    app = create_app(settings())
+    app.state.runtime.comfy.ready = AsyncMock(return_value=True)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        live = await client.get("/health/live")
+        ready = await client.get("/health/ready")
+        metrics = await client.get("/metrics")
+        first = await client.get(
+            "/v1/models", headers={"Authorization": "Bearer test-key"}
+        )
+        await client.get("/v1/models", headers={"Authorization": "Bearer test-key"})
+
+    assert live.status_code == 200
+    assert live.json() == {"status": "alive"}
+    assert ready.status_code == 200
+    assert ready.json()["status"] == "ready"
+    assert first.headers.get("x-request-id")
+    body = metrics.text
+    assert "comfy_cloud_requests_total 2" in body
+    assert 'comfy_cloud_requests_by_status{status="200"}' in body
+    assert "comfy_cloud_generations_total 0" in body
+
+
+@pytest.mark.asyncio
 async def test_runpod_ping_reports_comfy_readiness():
     app = create_app(settings())
     app.state.runtime.comfy.ready = AsyncMock(side_effect=[False, True])

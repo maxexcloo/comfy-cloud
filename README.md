@@ -11,6 +11,7 @@ deployment can be used by Bifrost, Open WebUI, the ComfyUI browser, or direct cl
 - Native ComfyUI routes (`/prompt`, `/history`, `/view`, `/queue`, `/object_info`, `/ws`, and uploads) are proxied unchanged.
 - `MODE=pod` serves the ComfyUI frontend at `/`.
 - `MODE=serverless` exposes the APIs but returns 404 for the frontend.
+- `GET /health/live`, `/health/ready`, and `/health` report readiness; `GET /metrics` exposes Prometheus counters. Responses carry an `x-request-id`.
 - Hugging Face model sources are pinned in `profiles/`; large files can be split into GHCR-safe packs with the CLI.
 
 ComfyUI remains unmodified. The gateway is a sidecar process in the same container.
@@ -192,6 +193,20 @@ comfy-cloud models-fetch profiles/flux-2-klein-9b.yaml --models-dir /opt/ComfyUI
 comfy-cloud models-fetch profiles/krea-2-turbo.yaml --models-dir /opt/ComfyUI/models
 comfy-cloud models-fetch profiles/minimax-h3-fl2va.yaml --models-dir /opt/ComfyUI/models
 ```
+
+Fetch only what you run — each profile is independent, and persistent model
+storage is billed per GB. Approximate sizes and monthly volume cost at
+~$0.07/GB:
+
+| Profile | Weights | VRAM | ~Storage/mo |
+|---|---|---|---|
+| `flux-2-klein-4b` | ~8 GB | 16 GB | ~$0.56 |
+| `flux-2-klein-9b` (incl. base) | ~40 GB | 24 GB | ~$2.80 |
+| `krea-2-turbo` | ~15 GB | 24 GB | ~$1.05 |
+| `minimax-h3-fl2va` | ~60 GB | 80 GB | ~$4.20 |
+
+For a first test, fetch the 4B distilled profile alone — the fastest model and
+the cheapest volume.
 
 Hugging Face sources require a pinned `revision` and optionally use `HF_TOKEN`.
 Civitai sources use an immutable `version_id`, optional `filename`, a ComfyUI-relative
