@@ -21,6 +21,8 @@ class Settings:
     ui_password: str
     ui_username: str
     workflow_timeout: float
+    jobs_dir: Path | None = None
+    storage_env: dict[str, str] | None = None
 
     @property
     def ui_enabled(self) -> bool:
@@ -35,15 +37,19 @@ class Settings:
         custom = os.getenv("CATALOG_DIR")
         if custom:
             roots.append(Path(custom))
+        jobs_dir = os.getenv("JOBS_DIR")
         return cls(
             api_key=os.getenv("API_KEY", "change-me"),
             catalog_dirs=tuple(roots),
             comfy_url=os.getenv("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/"),
             deployment_type=deployment_type,
             models_dir=Path(os.getenv("MODELS_DIR", "/opt/ComfyUI/models")),
-            public_base_url=os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/"),
+            public_base_url=os.getenv(
+                "PUBLIC_BASE_URL", "http://localhost:8000"
+            ).rstrip("/"),
             request_timeout=float(os.getenv("REQUEST_TIMEOUT", "60")),
             ui_password=os.getenv("COMFY_UI_PASSWORD", "change-me"),
             ui_username=os.getenv("COMFY_UI_USERNAME", "comfy"),
             workflow_timeout=float(os.getenv("WORKFLOW_TIMEOUT", "900")),
+            jobs_dir=Path(jobs_dir) if jobs_dir else None,
         )

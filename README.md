@@ -133,6 +133,32 @@ MiniMax accepts OpenAI-style `size` and `seconds`; seconds are snapped to H3's
 native frame grid. Generation returns a video job that can be polled through
 `GET /v1/videos/{id}` and downloaded from `GET /v1/videos/{id}/content`.
 
+## Durable jobs and object storage
+
+Video jobs are persisted as JSON in `JOBS_DIR` (default: disabled). Point it at a
+mounted volume to keep job records across worker restarts; any job that was
+queued or in progress when the worker stopped is reported as failed with a
+"worker restarted" error.
+
+Set S3-compatible credentials to upload generated images and videos instead of
+proxying them through the gateway, and to return signed URLs that survive the
+worker that produced them:
+
+```bash
+S3_ENDPOINT_URL=https://...   # S3, R2, MinIO
+S3_BUCKET=comfy-cloud
+S3_ACCESS_KEY_ID=...
+S3_SECRET_ACCESS_KEY=...
+S3_REGION=auto                # default us-east-1
+S3_PREFIX=outputs             # default outputs
+S3_PUBLIC_BASE_URL=           # optional: use public URLs instead of presigned
+S3_URL_EXPIRES=3600           # presigned URL lifetime in seconds
+```
+
+Object storage requires `boto3` (install the `s3` extra: `pip install '.[s3]'`).
+When storage is unavailable or an upload fails, the gateway falls back to
+proxying ComfyUI output, so storage is strictly additive.
+
 ## Bifrost and Open WebUI
 
 Use `examples/bifrost-provider.json` with the deployment base URL ending in `/v1`.
@@ -200,6 +226,6 @@ for the routes you use and point its model server at this gateway on port `8000`
 
 ## Important limits
 
-- Video job state is held in the worker process. Keep a worker alive for the job, or add durable job/object storage before using scale-to-zero video in production.
-- URL image responses proxy ComfyUI output and require the same bearer key; `b64_json` is the default and most portable response.
+- Without `JOBS_DIR`, video job state is held in the worker process. Without S3 storage, completed outputs live only on the worker that produced them. Configure both for scale-to-zero.
+- URL image responses proxy ComfyUI output and require the same bearer key when storage is not configured; `b64_json` is the default and most portable response.
 - The project does not grant model redistribution rights. Review and comply with every upstream license before publishing weight-bearing images or packs.

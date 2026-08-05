@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 build = ["huggingface-hub>=0.28,<2"]
+s3 = ["boto3>=1.35,<2"]
 test = ["pytest>=8,<10", "pytest-asyncio>=0.24,<2"]
 
 [project.scripts]

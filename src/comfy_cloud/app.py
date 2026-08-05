@@ -18,6 +18,8 @@ from .auth import request_authorized, websocket_authorized
 from .catalog import Catalog, WorkflowModel
 from .comfy import ComfyClient, OutputRef
 from .config import Settings
+from .jobs import JobStore
+from .storage import ObjectStorage
 
 HOP_HEADERS = {
     "connection",
@@ -68,6 +70,48 @@ class VideoJob:
     created_at: int = field(default_factory=lambda: int(time.time()))
     error: str | None = None
     output: OutputRef | None = None
+    output_url: str | None = None
+
+    def record(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "model": self.model,
+            "status": self.status,
+            "created_at": self.created_at,
+            "error": self.error,
+            "output": {
+                "filename": self.output.filename,
+                "subfolder": self.output.subfolder,
+                "type": self.output.type,
+                "media_type": self.output.media_type,
+            }
+            if self.output is not None
+            else None,
+            "output_url": self.output_url,
+        }
+
+    @classmethod
+    def from_record(cls, record: dict[str, Any]) -> VideoJob:
+        output_data = record.get("output")
+        output = (
+            OutputRef(
+                filename=output_data["filename"],
+                subfolder=output_data.get("subfolder", ""),
+                type=output_data.get("type", "output"),
+                media_type=output_data.get("media_type", "video/mp4"),
+            )
+            if output_data
+            else None
+        )
+        return cls(
+            id=record["id"],
+            model=record["model"],
+            status=record.get("status", "queued"),
+            created_at=record.get("created_at", 0),
+            error=record.get("error"),
+            output=output,
+            output_url=record.get("output_url"),
+        )
 
 
 class Runtime:
@@ -75,8 +119,17 @@ class Runtime:
         self.settings = settings
         self.catalog = Catalog.load(settings.catalog_dirs)
         self.comfy = ComfyClient(settings.comfy_url, settings.request_timeout)
+        self.storage = ObjectStorage.from_env(settings.storage_env)
         self.jobs: dict[str, VideoJob] = {}
+        self.job_store = JobStore(settings.jobs_dir)
         self.inference_lock = asyncio.Lock()
+        for record in self.job_store.load():
+            job = VideoJob.from_record(record)
+            if job.status in {"queued", "in_progress"}:
+                job.status = "failed"
+                job.error = "worker restarted before the job completed"
+                self.job_store.save(job.record())
+            self.jobs[job.id] = job
 
     async def run(
         self, model: WorkflowModel, values: dict[str, Any]
@@ -87,6 +140,20 @@ class Runtime:
             return await self.comfy.wait(
                 prompt_id, model.output.node, self.settings.workflow_timeout
             )
+
+    def store_job(self, job: VideoJob) -> None:
+        self.job_store.save(job.record())
+
+    async def upload_output(self, job: VideoJob) -> None:
+        if self.storage is None or job.output is None:
+            return
+        response = await self.comfy.fetch_output(job.output)
+        job.output_url = await self.storage.upload(
+            job.output.filename,
+            response.content,
+            response.headers.get("content-type", job.output.media_type),
+            job.output.subfolder,
+        )
 
     async def object_info(self) -> dict[str, Any] | None:
         try:
@@ -253,21 +320,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if values["seed"] is not None:
                     values["seed"] = int(values["seed"]) + index
                 refs.extend(await runtime.run(model, values))
-            data = []
-            for ref in refs[:count]:
-                if response_format == "url":
-                    query = urlencode(
-                        {
-                            "filename": ref.filename,
-                            "subfolder": ref.subfolder,
-                            "type": ref.type,
-                        }
-                    )
-                    data.append({"url": f"{settings.public_base_url}/view?{query}"})
-                else:
-                    output = await runtime.comfy.fetch_output(ref)
-                    data.append({"b64_json": base64.b64encode(output.content).decode()})
-            return JSONResponse({"created": int(time.time()), "data": data})
+            return JSONResponse(
+                {
+                    "created": int(time.time()),
+                    "data": await image_data(refs[:count], response_format),
+                }
+            )
         except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
             return openai_error(str(exc), 500, "generation_failed")
 
@@ -342,34 +400,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if seed is not None:
                     values["seed"] = seed + index
                 refs.extend(await runtime.run(model, values))
-            data = []
-            for ref in refs[:count]:
-                if response_format == "url":
-                    query = urlencode(
-                        {
-                            "filename": ref.filename,
-                            "subfolder": ref.subfolder,
-                            "type": ref.type,
-                        }
-                    )
-                    data.append({"url": f"{settings.public_base_url}/view?{query}"})
-                else:
-                    output = await runtime.comfy.fetch_output(ref)
-                    data.append({"b64_json": base64.b64encode(output.content).decode()})
-            return JSONResponse({"created": int(time.time()), "data": data})
+            return JSONResponse(
+                {
+                    "created": int(time.time()),
+                    "data": await image_data(refs[:count], response_format),
+                }
+            )
         except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
             return openai_error(str(exc), 500, "generation_failed")
+
+    async def image_data(
+        refs: list[OutputRef], response_format: str
+    ) -> list[dict[str, Any]]:
+        data = []
+        for ref in refs:
+            if response_format == "url" and runtime.storage is not None:
+                output = await runtime.comfy.fetch_output(ref)
+                url = await runtime.storage.upload(
+                    ref.filename,
+                    output.content,
+                    output.headers.get("content-type", ref.media_type),
+                    ref.subfolder,
+                )
+                if url:
+                    data.append({"url": url})
+                    continue
+                data.append({"b64_json": base64.b64encode(output.content).decode()})
+            elif response_format == "url":
+                query = urlencode(
+                    {
+                        "filename": ref.filename,
+                        "subfolder": ref.subfolder,
+                        "type": ref.type,
+                    }
+                )
+                data.append({"url": f"{settings.public_base_url}/view?{query}"})
+            else:
+                output = await runtime.comfy.fetch_output(ref)
+                data.append({"b64_json": base64.b64encode(output.content).decode()})
+        return data
 
     async def execute_video(
         job: VideoJob, model: WorkflowModel, values: dict[str, Any]
     ) -> None:
         try:
             job.status = "in_progress"
+            runtime.store_job(job)
             job.output = (await runtime.run(model, values))[0]
+            await runtime.upload_output(job)
             job.status = "completed"
+            runtime.store_job(job)
         except Exception as exc:  # noqa: BLE001 - task boundary exposes errors through job status
             job.status = "failed"
             job.error = str(exc)
+            runtime.store_job(job)
 
     @app.post("/v1/videos")
     async def create_video(request: Request) -> Response:
@@ -451,6 +535,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             values["length"] = frames + (5 - frames % 17) % 17
         job = VideoJob(id=f"video_{uuid.uuid4().hex}", model=model.id)
         runtime.jobs[job.id] = job
+        runtime.store_job(job)
         asyncio.create_task(execute_video(job, model, values))
         return JSONResponse(
             {
@@ -477,6 +562,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "status": job.status,
                 "created_at": job.created_at,
                 "error": job.error,
+                "output_url": job.output_url,
             }
         )
 
@@ -487,6 +573,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         job = runtime.jobs.get(job_id)
         if not job or not job.output:
             return openai_error("Video is not ready", 409, "video_not_ready")
+        if job.output_url:
+            return Response(status_code=302, headers={"Location": job.output_url})
         output = await runtime.comfy.fetch_output(job.output)
         return Response(
             output.content,
