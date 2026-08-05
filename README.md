@@ -221,8 +221,11 @@ container startup.
 
 For direct Bifrost/Open WebUI compatibility, use an HTTP/load-balancing serverless
 product rather than a queue endpoint that wraps requests in a provider-specific
-`/run` envelope. Vast Serverless requires its PyWorker ingress; configure handlers
-for the routes you use and point its model server at this gateway on port `8000`.
+`/run` envelope. Vast Serverless requires a PyWorker ingress: run
+`deploy/vast_worker.py` inside the same container as the gateway (with `aiohttp`
+installed) and point Vast's `PYWORKER_REPO` at a repository containing it. The
+worker forwards the OpenAI-compatible and native ComfyUI routes to the gateway,
+injects the bearer key, and streams responses back unchanged.
 
 ## Important limits
 
