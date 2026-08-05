@@ -114,6 +114,7 @@ after their required files are installed:
 - `flux-2-klein-4b/image-edit`
 - `flux-2-klein-9b/text-to-image`
 - `flux-2-klein-9b/image-edit`
+- `flux-2-klein-base-9b/text-to-image`
 - `krea-2-turbo/text-to-image`
 - `minimax-h3/text-to-video`
 - `minimax-h3/image-to-video`
@@ -123,6 +124,11 @@ Image edits accept a multipart form with `image`, `prompt`, and optional `n`,
 the uploaded image, so `size` is not supported for edits. The Flux 2 Klein edit
 workflows use the native `ReferenceLatent` reference-conditioning nodes, so no
 custom nodes are required.
+
+`flux-2-klein-base-9b/text-to-image` uses the slower, higher-quality undistilled
+base checkpoint (20 steps, cfg 5.0) versus the 4-step distilled `flux-2-klein-9b`.
+Both share the same text encoder and decoder, so fetching the `flux-2-klein-9b`
+profile installs the weights for both workflows.
 
 MiniMax H3 text-to-video accepts a JSON body with `prompt`, `size`, and
 `seconds`. Image-to-video (`minimax-h3/image-to-video`) instead accepts a
