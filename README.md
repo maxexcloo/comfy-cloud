@@ -105,9 +105,17 @@ Three stock, self-hosted native workflows are bundled and become discoverable
 after their required files are installed:
 
 - `flux-2-klein-4b/text-to-image`
+- `flux-2-klein-4b/image-edit`
 - `flux-2-klein-9b/text-to-image`
+- `flux-2-klein-9b/image-edit`
 - `krea-2-turbo/text-to-image`
 - `minimax-h3/text-to-video`
+
+Image edits accept a multipart form with `image`, `prompt`, and optional `n`,
+`seed`, `steps`, and `response_format` (`b64_json` or `url`). Dimensions follow
+the uploaded image, so `size` is not supported for edits. The Flux 2 Klein edit
+workflows use the native `ReferenceLatent` reference-conditioning nodes, so no
+custom nodes are required.
 
 MiniMax accepts OpenAI-style `size` and `seconds`; seconds are snapped to H3's
 native frame grid. Generation returns a video job that can be polled through

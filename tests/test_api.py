@@ -33,7 +33,9 @@ async def test_models_are_workflows_and_require_auth():
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         denied = await client.get("/v1/models")
-        response = await client.get("/v1/models", headers={"Authorization": "Bearer test-key"})
+        response = await client.get(
+            "/v1/models", headers={"Authorization": "Bearer test-key"}
+        )
         detail = await client.get(
             "/v1/models/example/checkpoint-text-to-image",
             headers={"Authorization": "Bearer test-key"},
@@ -49,7 +51,9 @@ async def test_openai_image_generation_uses_workflow_model():
     app = create_app(settings())
     app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])
     app.state.runtime.comfy.fetch_output = AsyncMock(
-        return_value=httpx.Response(200, content=b"png-bytes", headers={"content-type": "image/png"})
+        return_value=httpx.Response(
+            200, content=b"png-bytes", headers={"content-type": "image/png"}
+        )
     )
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -71,6 +75,87 @@ async def test_openai_image_generation_uses_workflow_model():
 
 
 @pytest.mark.asyncio
+async def test_openai_image_edit_uses_multipart_and_workflow():
+    app = create_app(settings())
+    app.state.runtime.catalog.get("flux-2-klein-4b-edit").required_files = []
+    run_values: list[dict] = []
+    app.state.runtime.run = AsyncMock(
+        side_effect=lambda model, values: (
+            run_values.append(dict(values))
+            or [OutputRef("edited.png"), OutputRef("edited_1.png")]
+        )
+    )
+    app.state.runtime.comfy.fetch_output = AsyncMock(
+        side_effect=[
+            httpx.Response(
+                200, content=b"edit-1", headers={"content-type": "image/png"}
+            ),
+            httpx.Response(
+                200, content=b"edit-2", headers={"content-type": "image/png"}
+            ),
+        ]
+    )
+    app.state.runtime.comfy.upload = AsyncMock(return_value="uploaded.png")
+    transport = httpx.ASGITransport(app=app)
+    files = {"image": ("source.png", b"image-bytes", "image/png")}
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-key"},
+            data={
+                "model": "flux-2-klein-4b-edit",
+                "prompt": "make it blue",
+                "n": "2",
+                "seed": "10",
+                "steps": "8",
+            },
+            files=files,
+        )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data == [{"b64_json": "ZWRpdC0x"}, {"b64_json": "ZWRpdC0y"}]
+    uploaded_name, content, content_type = (
+        app.state.runtime.comfy.upload.await_args.args
+    )
+    assert uploaded_name == "source.png"
+    assert content == b"image-bytes"
+    assert content_type == "image/png"
+    assert app.state.runtime.run.call_count == 2
+    first_values = run_values[0]
+    assert first_values["image"] == "uploaded.png"
+    assert first_values["prompt"] == "make it blue"
+    assert first_values["seed"] == 10
+    assert first_values["steps"] == 8
+    assert run_values[1]["seed"] == 11
+
+
+@pytest.mark.asyncio
+async def test_image_edit_rejects_unsupported_parameters():
+    app = create_app(settings())
+    app.state.runtime.catalog.get("flux-2-klein-4b-edit").required_files = []
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        no_prompt = await client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-key"},
+            data={"model": "flux-2-klein-4b-edit"},
+            files={"image": ("source.png", b"image-bytes", "image/png")},
+        )
+        bad_size = await client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-key"},
+            data={"model": "flux-2-klein-4b-edit", "prompt": "ok", "size": "512x512"},
+            files={"image": ("source.png", b"image-bytes", "image/png")},
+        )
+
+    assert no_prompt.status_code == 400
+    assert no_prompt.json()["error"]["code"] == "missing_required_parameter"
+    assert bad_size.status_code == 400
+    assert bad_size.json()["error"]["code"] == "invalid_value"
+
+
+@pytest.mark.asyncio
 async def test_runpod_ping_reports_comfy_readiness():
     app = create_app(settings())
     app.state.runtime.comfy.ready = AsyncMock(side_effect=[False, True])
@@ -87,7 +172,9 @@ async def test_runpod_ping_reports_comfy_readiness():
 async def test_video_request_maps_openai_size_and_seconds_to_workflow():
     app = create_app(settings())
     app.state.runtime.catalog.get("minimax-h3").required_files = []
-    app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.mp4", media_type="video/mp4")])
+    app.state.runtime.run = AsyncMock(
+        return_value=[OutputRef("result.mp4", media_type="video/mp4")]
+    )
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
@@ -137,7 +224,9 @@ async def test_pod_proxies_frontend_with_basic_auth():
     app = create_app(settings("pod"))
 
     async def comfy_handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text="ComfyUI", headers={"content-type": "text/html"})
+        return httpx.Response(
+            200, text="ComfyUI", headers={"content-type": "text/html"}
+        )
 
     await app.state.runtime.comfy.http.aclose()
     app.state.runtime.comfy.http = httpx.AsyncClient(

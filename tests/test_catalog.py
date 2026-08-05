@@ -26,11 +26,27 @@ def test_catalog_maps_one_parameter_to_multiple_nodes():
     assert graph["9"]["inputs"]["width"] == 1344
 
 
+def test_catalog_maps_image_edit_inputs_to_reference_workflow():
+    catalog = Catalog.load((ROOT / "catalog",))
+    graph = catalog.get("flux-2-klein-4b-edit").render(
+        {"prompt": "change the sky", "image": "input.png", "seed": 7, "steps": 8}
+    )
+
+    assert graph["8"]["inputs"]["text"] == "change the sky"
+    assert graph["4"]["inputs"]["image"] == "input.png"
+    assert graph["13"]["inputs"]["noise_seed"] == 7
+    assert graph["15"]["inputs"]["steps"] == 8
+    assert graph["10"]["class_type"] == "ReferenceLatent"
+    assert graph["11"]["class_type"] == "ReferenceLatent"
+
+
 def test_catalog_exposes_alias_only_once():
     catalog = Catalog.load((ROOT / "catalog",))
     assert [model.id for model in catalog.list()] == [
         "example/checkpoint-text-to-image",
+        "flux-2-klein-4b/image-edit",
         "flux-2-klein-4b/text-to-image",
+        "flux-2-klein-9b/image-edit",
         "flux-2-klein-9b/text-to-image",
         "krea-2-turbo/text-to-image",
         "minimax-h3/text-to-video",

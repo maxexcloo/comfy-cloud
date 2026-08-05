@@ -1,0 +1,19 @@
+id: flux-2-klein-4b/image-edit
+profile: flux-2-klein-4b
+operation: image_edit
+workflow: workflow.json
+owned_by: black-forest-labs
+aliases: [flux-2-klein-4b-edit]
+input_map:
+  prompt: {node: "8", input: text}
+  image: {node: "4", input: image}
+  seed: {node: "13", input: noise_seed}
+  steps: {node: "15", input: steps}
+output: {node: "19", type: image}
+defaults:
+  seed: 0
+  steps: 4
+required_files:
+  - diffusion_models/flux-2-klein-4b.safetensors
+  - text_encoders/qwen_3_4b.safetensors
+  - vae/flux2-vae.safetensors
