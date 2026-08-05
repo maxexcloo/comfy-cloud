@@ -1,0 +1,13 @@
+{
+  "name": "comfy-cloud",
+  "image": "ghcr.io/OWNER/comfy-cloud:TAG",
+  "disk_space": 100,
+  "onstart": "python3 -m comfy_cloud.supervisor",
+  "env": {
+    "MODE": "pod",
+    "API_KEY": "CHANGE_ME",
+    "COMFY_UI_USERNAME": "comfy",
+    "COMFY_UI_PASSWORD": "CHANGE_ME"
+  },
+  "ports": [8000]
+}

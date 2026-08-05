@@ -1,0 +1,14 @@
+{
+  "provider": "openai",
+  "keys": [
+    {
+      "name": "comfy-cloud",
+      "value": "env.COMFY_CLOUD_API_KEY",
+      "models": ["*"],
+      "weight": 1
+    }
+  ],
+  "network_config": {
+    "base_url": "https://YOUR_DEPLOYMENT/v1"
+  }
+}

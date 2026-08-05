@@ -1,0 +1,12 @@
+name: minimax-h3-ref2va
+minimum_vram_gb: 80
+sources:
+  - type: huggingface
+    repo: Comfy-Org/MiniMax-H3
+    revision: dcc9da705e5fb29f1bc9e1aea74bd29ccbf6a146
+    include:
+      - diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors
+      - text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors
+      - vae/minimax_h3_video_vae_fp16.safetensors
+      - vae/minimax_h3_audio_vae_fp32.safetensors
+notes: Native 768p reference-to-video workflow.

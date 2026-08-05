@@ -1,0 +1,11 @@
+name: krea-2-turbo
+minimum_vram_gb: 48
+sources:
+  - type: huggingface
+    repo: Comfy-Org/Krea-2
+    revision: 952f49d49653cb42e7d6cf7cbfad74738073ec7d
+    include:
+      - diffusion_models/krea2_turbo_fp8_scaled.safetensors
+      - text_encoders/qwen3vl_4b_fp8_scaled.safetensors
+      - vae/qwen_image_vae.safetensors
+notes: Gated upstream; HF_TOKEN must have accepted the Krea license.
