@@ -1,3 +1,7 @@
+[env]
+# Image published by `mise run deploy`. Non-secret; overridable in .mise.local.toml.
+IMAGE_NAME = "ghcr.io/maxexcloo/comfy-cloud"
+
 [tools]
 actionlint = "1.7.12"
 hadolint = "2.15.1"
@@ -20,6 +24,14 @@ find . -path ./.git -prune -o \
 find . -path ./.git -prune -o -type f -name '*.pyc' -exec rm -f -- {} +
 """
 
+[tasks.deploy]
+description = "Build and push the runtime image"
+run = """
+echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER:-maxexcloo}" --password-stdin
+docker build -t "${IMAGE_NAME}:latest" .
+docker push "${IMAGE_NAME}:latest"
+"""
+
 [tasks.fmt]
 description = "Format all files"
 run = """
@@ -29,5 +41,12 @@ ruff format .
 """
 
 [tasks.setup]
-description = "Install Git hooks"
-run = "prek install"
+description = "Copy local env template if missing, then install Git hooks"
+run = """
+if [[ ! -f .mise.local.toml ]]; then
+  cp .mise.local.toml.default .mise.local.toml
+  echo "Created .mise.local.toml - please add your secrets"
+  exit 1
+fi
+prek install
+"""

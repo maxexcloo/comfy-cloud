@@ -20,7 +20,21 @@ under `MODELS_DIR` (default `/opt/ComfyUI/models`).
 
 ## Quick start
 
-Prebuilt images are published by GitHub Actions:
+Development is driven by mise, matching the homelab repos:
+
+```bash
+mise run setup   # creates .mise.local.toml from the template, then installs pre-commit hooks
+mise run check   # pre-commit hooks + pytest
+mise run fmt     # prettier + ruff format
+mise run deploy  # build and push the runtime image to GHCR
+```
+
+Copy `.mise.local.toml.default` to `.mise.local.toml` (gitignored) and fill in
+secrets — API keys, `HF_TOKEN`/`CIVITAI_TOKEN`, S3 credentials, and `GHCR_TOKEN`
+for `mise run deploy`. Non-secret defaults live in the `[env]` section of
+`.mise.toml`.
+
+Prebuilt images are also published by GitHub Actions:
 
 ```bash
 docker pull ghcr.io/maxexcloo/comfy-cloud:latest
