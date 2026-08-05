@@ -18,13 +18,6 @@ S3_PREFIX = "outputs"
 S3_PUBLIC_BASE_URL = ""
 S3_URL_EXPIRES = "3600"
 
-# Registry authentication for `mise run deploy-image` (GHCR)
-GHCR_TOKEN = "REPLACE_ME"
-GHCR_USER = "maxexcloo"
-
-# Provider deploy target
-PROVIDER = "modal"  # modal | runpod | vast
-
 # Modal
 MODAL_TOKEN_ID = "REPLACE_ME"
 MODAL_TOKEN_SECRET = "REPLACE_ME"

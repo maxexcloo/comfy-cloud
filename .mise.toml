@@ -1,9 +1,3 @@
-[env]
-# Image published by `mise run deploy-image`. Non-secret; overridable in .mise.local.toml.
-IMAGE_NAME = "ghcr.io/maxexcloo/comfy-cloud"
-# Registry user for `mise run deploy-image` (GHCR).
-GHCR_USER = "maxexcloo"
-
 [tools]
 actionlint = "1.7.12"
 hadolint = "2.15.1"
@@ -27,18 +21,6 @@ find . -path ./.git -prune -o \
   -type d \\( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache \\) \
   -prune -exec rm -rf -- {} +
 find . -path ./.git -prune -o -type f -name '*.pyc' -exec rm -f -- {} +
-"""
-
-[tasks.deploy]
-description = "Deploy to a provider: PROVIDER=modal|runpod|vast"
-run = "mise run deploy-${PROVIDER}"
-
-[tasks.deploy-image]
-description = "Build and push the runtime image to GHCR"
-run = """
-echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
-docker build -t "${IMAGE_NAME}:latest" .
-docker push "${IMAGE_NAME}:latest"
 """
 
 [tasks.deploy-modal]
@@ -83,4 +65,11 @@ ruff format .
 
 [tasks.setup]
 description = "Copy local env template if missing, then install Git hooks"
-run = "if [[ ! -f .mise.local.toml ]]; then cp .mise.local.toml.default .mise.local.toml && echo 'Created .mise.local.toml - please add your secrets' && exit 1; fi; prek install"
+run = """
+if [[ ! -f .mise.local.toml ]]; then
+  cp .mise.local.toml.default .mise.local.toml
+  echo "Created .mise.local.toml - please add your secrets"
+  exit 1
+fi
+prek install
+"""
