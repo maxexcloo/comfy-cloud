@@ -110,12 +110,18 @@ after their required files are installed:
 - `flux-2-klein-9b/image-edit`
 - `krea-2-turbo/text-to-image`
 - `minimax-h3/text-to-video`
+- `minimax-h3/image-to-video`
 
 Image edits accept a multipart form with `image`, `prompt`, and optional `n`,
 `seed`, `steps`, and `response_format` (`b64_json` or `url`). Dimensions follow
 the uploaded image, so `size` is not supported for edits. The Flux 2 Klein edit
 workflows use the native `ReferenceLatent` reference-conditioning nodes, so no
 custom nodes are required.
+
+MiniMax H3 text-to-video accepts a JSON body with `prompt`, `size`, and
+`seconds`. Image-to-video (`minimax-h3/image-to-video`) instead accepts a
+multipart form with an `image` first frame plus `prompt`, `size`, and
+`seconds`, and drives the native `first_frame` conditioning.
 
 MiniMax accepts OpenAI-style `size` and `seconds`; seconds are snapped to H3's
 native frame grid. Generation returns a video job that can be polled through

@@ -40,6 +40,29 @@ def test_catalog_maps_image_edit_inputs_to_reference_workflow():
     assert graph["11"]["class_type"] == "ReferenceLatent"
 
 
+def test_catalog_maps_image_to_video_first_frame():
+    catalog = Catalog.load((ROOT / "catalog",))
+    graph = catalog.get("minimax-h3-i2v").render(
+        {
+            "prompt": "walk forward",
+            "image": "frame.png",
+            "width": 1344,
+            "height": 768,
+            "length": 124,
+            "seed": 3,
+            "steps": 16,
+        }
+    )
+
+    assert graph["5"]["class_type"] == "LoadImage"
+    assert graph["5"]["inputs"]["image"] == "frame.png"
+    assert graph["6"]["class_type"] == "MiniMaxH3ImageToVideo"
+    assert graph["6"]["inputs"]["first_frame"] == ["5", 0]
+    assert graph["6"]["inputs"]["prompt"] == "walk forward"
+    assert graph["10"]["inputs"]["noise_seed"] == 3
+    assert graph["8"]["inputs"]["steps"] == 16
+
+
 def test_catalog_exposes_alias_only_once():
     catalog = Catalog.load((ROOT / "catalog",))
     assert [model.id for model in catalog.list()] == [
@@ -49,6 +72,7 @@ def test_catalog_exposes_alias_only_once():
         "flux-2-klein-9b/image-edit",
         "flux-2-klein-9b/text-to-image",
         "krea-2-turbo/text-to-image",
+        "minimax-h3/image-to-video",
         "minimax-h3/text-to-video",
     ]
 

@@ -156,6 +156,59 @@ async def test_image_edit_rejects_unsupported_parameters():
 
 
 @pytest.mark.asyncio
+async def test_image_to_video_accepts_multipart_upload():
+    app = create_app(settings())
+    app.state.runtime.catalog.get("minimax-h3-i2v").required_files = []
+    run_values: list[dict] = []
+    app.state.runtime.run = AsyncMock(
+        side_effect=lambda model, values: (
+            run_values.append(dict(values))
+            or [OutputRef("result.mp4", media_type="video/mp4")]
+        )
+    )
+    app.state.runtime.comfy.upload = AsyncMock(return_value="frame.png")
+    transport = httpx.ASGITransport(app=app)
+    files = {"image": ("source.png", b"image-bytes", "image/png")}
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/videos",
+            headers={"Authorization": "Bearer test-key"},
+            data={
+                "model": "minimax-h3-i2v",
+                "prompt": "walk forward",
+                "seconds": "3",
+                "seed": "5",
+            },
+            files=files,
+        )
+        await asyncio.sleep(0)
+
+    assert response.status_code == 200
+    assert app.state.runtime.comfy.upload.await_args.args[0] == "source.png"
+    values = run_values[0]
+    assert values["image"] == "frame.png"
+    assert values["prompt"] == "walk forward"
+    assert values["seed"] == 5
+    assert values["length"] == 73
+
+
+@pytest.mark.asyncio
+async def test_image_to_video_requires_uploaded_image():
+    app = create_app(settings())
+    app.state.runtime.catalog.get("minimax-h3-i2v").required_files = []
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/videos",
+            headers={"Authorization": "Bearer test-key"},
+            json={"model": "minimax-h3-i2v", "prompt": "walk forward"},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "missing_required_parameter"
+
+
+@pytest.mark.asyncio
 async def test_runpod_ping_reports_comfy_readiness():
     app = create_app(settings())
     app.state.runtime.comfy.ready = AsyncMock(side_effect=[False, True])

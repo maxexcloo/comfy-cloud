@@ -359,7 +359,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def create_video(request: Request) -> Response:
         if denied := require(request):
             return denied
-        body = await request.json()
+        content_type = request.headers.get("content-type", "")
+        if content_type.startswith("multipart/form-data"):
+            form = await request.form()
+            body: dict[str, Any] = {
+                key: str(value)
+                for key, value in form.items()
+                if not hasattr(value, "read")
+            }
+            image = form.get("image")
+            if image is not None and hasattr(image, "read"):
+                body["image"] = await runtime.comfy.upload(
+                    image.filename,
+                    await image.read(),
+                    image.content_type or "application/octet-stream",
+                )
+            for field in ("width", "height", "length", "seed", "steps"):
+                if field in body:
+                    try:
+                        body[field] = int(body[field])
+                    except (TypeError, ValueError):
+                        return openai_error(
+                            f"{field} must be an integer", 400, "invalid_value", field
+                        )
+        else:
+            try:
+                body = await request.json()
+            except ValueError:
+                return openai_error(
+                    "Request body must be JSON or multipart form", 400, "invalid_json"
+                )
         try:
             model = runtime.model(body.get("model", ""))
         except KeyError:
@@ -372,6 +401,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 400,
                 "unsupported_operation",
                 "model",
+            )
+        if "image" in model.input_map and not body.get("image"):
+            return openai_error(
+                "image is required for this video model",
+                400,
+                "missing_required_parameter",
+                "image",
             )
         values = dict(body)
         size = body.get("size")
