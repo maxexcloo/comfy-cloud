@@ -19,6 +19,16 @@ under `MODELS_DIR` (default `/opt/ComfyUI/models`).
 
 ## Quick start
 
+Prebuilt images are published by GitHub Actions:
+
+```bash
+docker pull ghcr.io/maxexcloo/comfy-cloud:latest
+```
+
+Pushes to `main` publish `latest`, `main`, and `sha-...` tags. Git tags such as
+`v0.1.0` also publish `v0.1.0`, `0.1.0`, and `0.1`. The first GHCR package may
+need its visibility changed to public in the repository owner's package settings.
+
 ```bash
 docker build -t comfy-cloud .
 docker run --gpus all --rm -p 8000:8000 \
