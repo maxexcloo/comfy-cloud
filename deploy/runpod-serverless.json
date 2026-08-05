@@ -4,10 +4,10 @@
   "containerDiskInGb": 100,
   "ports": "8000/http",
   "env": [
-    {"key": "MODE", "value": "serverless"},
-    {"key": "PORT", "value": "8000"},
-    {"key": "PORT_HEALTH", "value": "8000"},
-    {"key": "API_KEY", "value": "CHANGE_ME"}
+    { "key": "MODE", "value": "serverless" },
+    { "key": "PORT", "value": "8000" },
+    { "key": "PORT_HEALTH", "value": "8000" },
+    { "key": "API_KEY", "value": "CHANGE_ME" }
   ],
   "volumeMountPath": "/opt/ComfyUI/models"
 }

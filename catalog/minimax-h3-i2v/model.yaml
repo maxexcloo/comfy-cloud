@@ -5,14 +5,14 @@ workflow: workflow.json
 owned_by: minimax
 aliases: [minimax-h3-i2v]
 input_map:
-  prompt: {node: "6", input: prompt}
-  image: {node: "5", input: image}
-  width: {node: "6", input: width}
-  height: {node: "6", input: height}
-  length: {node: "6", input: length}
-  seed: {node: "10", input: noise_seed}
-  steps: {node: "8", input: steps}
-output: {node: "15", type: video}
+  prompt: { node: "6", input: prompt }
+  image: { node: "5", input: image }
+  width: { node: "6", input: width }
+  height: { node: "6", input: height }
+  length: { node: "6", input: length }
+  seed: { node: "10", input: noise_seed }
+  steps: { node: "8", input: steps }
+output: { node: "15", type: video }
 defaults:
   width: 1344
   height: 768

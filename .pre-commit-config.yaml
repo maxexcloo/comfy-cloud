@@ -1,0 +1,55 @@
+repos:
+  - repo: builtin
+    hooks:
+      - id: check-added-large-files
+        args:
+          - --maxkb=1024
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.37.4
+    hooks:
+      - id: check-github-workflows
+      - id: check-renovate
+  - repo: local
+    hooks:
+      - id: actionlint
+        name: Lint GitHub Actions workflows
+        entry: mise exec -- actionlint
+        files: ^\.github/workflows/.*\.yaml$
+        language: system
+      - id: hadolint
+        name: Lint Dockerfiles
+        entry: mise exec -- hadolint
+        language: system
+        args:
+          - --failure-threshold
+          - error
+        types:
+          - dockerfile
+      - id: prettier
+        name: Check formatting
+        entry: mise exec -- prettier --check
+        files: \.(json|yaml)$
+        language: system
+      - id: ruff-check
+        name: Lint Python
+        entry: mise exec -- ruff check --extend-select I
+        language: system
+        types:
+          - python
+      - id: ruff-format
+        name: Check Python formatting
+        entry: mise exec -- ruff format --check
+        language: system
+        types:
+          - python

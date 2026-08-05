@@ -5,10 +5,10 @@
   "dockerArgs": "",
   "ports": "8000/http",
   "env": [
-    {"key": "MODE", "value": "pod"},
-    {"key": "API_KEY", "value": "CHANGE_ME"},
-    {"key": "COMFY_UI_USERNAME", "value": "comfy"},
-    {"key": "COMFY_UI_PASSWORD", "value": "CHANGE_ME"}
+    { "key": "MODE", "value": "pod" },
+    { "key": "API_KEY", "value": "CHANGE_ME" },
+    { "key": "COMFY_UI_USERNAME", "value": "comfy" },
+    { "key": "COMFY_UI_PASSWORD", "value": "CHANGE_ME" }
   ],
   "volumeMountPath": "/opt/ComfyUI/models"
 }

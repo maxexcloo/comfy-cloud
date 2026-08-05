@@ -36,19 +36,26 @@ def workflow_add(args: argparse.Namespace) -> None:
 def catalog_list(args: argparse.Namespace) -> None:
     catalog = Catalog.load((Path(args.catalog_dir),))
     models_dir = Path(args.models_dir)
-    print(json.dumps([
-        {
-            "id": model.id,
-            "operation": model.operation,
-            "available": not model.missing_files(models_dir),
-            "missing_files": model.missing_files(models_dir),
-        }
-        for model in catalog.list()
-    ], indent=2))
+    print(
+        json.dumps(
+            [
+                {
+                    "id": model.id,
+                    "operation": model.operation,
+                    "available": not model.missing_files(models_dir),
+                    "missing_files": model.missing_files(models_dir),
+                }
+                for model in catalog.list()
+            ],
+            indent=2,
+        )
+    )
 
 
 def pack_model(args: argparse.Namespace) -> None:
-    manifest = pack_file(Path(args.source), Path(args.destination), args.chunk_size_gib * 1024**3)
+    manifest = pack_file(
+        Path(args.source), Path(args.destination), args.chunk_size_gib * 1024**3
+    )
     print(json.dumps(manifest, indent=2))
 
 
@@ -67,12 +74,18 @@ def main() -> None:
     add = sub.add_parser("workflow-add", help="register an API-format workflow")
     add.add_argument("--id", required=True)
     add.add_argument("--profile")
-    add.add_argument("--operation", required=True, choices=["image_generation", "image_edit", "video_generation"])
+    add.add_argument(
+        "--operation",
+        required=True,
+        choices=["image_generation", "image_edit", "video_generation"],
+    )
     add.add_argument("--workflow", required=True)
     add.add_argument("--mapping", required=True)
     add.add_argument("--catalog-dir", default="catalog/custom")
     add.set_defaults(func=workflow_add)
-    listing = sub.add_parser("catalog-list", help="validate and list registered workflows")
+    listing = sub.add_parser(
+        "catalog-list", help="validate and list registered workflows"
+    )
     listing.add_argument("--catalog-dir", default="catalog")
     listing.add_argument("--models-dir", default="models")
     listing.set_defaults(func=catalog_list)
@@ -85,7 +98,9 @@ def main() -> None:
     unpack.add_argument("manifest")
     unpack.add_argument("destination")
     unpack.set_defaults(func=unpack_model)
-    fetch = sub.add_parser("models-fetch", help="fetch a pinned Hugging Face/Civitai profile")
+    fetch = sub.add_parser(
+        "models-fetch", help="fetch a pinned Hugging Face/Civitai profile"
+    )
     fetch.add_argument("profile")
     fetch.add_argument("--models-dir", default="models")
     fetch.set_defaults(func=models_fetch)

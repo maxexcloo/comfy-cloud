@@ -5,16 +5,16 @@ workflow: workflow.json
 owned_by: black-forest-labs
 aliases: [flux-2-klein-9b]
 input_map:
-  prompt: {node: "4", input: text}
+  prompt: { node: "4", input: text }
   width:
-    - {node: "6", input: width}
-    - {node: "9", input: width}
+    - { node: "6", input: width }
+    - { node: "9", input: width }
   height:
-    - {node: "6", input: height}
-    - {node: "9", input: height}
-  seed: {node: "7", input: noise_seed}
-  steps: {node: "9", input: steps}
-output: {node: "13", type: image}
+    - { node: "6", input: height }
+    - { node: "9", input: height }
+  seed: { node: "7", input: noise_seed }
+  steps: { node: "9", input: steps }
+output: { node: "13", type: image }
 defaults:
   width: 1024
   height: 1024

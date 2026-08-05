@@ -7,7 +7,9 @@ from pathlib import Path
 DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024 * 1024
 
 
-def pack_file(source: Path, destination: Path, chunk_size: int = DEFAULT_CHUNK_SIZE) -> dict:
+def pack_file(
+    source: Path, destination: Path, chunk_size: int = DEFAULT_CHUNK_SIZE
+) -> dict:
     destination.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
     chunks: list[dict] = []
@@ -29,10 +31,23 @@ def pack_file(source: Path, destination: Path, chunk_size: int = DEFAULT_CHUNK_S
             if size == 0:
                 chunk_path.unlink()
                 break
-            chunks.append({"file": chunk_path.name, "size": size, "sha256": chunk_digest.hexdigest()})
+            chunks.append(
+                {
+                    "file": chunk_path.name,
+                    "size": size,
+                    "sha256": chunk_digest.hexdigest(),
+                }
+            )
             index += 1
-    manifest = {"name": source.name, "size": source.stat().st_size, "sha256": digest.hexdigest(), "chunks": chunks}
-    (destination / f"{source.name}.pack.json").write_text(json.dumps(manifest, indent=2))
+    manifest = {
+        "name": source.name,
+        "size": source.stat().st_size,
+        "sha256": digest.hexdigest(),
+        "chunks": chunks,
+    }
+    (destination / f"{source.name}.pack.json").write_text(
+        json.dumps(manifest, indent=2)
+    )
     return manifest
 
 
@@ -53,7 +68,10 @@ def unpack_file(manifest_path: Path, destination: Path) -> Path:
             if chunk_digest.hexdigest() != item["sha256"]:
                 output.unlink(missing_ok=True)
                 raise ValueError(f"chunk checksum mismatch: {chunk}")
-    if output.stat().st_size != manifest["size"] or digest.hexdigest() != manifest["sha256"]:
+    if (
+        output.stat().st_size != manifest["size"]
+        or digest.hexdigest() != manifest["sha256"]
+    ):
         output.unlink(missing_ok=True)
         raise ValueError("reconstructed model checksum mismatch")
     return output

@@ -20,11 +20,15 @@ def _valid_header(header: str | None, settings: Settings, allow_basic: bool) -> 
         except (ValueError, UnicodeDecodeError):
             return False
         username, _, password = decoded.partition(":")
-        return hmac.compare_digest(username, settings.ui_username) and hmac.compare_digest(password, settings.ui_password)
+        return hmac.compare_digest(
+            username, settings.ui_username
+        ) and hmac.compare_digest(password, settings.ui_password)
     return False
 
 
-def request_authorized(request: Request, settings: Settings, allow_basic: bool = True) -> bool:
+def request_authorized(
+    request: Request, settings: Settings, allow_basic: bool = True
+) -> bool:
     return _valid_header(request.headers.get("authorization"), settings, allow_basic)
 
 

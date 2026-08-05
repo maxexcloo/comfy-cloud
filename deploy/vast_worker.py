@@ -100,7 +100,7 @@ async def proxy(request: web.Request) -> web.StreamResponse:
 
 
 async def on_startup(app: web.Application) -> None:
-    import aiohttp  # noqa: PLC0415 - aiohttp is already required
+    import aiohttp
 
     app["client"] = aiohttp.ClientSession()
     log.info("gateway ready")

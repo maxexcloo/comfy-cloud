@@ -29,13 +29,17 @@ def _fetch_huggingface(source: dict[str, Any], models_dir: Path) -> list[Path]:
     try:
         from huggingface_hub import snapshot_download
     except ImportError as exc:
-        raise RuntimeError("install comfy-cloud[build] to fetch Hugging Face profiles") from exc
+        raise RuntimeError(
+            "install comfy-cloud[build] to fetch Hugging Face profiles"
+        ) from exc
     revision = source.get("revision")
     if not revision:
         raise ValueError("Hugging Face sources must pin revision")
     destination = Path(source.get("destination", ""))
     if destination.is_absolute() or ".." in destination.parts:
-        raise ValueError("Hugging Face destination must be relative to the models directory")
+        raise ValueError(
+            "Hugging Face destination must be relative to the models directory"
+        )
     with tempfile.TemporaryDirectory(prefix="comfy-cloud-hf-") as temporary:
         root = Path(
             snapshot_download(
@@ -72,9 +76,15 @@ def _fetch_civitai(source: dict[str, Any], models_dir: Path) -> list[Path]:
         metadata.raise_for_status()
         files = metadata.json().get("files", [])
         requested = source.get("filename")
-        selected = next((item for item in files if item.get("name") == requested), None) if requested else (files[0] if files else None)
+        selected = (
+            next((item for item in files if item.get("name") == requested), None)
+            if requested
+            else (files[0] if files else None)
+        )
         if not selected:
-            raise ValueError(f"Civitai version {version_id} did not contain the requested file")
+            raise ValueError(
+                f"Civitai version {version_id} did not contain the requested file"
+            )
         target = models_dir / destination
         target.parent.mkdir(parents=True, exist_ok=True)
         with client.stream("GET", selected["downloadUrl"]) as response:

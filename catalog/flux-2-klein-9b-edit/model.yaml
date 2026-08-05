@@ -5,11 +5,11 @@ workflow: workflow.json
 owned_by: black-forest-labs
 aliases: [flux-2-klein-9b-edit]
 input_map:
-  prompt: {node: "8", input: text}
-  image: {node: "4", input: image}
-  seed: {node: "13", input: noise_seed}
-  steps: {node: "15", input: steps}
-output: {node: "19", type: image}
+  prompt: { node: "8", input: text }
+  image: { node: "4", input: image }
+  seed: { node: "13", input: noise_seed }
+  steps: { node: "15", input: steps }
+output: { node: "19", type: image }
 defaults:
   seed: 0
   steps: 4

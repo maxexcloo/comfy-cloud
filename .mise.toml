@@ -1,0 +1,33 @@
+[tools]
+actionlint = "1.7.12"
+hadolint = "2.15.1"
+prek = "0.4.12"
+prettier = "3.9.6"
+python = "3.13"
+ruff = "0.16.1"
+uv = "0.12.1"
+
+[tasks.check]
+description = "Run all repository checks"
+run = "prek run --all-files && uv run --extra test pytest -q"
+
+[tasks.cleanup]
+description = "Remove caches and bytecode"
+run = """
+find . -path ./.git -prune -o \
+  -type d \\( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache \\) \
+  -prune -exec rm -rf -- {} +
+find . -path ./.git -prune -o -type f -name '*.pyc' -exec rm -f -- {} +
+"""
+
+[tasks.fmt]
+description = "Format all files"
+run = """
+prettier --write .
+ruff check --fix --select I .
+ruff format .
+"""
+
+[tasks.setup]
+description = "Install Git hooks"
+run = "prek install"

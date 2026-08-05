@@ -76,11 +76,11 @@ profile: flux-2-klein-4b
 operation: image_generation
 workflow: workflow.json
 input_map:
-  prompt: {node: "6", input: text}
-  width: {node: "12", input: width}
-  height: {node: "12", input: height}
-  seed: {node: "25", input: noise_seed}
-output: {node: "31", type: image}
+  prompt: { node: "6", input: text }
+  width: { node: "12", input: width }
+  height: { node: "12", input: height }
+  seed: { node: "25", input: noise_seed }
+output: { node: "31", type: image }
 ```
 
 Register an exported API workflow without modifying the image:
@@ -198,12 +198,12 @@ Fetch only what you run — each profile is independent, and persistent model
 storage is billed per GB. Approximate sizes and monthly volume cost at
 ~$0.07/GB:
 
-| Profile | Weights | VRAM | ~Storage/mo |
-|---|---|---|---|
-| `flux-2-klein-4b` | ~8 GB | 16 GB | ~$0.56 |
-| `flux-2-klein-9b` (incl. base) | ~40 GB | 24 GB | ~$2.80 |
-| `krea-2-turbo` | ~15 GB | 24 GB | ~$1.05 |
-| `minimax-h3-fl2va` | ~60 GB | 80 GB | ~$4.20 |
+| Profile                        | Weights | VRAM  | ~Storage/mo |
+| ------------------------------ | ------- | ----- | ----------- |
+| `flux-2-klein-4b`              | ~8 GB   | 16 GB | ~$0.56      |
+| `flux-2-klein-9b` (incl. base) | ~40 GB  | 24 GB | ~$2.80      |
+| `krea-2-turbo`                 | ~15 GB  | 24 GB | ~$1.05      |
+| `minimax-h3-fl2va`             | ~60 GB  | 80 GB | ~$4.20      |
 
 For a first test, fetch the 4B distilled profile alone — the fastest model and
 the cheapest volume.

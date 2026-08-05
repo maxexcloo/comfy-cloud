@@ -8,7 +8,9 @@ image = modal.Image.from_registry(
     os.environ["COMFY_CLOUD_IMAGE"],
     add_python="3.11",
 ).entrypoint([])
-models = modal.Volume.from_name(os.getenv("MODAL_MODEL_VOLUME", "comfy-cloud-models"), create_if_missing=True)
+models = modal.Volume.from_name(
+    os.getenv("MODAL_MODEL_VOLUME", "comfy-cloud-models"), create_if_missing=True
+)
 
 
 @app.function(

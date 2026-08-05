@@ -6,12 +6,12 @@ owned_by: comfy-cloud
 aliases:
   - example
 input_map:
-  prompt: {node: "1", input: text}
-  width: {node: "2", input: width}
-  height: {node: "2", input: height}
-  seed: {node: "3", input: seed}
-  steps: {node: "3", input: steps}
-output: {node: "4", type: image}
+  prompt: { node: "1", input: text }
+  width: { node: "2", input: width }
+  height: { node: "2", input: height }
+  seed: { node: "3", input: seed }
+  steps: { node: "3", input: steps }
+output: { node: "4", type: image }
 defaults:
   width: 1024
   height: 1024
