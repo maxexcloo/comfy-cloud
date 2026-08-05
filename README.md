@@ -26,13 +26,22 @@ Development is driven by mise, matching the homelab repos:
 mise run setup   # creates .mise.local.toml from the template, then installs pre-commit hooks
 mise run check   # pre-commit hooks + pytest
 mise run fmt     # prettier + ruff format
-mise run deploy  # build and push the runtime image to GHCR
+mise run providers  # install provider CLIs (modal, vastai, runpodctl)
+mise run deploy  # deploy to a provider (set PROVIDER=modal|runpod|vast)
 ```
 
 Copy `.mise.local.toml.default` to `.mise.local.toml` (gitignored) and fill in
-secrets — API keys, `HF_TOKEN`/`CIVITAI_TOKEN`, S3 credentials, and `GHCR_TOKEN`
-for `mise run deploy`. Non-secret defaults live in the `[env]` section of
-`.mise.toml`.
+secrets — API keys, `HF_TOKEN`/`CIVITAI_TOKEN`, S3 credentials, `GHCR_TOKEN`,
+and the provider values (`PROVIDER`, `MODAL_TOKEN_ID/SECRET`, `RUNPOD_API_KEY`,
+`VAST_API_KEY`, `VAST_OFFER_ID`). Non-secret defaults live in the `[env]`
+section of `.mise.toml`.
+
+`mise run deploy` dispatches on `PROVIDER` to the per-provider task:
+
+- `deploy-modal`: `modal deploy deploy/modal_app.py`
+- `deploy-runpod`: `runpodctl create pod ...` from the template values
+- `deploy-vast`: `vastai create instance ...` (needs `VAST_OFFER_ID` from `vastai search offers`)
+- `deploy-image`: build and push the runtime image to GHCR
 
 Prebuilt images are also published by GitHub Actions:
 

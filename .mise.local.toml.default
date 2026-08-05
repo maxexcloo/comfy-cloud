@@ -18,6 +18,24 @@ S3_PREFIX = "outputs"
 S3_PUBLIC_BASE_URL = ""
 S3_URL_EXPIRES = "3600"
 
-# Registry authentication for `mise run deploy` (GHCR)
+# Registry authentication for `mise run deploy-image` (GHCR)
 GHCR_TOKEN = "REPLACE_ME"
 GHCR_USER = "maxexcloo"
+
+# Provider deploy target
+PROVIDER = "modal"  # modal | runpod | vast
+
+# Modal
+MODAL_TOKEN_ID = "REPLACE_ME"
+MODAL_TOKEN_SECRET = "REPLACE_ME"
+COMFY_CLOUD_IMAGE = "ghcr.io/maxexcloo/comfy-cloud:latest"
+MODAL_GPU = "L40S"
+MODAL_SECRET = "comfy-cloud"
+MODAL_MODEL_VOLUME = "comfy-cloud-models"
+
+# RunPod
+RUNPOD_API_KEY = "REPLACE_ME"
+
+# Vast.ai
+VAST_API_KEY = "REPLACE_ME"
+VAST_OFFER_ID = "REPLACE_ME"

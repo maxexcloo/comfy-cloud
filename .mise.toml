@@ -1,6 +1,8 @@
 [env]
-# Image published by `mise run deploy`. Non-secret; overridable in .mise.local.toml.
+# Image published by `mise run deploy-image`. Non-secret; overridable in .mise.local.toml.
 IMAGE_NAME = "ghcr.io/maxexcloo/comfy-cloud"
+# Registry user for `mise run deploy-image` (GHCR).
+GHCR_USER = "maxexcloo"
 
 [tools]
 actionlint = "1.7.12"
@@ -25,11 +27,47 @@ find . -path ./.git -prune -o -type f -name '*.pyc' -exec rm -f -- {} +
 """
 
 [tasks.deploy]
-description = "Build and push the runtime image"
+description = "Deploy to a provider: PROVIDER=modal|runpod|vast"
+run = "mise run deploy-${PROVIDER}"
+
+[tasks.deploy-image]
+description = "Build and push the runtime image to GHCR"
 run = """
-echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER:-maxexcloo}" --password-stdin
+echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
 docker build -t "${IMAGE_NAME}:latest" .
 docker push "${IMAGE_NAME}:latest"
+"""
+
+[tasks.deploy-modal]
+description = "Deploy the Modal app"
+run = """
+uvx modal deploy deploy/modal_app.py
+"""
+
+[tasks.deploy-runpod]
+description = "Create a RunPod pod from the template"
+run = """
+runpodctl create pod \
+  --name comfy-cloud \
+  --imageName "${IMAGE_NAME}:latest" \
+  --containerDiskSize 100 \
+  --ports 8000/http \
+  --env MODE=pod \
+  --env "API_KEY=${API_KEY}" \
+  --env COMFY_UI_USERNAME="${COMFY_UI_USERNAME:-comfy}" \
+  --env "COMFY_UI_PASSWORD=${COMFY_UI_PASSWORD}"
+"""
+
+[tasks.deploy-vast]
+description = "Create a Vast.ai instance from the template"
+run = """
+vastai create instance --onstart-cmd 'python3 -m comfy_cloud.supervisor' \
+  --image "${IMAGE_NAME}:latest" --disk 100 --label comfy-cloud \
+  --env MODE=pod \
+  --env "API_KEY=${API_KEY}" \
+  --env COMFY_UI_USERNAME="${COMFY_UI_USERNAME:-comfy}" \
+  --env "COMFY_UI_PASSWORD=${COMFY_UI_PASSWORD}" \
+  "${VAST_OFFER_ID:?set VAST_OFFER_ID to an offer from `vastai search offers`}"
 """
 
 [tasks.fmt]
@@ -38,6 +76,19 @@ run = """
 prettier --write .
 ruff check --fix --select I .
 ruff format .
+"""
+
+[tasks.providers]
+description = "Install provider CLIs (modal, vastai via uvx; runpodctl binary)"
+run = """
+uvx modal --version
+uvx vastai --version
+if [[ ! -f .mise.tmp/runpodctl ]]; then
+  mkdir -p .mise.tmp
+  curl -fsSL -o .mise.tmp/runpodctl "https://github.com/runpod/runpodctl/releases/download/v2.8.1/runpodctl-darwin-arm64"
+  chmod +x .mise.tmp/runpodctl
+fi
+echo "runpodctl at .mise.tmp/runpodctl (add .mise.tmp to PATH)"
 """
 
 [tasks.setup]
