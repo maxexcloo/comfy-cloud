@@ -101,6 +101,12 @@ replace its checkpoint or register the official API workflow for the installed
 profile. UI-format workflow templates cannot be submitted directly—export them
 from ComfyUI using **Export (API)** first.
 
+A workflow is only advertised through `/v1/models` and `/health` when both its
+`required_files` exist and every `class_type` in its workflow graph is registered
+by the running ComfyUI (`/object_info`). A workflow whose nodes are missing is
+hidden and rejected if addressed directly, so a stale workflow never appears
+runnable against an older ComfyUI image.
+
 Three stock, self-hosted native workflows are bundled and become discoverable
 after their required files are installed:
 

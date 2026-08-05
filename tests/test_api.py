@@ -209,6 +209,35 @@ async def test_image_to_video_requires_uploaded_image():
 
 
 @pytest.mark.asyncio
+async def test_model_with_unregistered_nodes_is_not_advertised():
+    app = create_app(settings())
+
+    async def comfy_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/object_info":
+            return httpx.Response(200, json={})
+        return httpx.Response(200, json={"system": "ok"})
+
+    await app.state.runtime.comfy.http.aclose()
+    app.state.runtime.comfy.http = httpx.AsyncClient(
+        base_url="http://comfy.internal",
+        transport=httpx.MockTransport(comfy_handler),
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        listing = await client.get(
+            "/v1/models", headers={"Authorization": "Bearer test-key"}
+        )
+        detail = await client.get(
+            "/v1/models/example/checkpoint-text-to-image",
+            headers={"Authorization": "Bearer test-key"},
+        )
+    await app.state.runtime.comfy.http.aclose()
+
+    assert listing.json()["data"] == []
+    assert detail.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_runpod_ping_reports_comfy_readiness():
     app = create_app(settings())
     app.state.runtime.comfy.ready = AsyncMock(side_effect=[False, True])

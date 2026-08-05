@@ -20,6 +20,7 @@ class ComfyClient:
     def __init__(self, base_url: str, request_timeout: float = 60):
         self.base_url = base_url.rstrip("/")
         self.http = httpx.AsyncClient(base_url=self.base_url, timeout=request_timeout)
+        self._object_info: dict[str, Any] | None = None
 
     async def close(self) -> None:
         await self.http.aclose()
@@ -30,6 +31,13 @@ class ComfyClient:
             return response.is_success
         except httpx.HTTPError:
             return False
+
+    async def object_info(self) -> dict[str, Any]:
+        if self._object_info is None:
+            response = await self.http.get("/object_info")
+            response.raise_for_status()
+            self._object_info = response.json()
+        return self._object_info
 
     async def submit(self, prompt: dict[str, Any]) -> str:
         response = await self.http.post("/prompt", json={"prompt": prompt})
@@ -48,7 +56,9 @@ class ComfyClient:
         response.raise_for_status()
         return response.json()["name"]
 
-    async def wait(self, prompt_id: str, output_node: str, timeout: float) -> list[OutputRef]:
+    async def wait(
+        self, prompt_id: str, output_node: str, timeout: float
+    ) -> list[OutputRef]:
         deadline = asyncio.get_running_loop().time() + timeout
         while asyncio.get_running_loop().time() < deadline:
             response = await self.http.get(f"/history/{prompt_id}")
@@ -63,28 +73,45 @@ class ComfyClient:
                 if refs:
                     return refs
                 if status.get("completed"):
-                    raise RuntimeError(f"workflow completed without output from node {output_node}")
+                    raise RuntimeError(
+                        f"workflow completed without output from node {output_node}"
+                    )
             await asyncio.sleep(0.25)
         raise TimeoutError(f"workflow {prompt_id} exceeded {timeout} seconds")
 
     @staticmethod
     def _output_refs(outputs: dict[str, Any]) -> list[OutputRef]:
         refs: list[OutputRef] = []
-        for key, default_media in (("audio", "audio/wav"), ("gifs", "video/mp4"), ("images", "image/png"), ("videos", "video/mp4")):
+        for key, default_media in (
+            ("audio", "audio/wav"),
+            ("gifs", "video/mp4"),
+            ("images", "image/png"),
+            ("videos", "video/mp4"),
+        ):
             for item in outputs.get(key, []):
-                media_type = item.get("format") or mimetypes.guess_type(item["filename"])[0] or default_media
-                refs.append(OutputRef(
-                    filename=item["filename"],
-                    media_type=media_type,
-                    subfolder=item.get("subfolder", ""),
-                    type=item.get("type", "output"),
-                ))
+                media_type = (
+                    item.get("format")
+                    or mimetypes.guess_type(item["filename"])[0]
+                    or default_media
+                )
+                refs.append(
+                    OutputRef(
+                        filename=item["filename"],
+                        media_type=media_type,
+                        subfolder=item.get("subfolder", ""),
+                        type=item.get("type", "output"),
+                    )
+                )
         return refs
 
     async def fetch_output(self, ref: OutputRef) -> httpx.Response:
         response = await self.http.get(
             "/view",
-            params={"filename": ref.filename, "subfolder": ref.subfolder, "type": ref.type},
+            params={
+                "filename": ref.filename,
+                "subfolder": ref.subfolder,
+                "type": ref.type,
+            },
         )
         response.raise_for_status()
         return response

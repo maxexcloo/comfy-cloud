@@ -90,3 +90,63 @@ def test_catalog_only_exposes_workflows_with_required_models(tmp_path):
     checkpoint.write_bytes(b"model")
 
     assert catalog.list_available(tmp_path) == [model]
+
+
+def test_catalog_hides_workflows_with_unregistered_nodes(tmp_path):
+    catalog = Catalog.load((ROOT / "catalog",))
+    model = catalog.get("example")
+    model.required_files = []
+
+    object_info = {
+        "CLIPTextEncode": {},
+        "EmptyLatentImage": {},
+        "KSampler": {},
+        "SaveImage": {},
+        "VAEDecode": {},
+        "CheckpointLoaderSimple": {},
+    }
+
+    assert model.missing_nodes(object_info) == []
+    assert catalog.list_available(tmp_path, object_info) == [model]
+
+    assert model.missing_nodes({}) == [
+        "CLIPTextEncode",
+        "CheckpointLoaderSimple",
+        "EmptyLatentImage",
+        "KSampler",
+        "SaveImage",
+        "VAEDecode",
+    ]
+    assert catalog.list_available(tmp_path, {}) == []
+
+
+def test_catalog_requires_models_and_nodes_together(tmp_path):
+    catalog = Catalog.load((ROOT / "catalog",))
+    model = catalog.get("example")
+    model.required_files = ["checkpoints/example.safetensors"]
+
+    checkpoint = tmp_path / "checkpoints/example.safetensors"
+    checkpoint.parent.mkdir()
+    checkpoint.write_bytes(b"model")
+
+    assert (
+        catalog.get_available(
+            "example",
+            tmp_path,
+            {
+                "CLIPTextEncode": {},
+                "EmptyLatentImage": {},
+                "KSampler": {},
+                "SaveImage": {},
+                "VAEDecode": {},
+                "CheckpointLoaderSimple": {},
+            },
+        ).id
+        == "example/checkpoint-text-to-image"
+    )
+    try:
+        catalog.get_available("example", tmp_path, {})
+    except KeyError as exc:
+        assert "unregistered nodes" in str(exc)
+    else:
+        raise AssertionError("expected KeyError for unregistered nodes")

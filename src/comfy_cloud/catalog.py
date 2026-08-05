@@ -36,6 +36,7 @@ class WorkflowModel(BaseModel):
     required_files: list[str] = Field(default_factory=list)
 
     _workflow_path: Path | None = None
+    _graph: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def validate_id(self) -> WorkflowModel:
@@ -46,41 +47,74 @@ class WorkflowModel(BaseModel):
         for required in self.required_files:
             path = Path(required)
             if path.is_absolute() or ".." in path.parts:
-                raise ValueError("required_files must be relative to the ComfyUI models directory")
+                raise ValueError(
+                    "required_files must be relative to the ComfyUI models directory"
+                )
         return self
 
     def missing_files(self, models_dir: Path) -> list[str]:
-        return [required for required in self.required_files if not (models_dir / required).is_file()]
+        return [
+            required
+            for required in self.required_files
+            if not (models_dir / required).is_file()
+        ]
+
+    def missing_nodes(self, object_info: dict[str, Any]) -> list[str]:
+        if self._graph is None:
+            raise RuntimeError("workflow model is not bound")
+        return sorted(
+            {node["class_type"] for node in self._graph.values()} - set(object_info)
+        )
 
     def bind(self, manifest_path: Path) -> None:
         workflow_path = (manifest_path.parent / self.workflow).resolve()
         if not workflow_path.is_file():
             raise ValueError(f"workflow does not exist: {workflow_path}")
         payload = workflow_path.read_bytes()
-        if self.workflow_sha256 and hashlib.sha256(payload).hexdigest() != self.workflow_sha256:
+        if (
+            self.workflow_sha256
+            and hashlib.sha256(payload).hexdigest() != self.workflow_sha256
+        ):
             raise ValueError(f"workflow checksum mismatch: {workflow_path}")
         graph = json.loads(payload)
         for name, configured_targets in self.input_map.items():
-            targets = configured_targets if isinstance(configured_targets, list) else [configured_targets]
+            targets = (
+                configured_targets
+                if isinstance(configured_targets, list)
+                else [configured_targets]
+            )
             for target in targets:
                 if target.node not in graph:
-                    raise ValueError(f"{self.id}: mapping {name} references missing node {target.node}")
+                    raise ValueError(
+                        f"{self.id}: mapping {name} references missing node {target.node}"
+                    )
                 if "inputs" not in graph[target.node]:
                     raise ValueError(f"{self.id}: node {target.node} has no inputs")
                 if target.input not in graph[target.node]["inputs"]:
-                    raise ValueError(f"{self.id}: mapping {name} references missing input {target.input} on node {target.node}")
+                    raise ValueError(
+                        f"{self.id}: mapping {name} references missing input {target.input} on node {target.node}"
+                    )
         if self.output.node not in graph:
-            raise ValueError(f"{self.id}: output references missing node {self.output.node}")
+            raise ValueError(
+                f"{self.id}: output references missing node {self.output.node}"
+            )
         self._workflow_path = workflow_path
+        self._graph = graph
 
     def render(self, values: dict[str, Any]) -> dict[str, Any]:
-        if self._workflow_path is None:
+        if self._graph is None:
             raise RuntimeError("workflow model is not bound")
-        graph = copy.deepcopy(json.loads(self._workflow_path.read_text()))
-        merged = self.defaults | {key: value for key, value in values.items() if value is not None}
+        graph = copy.deepcopy(self._graph)
+        merged = self.defaults | {
+            key: value for key, value in values.items() if value is not None
+        }
         for name, configured_targets in self.input_map.items():
             if name in merged:
-                targets = configured_targets if isinstance(configured_targets, list) else [configured_targets]
+                targets = (
+                    configured_targets
+                    if isinstance(configured_targets, list)
+                    else [configured_targets]
+                )
                 for target in targets:
                     graph[target.node]["inputs"][target.input] = merged[name]
         return graph
@@ -118,8 +152,15 @@ class Catalog:
     def list(self) -> list[WorkflowModel]:
         return list(self._canonical)
 
-    def list_available(self, models_dir: Path) -> list[WorkflowModel]:
-        return [model for model in self._canonical if not model.missing_files(models_dir)]
+    def list_available(
+        self, models_dir: Path, object_info: dict[str, Any] | None = None
+    ) -> list[WorkflowModel]:
+        return [
+            model
+            for model in self._canonical
+            if not model.missing_files(models_dir)
+            and (object_info is None or not model.missing_nodes(object_info))
+        ]
 
     def get(self, model_id: str) -> WorkflowModel:
         try:
@@ -127,8 +168,12 @@ class Catalog:
         except KeyError as exc:
             raise KeyError(f"unknown model: {model_id}") from exc
 
-    def get_available(self, model_id: str, models_dir: Path) -> WorkflowModel:
+    def get_available(
+        self, model_id: str, models_dir: Path, object_info: dict[str, Any] | None = None
+    ) -> WorkflowModel:
         model = self.get(model_id)
         if model.missing_files(models_dir):
             raise KeyError(f"model is not installed: {model_id}")
+        if object_info is not None and model.missing_nodes(object_info):
+            raise KeyError(f"model workflow uses unregistered nodes: {model_id}")
         return model

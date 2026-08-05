@@ -88,8 +88,22 @@ class Runtime:
                 prompt_id, model.output.node, self.settings.workflow_timeout
             )
 
-    def model(self, model_id: str) -> WorkflowModel:
-        return self.catalog.get_available(model_id, self.settings.models_dir)
+    async def object_info(self) -> dict[str, Any] | None:
+        try:
+            return await self.comfy.object_info()
+        except (httpx.HTTPError, RuntimeError):
+            return None
+
+    async def model(self, model_id: str) -> WorkflowModel:
+        object_info = await self.object_info()
+        return self.catalog.get_available(
+            model_id, self.settings.models_dir, object_info
+        )
+
+    def available_models(
+        self, object_info: dict[str, Any] | None
+    ) -> list[WorkflowModel]:
+        return self.catalog.list_available(self.settings.models_dir, object_info)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -122,7 +136,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health")
     async def health() -> JSONResponse:
         ready = await runtime.comfy.ready()
-        installed = runtime.catalog.list_available(settings.models_dir)
+        object_info = await runtime.object_info()
+        installed = runtime.available_models(object_info)
         return JSONResponse(
             {
                 "status": "ready" if ready else "starting",
@@ -151,12 +166,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def models(request: Request) -> Response:
         if denied := require(request):
             return denied
+        object_info = await runtime.object_info()
         return JSONResponse(
             {
                 "object": "list",
                 "data": [
                     model_object(model)
-                    for model in runtime.catalog.list_available(settings.models_dir)
+                    for model in runtime.available_models(object_info)
                 ],
             }
         )
@@ -166,7 +182,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if denied := require(request):
             return denied
         try:
-            model = runtime.model(model_id)
+            model = await runtime.model(model_id)
         except KeyError:
             return openai_error(
                 f"The model '{model_id}' does not exist",
@@ -191,7 +207,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return denied
         try:
             body = await request.json()
-            model = runtime.model(body.get("model", ""))
+            model = await runtime.model(body.get("model", ""))
         except KeyError:
             return openai_error(
                 "Requested model was not found", 404, "model_not_found", "model"
@@ -261,7 +277,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return denied
         form = await request.form()
         try:
-            model = runtime.model(str(form.get("model", "")))
+            model = await runtime.model(str(form.get("model", "")))
         except KeyError:
             return openai_error(
                 "Requested model was not found", 404, "model_not_found", "model"
@@ -390,7 +406,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "Request body must be JSON or multipart form", 400, "invalid_json"
                 )
         try:
-            model = runtime.model(body.get("model", ""))
+            model = await runtime.model(body.get("model", ""))
         except KeyError:
             return openai_error(
                 "Requested model was not found", 404, "model_not_found", "model"
