@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.9.2-cudnn-runtime-ubuntu24.04
+FROM nvidia/cuda:13.3.1-cudnn-runtime-ubuntu24.04
 
 ARG COMFYUI_REF=v0.30.0
 ENV BUILTIN_CATALOG_DIR=/opt/comfy-cloud/catalog \
