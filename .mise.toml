@@ -1,16 +1,16 @@
 [tools]
 actionlint = "1.7.12"
-"github:cli/cli" = "2.94.0"
-"github:runpod/runpodctl" = "2.8.1"
+"github:cli/cli" = "2.97.0"
+"github:runpod/runpodctl" = "2.9.0"
 hadolint = "2.15.1"
 jq = "1.8.1"
 "pipx:modal" = "1.5.3"
 "pipx:vastai" = "1.5.2"
 prek = "0.4.12"
 prettier = "3.9.6"
-python = "3.13.15"
-ruff = "0.16.1"
-uv = "0.12.1"
+python = "3.14.7"
+ruff = "0.16.2"
+uv = "0.12.3"
 
 [tasks.build]
 description = "Build the deployment image"
