@@ -6,13 +6,13 @@ deployment can be used by Bifrost, Open WebUI, the ComfyUI browser, or direct cl
 
 ## What works
 
+- `GET /health/live`, `/health/ready`, and `/health` report readiness; `GET /metrics` exposes Prometheus counters. Responses carry an `x-request-id`.
 - `GET /v1/models` lists registered workflows as models.
-- `POST /v1/images/generations`, `/v1/images/edits`, and `/v1/videos` select a workflow with the `model` field.
-- Native ComfyUI routes (`/prompt`, `/history`, `/view`, `/queue`, `/object_info`, `/ws`, and uploads) are proxied unchanged.
+- Hugging Face model sources are pinned in `profiles/`; large files can be split into GHCR-safe packs with the CLI.
 - `MODE=pod` serves the ComfyUI frontend at `/`.
 - `MODE=serverless` exposes the APIs but returns 404 for the frontend.
-- `GET /health/live`, `/health/ready`, and `/health` report readiness; `GET /metrics` exposes Prometheus counters. Responses carry an `x-request-id`.
-- Hugging Face model sources are pinned in `profiles/`; large files can be split into GHCR-safe packs with the CLI.
+- Native ComfyUI routes (`/prompt`, `/history`, `/view`, `/queue`, `/object_info`, `/ws`, and uploads) are proxied unchanged.
+- `POST /v1/images/generations`, `/v1/images/edits`, and `/v1/videos` select a workflow with the `model` field.
 
 ComfyUI remains unmodified. The gateway is a sidecar process in the same container.
 Catalog entries with `required_files` are only advertised when every file exists
@@ -135,14 +135,14 @@ runnable against an older ComfyUI image.
 Three stock, self-hosted native workflows are bundled and become discoverable
 after their required files are installed:
 
-- `flux-2-klein-4b/text-to-image`
 - `flux-2-klein-4b/image-edit`
-- `flux-2-klein-9b/text-to-image`
+- `flux-2-klein-4b/text-to-image`
 - `flux-2-klein-9b/image-edit`
+- `flux-2-klein-9b/text-to-image`
 - `flux-2-klein-base-9b/text-to-image`
 - `krea-2-turbo/text-to-image`
-- `minimax-h3/text-to-video`
 - `minimax-h3/image-to-video`
+- `minimax-h3/text-to-video`
 
 Image edits accept a multipart form with `image`, `prompt`, and optional `n`,
 `seed`, `steps`, and `response_format` (`b64_json` or `url`). Dimensions follow
@@ -197,8 +197,8 @@ Bifrost discovers registered workflows through `/v1/models`.
 
 Open WebUI can use either integration:
 
-- `examples/openwebui-openai.env`: workflow selection through the `model` field.
 - `examples/openwebui-comfyui.env`: Open WebUI supplies its own API workflow and calls the native routes.
+- `examples/openwebui-openai.env`: workflow selection through the `model` field.
 
 ## Model packs
 

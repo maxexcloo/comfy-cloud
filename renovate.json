@@ -1,30 +1,16 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "labels": ["dependencies"],
+  "extends": ["config:recommended", ":enablePreCommit"],
   "packageRules": [
     {
-      "automerge": true,
-      "description": "Automerge passing patch and pin updates",
+      "description": "Group minor updates",
+      "groupName": "Minor updates",
+      "matchUpdateTypes": ["minor"]
+    },
+    {
+      "description": "Group patch and pin updates",
+      "groupName": "Patch and pin updates",
       "matchUpdateTypes": ["patch", "pin"]
-    },
-    {
-      "description": "Group GitHub Actions updates",
-      "groupName": "GitHub Actions",
-      "matchManagers": ["github-actions"]
-    },
-    {
-      "description": "Group mise tool updates",
-      "groupName": "mise tools",
-      "matchManagers": ["mise"]
-    },
-    {
-      "description": "Group Prek hook updates",
-      "groupName": "Prek hooks",
-      "matchManagers": ["pre-commit"]
     }
-  ],
-  "pre-commit": {
-    "enabled": true
-  }
+  ]
 }
