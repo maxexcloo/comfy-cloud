@@ -15,7 +15,7 @@ ROOT = Path(__file__).parents[1]
 def settings(deployment_type: str = "serverless") -> Settings:
     return Settings(
         api_key="test-key",
-        catalog_dirs=(ROOT / "catalog",),
+        catalogue_dirs=(ROOT / "catalogue",),
         comfy_url="http://comfy.internal",
         deployment_type=deployment_type,
         models_dir=ROOT / "models",
@@ -77,7 +77,7 @@ async def test_openai_image_generation_uses_workflow_model():
 @pytest.mark.asyncio
 async def test_openai_image_edit_uses_multipart_and_workflow():
     app = create_app(settings())
-    app.state.runtime.catalog.get("flux-2-klein-4b-edit").required_files = []
+    app.state.runtime.catalogue.get("flux-2-klein-4b-edit").required_files = []
     run_values: list[dict] = []
     app.state.runtime.run = AsyncMock(
         side_effect=lambda model, values: (
@@ -133,7 +133,7 @@ async def test_openai_image_edit_uses_multipart_and_workflow():
 @pytest.mark.asyncio
 async def test_image_edit_rejects_unsupported_parameters():
     app = create_app(settings())
-    app.state.runtime.catalog.get("flux-2-klein-4b-edit").required_files = []
+    app.state.runtime.catalogue.get("flux-2-klein-4b-edit").required_files = []
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         no_prompt = await client.post(
@@ -158,7 +158,7 @@ async def test_image_edit_rejects_unsupported_parameters():
 @pytest.mark.asyncio
 async def test_image_to_video_accepts_multipart_upload():
     app = create_app(settings())
-    app.state.runtime.catalog.get("minimax-h3-i2v").required_files = []
+    app.state.runtime.catalogue.get("minimax-h3-i2v").required_files = []
     run_values: list[dict] = []
     app.state.runtime.run = AsyncMock(
         side_effect=lambda model, values: (
@@ -195,7 +195,7 @@ async def test_image_to_video_accepts_multipart_upload():
 @pytest.mark.asyncio
 async def test_image_to_video_requires_uploaded_image():
     app = create_app(settings())
-    app.state.runtime.catalog.get("minimax-h3-i2v").required_files = []
+    app.state.runtime.catalogue.get("minimax-h3-i2v").required_files = []
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
@@ -278,7 +278,7 @@ async def test_runpod_ping_reports_comfy_readiness():
 @pytest.mark.asyncio
 async def test_video_request_maps_openai_size_and_seconds_to_workflow():
     app = create_app(settings())
-    app.state.runtime.catalog.get("minimax-h3").required_files = []
+    app.state.runtime.catalogue.get("minimax-h3").required_files = []
     app.state.runtime.run = AsyncMock(
         return_value=[OutputRef("result.mp4", media_type="video/mp4")]
     )

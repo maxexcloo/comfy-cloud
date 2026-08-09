@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from comfy_cloud.catalog import Catalog
+from comfy_cloud.catalogue import Catalogue
 
 ROOT = Path(__file__).parents[1]
 
 
-def test_catalog_loads_and_renders_workflow():
-    catalog = Catalog.load((ROOT / "catalog",))
-    model = catalog.get("example")
+def test_catalogue_loads_and_renders_workflow():
+    catalogue = Catalogue.load((ROOT / "catalogue",))
+    model = catalogue.get("example")
     graph = model.render({"prompt": "a red fox", "width": 768, "seed": 42})
 
     assert model.id == "example/checkpoint-text-to-image"
@@ -16,9 +16,9 @@ def test_catalog_loads_and_renders_workflow():
     assert graph["3"]["inputs"]["seed"] == 42
 
 
-def test_catalog_maps_one_parameter_to_multiple_nodes():
-    catalog = Catalog.load((ROOT / "catalog",))
-    graph = catalog.get("flux-2-klein-4b").render({"height": 768, "width": 1344})
+def test_catalogue_maps_one_parameter_to_multiple_nodes():
+    catalogue = Catalogue.load((ROOT / "catalogue",))
+    graph = catalogue.get("flux-2-klein-4b").render({"height": 768, "width": 1344})
 
     assert graph["6"]["inputs"]["height"] == 768
     assert graph["6"]["inputs"]["width"] == 1344
@@ -26,9 +26,9 @@ def test_catalog_maps_one_parameter_to_multiple_nodes():
     assert graph["9"]["inputs"]["width"] == 1344
 
 
-def test_catalog_maps_image_edit_inputs_to_reference_workflow():
-    catalog = Catalog.load((ROOT / "catalog",))
-    graph = catalog.get("flux-2-klein-4b-edit").render(
+def test_catalogue_maps_image_edit_inputs_to_reference_workflow():
+    catalogue = Catalogue.load((ROOT / "catalogue",))
+    graph = catalogue.get("flux-2-klein-4b-edit").render(
         {"prompt": "change the sky", "image": "input.png", "seed": 7, "steps": 8}
     )
 
@@ -40,9 +40,9 @@ def test_catalog_maps_image_edit_inputs_to_reference_workflow():
     assert graph["11"]["class_type"] == "ReferenceLatent"
 
 
-def test_catalog_maps_image_to_video_first_frame():
-    catalog = Catalog.load((ROOT / "catalog",))
-    graph = catalog.get("minimax-h3-i2v").render(
+def test_catalogue_maps_image_to_video_first_frame():
+    catalogue = Catalogue.load((ROOT / "catalogue",))
+    graph = catalogue.get("minimax-h3-i2v").render(
         {
             "prompt": "walk forward",
             "image": "frame.png",
@@ -63,9 +63,9 @@ def test_catalog_maps_image_to_video_first_frame():
     assert graph["8"]["inputs"]["steps"] == 16
 
 
-def test_catalog_renders_klein_9b_base_workflow():
-    catalog = Catalog.load((ROOT / "catalog",))
-    graph = catalog.get("flux-2-klein-base-9b").render(
+def test_catalogue_renders_klein_9b_base_workflow():
+    catalogue = Catalogue.load((ROOT / "catalogue",))
+    graph = catalogue.get("flux-2-klein-base-9b").render(
         {"prompt": "a slow detailed render", "width": 768, "height": 512, "seed": 9}
     )
 
@@ -77,9 +77,9 @@ def test_catalog_renders_klein_9b_base_workflow():
     assert graph["7"]["inputs"]["noise_seed"] == 9
 
 
-def test_catalog_exposes_alias_only_once():
-    catalog = Catalog.load((ROOT / "catalog",))
-    assert [model.id for model in catalog.list()] == [
+def test_catalogue_exposes_alias_only_once():
+    catalogue = Catalogue.load((ROOT / "catalogue",))
+    assert [model.id for model in catalogue.list()] == [
         "example/checkpoint-text-to-image",
         "flux-2-klein-4b/image-edit",
         "flux-2-klein-4b/text-to-image",
@@ -92,24 +92,24 @@ def test_catalog_exposes_alias_only_once():
     ]
 
 
-def test_catalog_only_exposes_workflows_with_required_models(tmp_path):
-    catalog = Catalog.load((ROOT / "catalog",))
-    model = catalog.get("example")
+def test_catalogue_only_exposes_workflows_with_required_models(tmp_path):
+    catalogue = Catalogue.load((ROOT / "catalogue",))
+    model = catalogue.get("example")
     model.required_files = ["checkpoints/example.safetensors"]
 
     assert model.missing_files(tmp_path) == ["checkpoints/example.safetensors"]
-    assert catalog.list_available(tmp_path) == []
+    assert catalogue.list_available(tmp_path) == []
 
     checkpoint = tmp_path / "checkpoints/example.safetensors"
     checkpoint.parent.mkdir()
     checkpoint.write_bytes(b"model")
 
-    assert catalog.list_available(tmp_path) == [model]
+    assert catalogue.list_available(tmp_path) == [model]
 
 
-def test_catalog_hides_workflows_with_unregistered_nodes(tmp_path):
-    catalog = Catalog.load((ROOT / "catalog",))
-    model = catalog.get("example")
+def test_catalogue_hides_workflows_with_unregistered_nodes(tmp_path):
+    catalogue = Catalogue.load((ROOT / "catalogue",))
+    model = catalogue.get("example")
     model.required_files = []
 
     object_info = {
@@ -122,7 +122,7 @@ def test_catalog_hides_workflows_with_unregistered_nodes(tmp_path):
     }
 
     assert model.missing_nodes(object_info) == []
-    assert catalog.list_available(tmp_path, object_info) == [model]
+    assert catalogue.list_available(tmp_path, object_info) == [model]
 
     assert model.missing_nodes({}) == [
         "CLIPTextEncode",
@@ -132,12 +132,12 @@ def test_catalog_hides_workflows_with_unregistered_nodes(tmp_path):
         "SaveImage",
         "VAEDecode",
     ]
-    assert catalog.list_available(tmp_path, {}) == []
+    assert catalogue.list_available(tmp_path, {}) == []
 
 
-def test_catalog_requires_models_and_nodes_together(tmp_path):
-    catalog = Catalog.load((ROOT / "catalog",))
-    model = catalog.get("example")
+def test_catalogue_requires_models_and_nodes_together(tmp_path):
+    catalogue = Catalogue.load((ROOT / "catalogue",))
+    model = catalogue.get("example")
     model.required_files = ["checkpoints/example.safetensors"]
 
     checkpoint = tmp_path / "checkpoints/example.safetensors"
@@ -145,7 +145,7 @@ def test_catalog_requires_models_and_nodes_together(tmp_path):
     checkpoint.write_bytes(b"model")
 
     assert (
-        catalog.get_available(
+        catalogue.get_available(
             "example",
             tmp_path,
             {
@@ -160,7 +160,7 @@ def test_catalog_requires_models_and_nodes_together(tmp_path):
         == "example/checkpoint-text-to-image"
     )
     try:
-        catalog.get_available("example", tmp_path, {})
+        catalogue.get_available("example", tmp_path, {})
     except KeyError as exc:
         assert "unregistered nodes" in str(exc)
     else:

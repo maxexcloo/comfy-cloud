@@ -2,7 +2,7 @@
 
 ## Structure
 
-- Keep workflow manifests beside their API-format workflow JSON in `catalog/`.
+- Keep workflow manifests beside their API-format workflow JSON in `catalogue/`.
 - Keep provider deployment files in `deploy/`.
 - Keep pinned model sources in `profiles/`.
 - Keep gateway code in `src/comfy_cloud/` and tests in `tests/`.
@@ -16,6 +16,11 @@
   narrative, procedural, dependency, interface, priority, and chronological order.
 - Sort mise tools and tasks, Prek hooks, Renovate rules, imports, and constants.
 - Keep `main()` and execution guards last.
+- Preserve `LICENSE` and its legal text; never relicense without explicit approval.
+- Use Australian English throughout authored prose and every project-owned name,
+  including identifiers, configuration keys, environment variables, paths, CLI
+  commands, and options. Update every producer and consumer together; preserve only
+  externally defined names and terminology.
 
 ## Verification
 

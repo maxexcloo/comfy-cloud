@@ -120,7 +120,7 @@ class WorkflowModel(BaseModel):
         return graph
 
 
-class Catalog:
+class Catalogue:
     def __init__(self, models: list[WorkflowModel]):
         self._models: dict[str, WorkflowModel] = {}
         self._canonical: list[WorkflowModel] = []
@@ -135,7 +135,7 @@ class Catalog:
                 self._models[alias] = model
 
     @classmethod
-    def load(cls, roots: tuple[Path, ...]) -> Catalog:
+    def load(cls, roots: tuple[Path, ...]) -> Catalogue:
         models: list[WorkflowModel] = []
         for root in roots:
             if not root.exists():

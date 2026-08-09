@@ -8,4 +8,4 @@ sources:
       - diffusion_models/krea2_turbo_fp8_scaled.safetensors
       - text_encoders/qwen3vl_4b_fp8_scaled.safetensors
       - vae/qwen_image_vae.safetensors
-notes: Gated upstream; HF_TOKEN must have accepted the Krea license.
+notes: Gated upstream; HF_TOKEN must have accepted the Krea licence.

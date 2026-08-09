@@ -7,13 +7,13 @@ from pathlib import Path
 
 import yaml
 
-from .catalog import Catalog, WorkflowModel
+from .catalogue import Catalogue, WorkflowModel
 from .fetch import fetch_profile
 from .model_pack import pack_file, unpack_file
 
 
 def workflow_add(args: argparse.Namespace) -> None:
-    destination = Path(args.catalog_dir) / args.id.replace("/", "__")
+    destination = Path(args.catalogue_dir) / args.id.replace("/", "__")
     destination.mkdir(parents=True, exist_ok=True)
     workflow = Path(args.workflow)
     mapping = yaml.safe_load(Path(args.mapping).read_text())
@@ -33,8 +33,8 @@ def workflow_add(args: argparse.Namespace) -> None:
     print(f"registered {model.id} in {destination}")
 
 
-def catalog_list(args: argparse.Namespace) -> None:
-    catalog = Catalog.load((Path(args.catalog_dir),))
+def catalogue_list(args: argparse.Namespace) -> None:
+    catalogue = Catalogue.load((Path(args.catalogue_dir),))
     models_dir = Path(args.models_dir)
     print(
         json.dumps(
@@ -45,7 +45,7 @@ def catalog_list(args: argparse.Namespace) -> None:
                     "available": not model.missing_files(models_dir),
                     "missing_files": model.missing_files(models_dir),
                 }
-                for model in catalog.list()
+                for model in catalogue.list()
             ],
             indent=2,
         )
@@ -81,14 +81,14 @@ def main() -> None:
     )
     add.add_argument("--workflow", required=True)
     add.add_argument("--mapping", required=True)
-    add.add_argument("--catalog-dir", default="catalog/custom")
+    add.add_argument("--catalogue-dir", default="catalogue/custom")
     add.set_defaults(func=workflow_add)
     listing = sub.add_parser(
-        "catalog-list", help="validate and list registered workflows"
+        "catalogue-list", help="validate and list registered workflows"
     )
-    listing.add_argument("--catalog-dir", default="catalog")
+    listing.add_argument("--catalogue-dir", default="catalogue")
     listing.add_argument("--models-dir", default="models")
-    listing.set_defaults(func=catalog_list)
+    listing.set_defaults(func=catalogue_list)
     pack = sub.add_parser("pack", help="split a model into GHCR-safe chunks")
     pack.add_argument("source")
     pack.add_argument("destination")

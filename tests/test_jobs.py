@@ -16,7 +16,7 @@ ROOT = Path(__file__).parents[1]
 def settings(tmp_path: Path, **overrides) -> Settings:
     values = {
         "api_key": "test-key",
-        "catalog_dirs": (ROOT / "catalog",),
+        "catalogue_dirs": (ROOT / "catalogue",),
         "comfy_url": "http://comfy.internal",
         "deployment_type": "serverless",
         "models_dir": ROOT / "models",
@@ -168,7 +168,7 @@ async def test_image_url_response_uses_storage_when_configured(tmp_path):
             return f"https://bucket/images/{filename}"
 
     app.state.runtime.storage = FakeStorage()
-    app.state.runtime.catalog.get("example").required_files = []
+    app.state.runtime.catalogue.get("example").required_files = []
     app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])
     app.state.runtime.comfy.fetch_output = AsyncMock(
         return_value=httpx.Response(

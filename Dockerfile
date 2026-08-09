@@ -1,7 +1,7 @@
 FROM nvidia/cuda:12.9.2-cudnn-runtime-ubuntu24.04
 
 ARG COMFYUI_REF=v0.30.0
-ENV BUILTIN_CATALOG_DIR=/opt/comfy-cloud/catalog \
+ENV BUILTIN_CATALOGUE_DIR=/opt/comfy-cloud/catalogue \
     COMFYUI_DIR=/opt/ComfyUI \
     COMFYUI_URL=http://127.0.0.1:8188 \
     DEBIAN_FRONTEND=noninteractive \
@@ -21,7 +21,7 @@ RUN git clone --filter=blob:none --branch "${COMFYUI_REF}" --depth 1 \
 WORKDIR /opt/comfy-cloud
 COPY pyproject.toml README.md ./
 COPY src ./src
-COPY catalog ./catalog
+COPY catalogue ./catalogue
 COPY profiles ./profiles
 RUN python3 -m pip install --break-system-packages .
 

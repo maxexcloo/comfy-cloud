@@ -1,7 +1,7 @@
 # comfy-cloud
 
 A small, stock-first ComfyUI container for Modal, RunPod, and Vast.ai. It exposes
-both the native ComfyUI API and an OpenAI-compatible workflow catalog, so the same
+both the native ComfyUI API and an OpenAI-compatible workflow catalogue, so the same
 deployment can be used by Bifrost, Open WebUI, the ComfyUI browser, or direct clients.
 
 ## What works
@@ -15,7 +15,7 @@ deployment can be used by Bifrost, Open WebUI, the ComfyUI browser, or direct cl
 - `POST /v1/images/generations`, `/v1/images/edits`, and `/v1/videos` select a workflow with the `model` field.
 
 ComfyUI remains unmodified. The gateway is a sidecar process in the same container.
-Catalog entries with `required_files` are only advertised when every file exists
+Catalogue entries with `required_files` are only advertised when every file exists
 under `MODELS_DIR` (default `/opt/ComfyUI/models`).
 
 ## Quick start
@@ -91,7 +91,7 @@ curl http://localhost:8000/v1/images/generations \
 
 ## Workflows are models
 
-Catalog entries live beside API-format ComfyUI workflow JSON. The manifest maps
+Catalogue entries live beside API-format ComfyUI workflow JSON. The manifest maps
 portable API fields to concrete node inputs:
 
 ```yaml
@@ -115,10 +115,10 @@ comfy-cloud workflow-add \
   --operation image_generation \
   --workflow flux-klein-api.json \
   --mapping flux-klein-mapping.yaml \
-  --catalog-dir /data/catalog
+  --catalogue-dir /data/catalogue
 ```
 
-Restart the container after changing the catalog. This intentionally avoids a
+Restart the container after changing the catalogue. This intentionally avoids a
 mutable administration service.
 
 The bundled `example/checkpoint-text-to-image` workflow demonstrates the format;
@@ -253,7 +253,7 @@ comfy-cloud unpack model-pack/model.safetensors.pack.json /opt/ComfyUI/models/di
 ```
 
 The chunk directory can be copied into separate OCI layers or published as an OCI
-artifact. Reconstruction verifies every part and the final file. The provided
+artefact. Reconstruction verifies every part and the final file. The provided
 profile files describe upstream sources but do not download gated weights during
 container startup.
 
@@ -276,4 +276,8 @@ injects the bearer key, and streams responses back unchanged.
 
 - Without `JOBS_DIR`, video job state is held in the worker process. Without S3 storage, completed outputs live only on the worker that produced them. Configure both for scale-to-zero.
 - URL image responses proxy ComfyUI output and require the same bearer key when storage is not configured; `b64_json` is the default and most portable response.
-- The project does not grant model redistribution rights. Review and comply with every upstream license before publishing weight-bearing images or packs.
+- The project does not grant model redistribution rights. Review and comply with every upstream licence before publishing weight-bearing images or packs.
+
+## Licence
+
+AGPL-3.0 - see [LICENSE](LICENSE).

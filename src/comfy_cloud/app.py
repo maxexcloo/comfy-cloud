@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import JSONResponse, Response
 
 from .auth import request_authorized, websocket_authorized
-from .catalog import Catalog, WorkflowModel
+from .catalogue import Catalogue, WorkflowModel
 from .comfy import ComfyClient, OutputRef
 from .config import Settings
 from .jobs import JobStore
@@ -117,7 +117,7 @@ class VideoJob:
 class Runtime:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.catalog = Catalog.load(settings.catalog_dirs)
+        self.catalogue = Catalogue.load(settings.catalogue_dirs)
         self.comfy = ComfyClient(settings.comfy_url, settings.request_timeout)
         self.storage = ObjectStorage.from_env(settings.storage_env)
         self.jobs: dict[str, VideoJob] = {}
@@ -172,14 +172,14 @@ class Runtime:
 
     async def model(self, model_id: str) -> WorkflowModel:
         object_info = await self.object_info()
-        return self.catalog.get_available(
+        return self.catalogue.get_available(
             model_id, self.settings.models_dir, object_info
         )
 
     def available_models(
         self, object_info: dict[str, Any] | None
     ) -> list[WorkflowModel]:
-        return self.catalog.list_available(self.settings.models_dir, object_info)
+        return self.catalogue.list_available(self.settings.models_dir, object_info)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -241,7 +241,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             {
                 "status": "ready" if ready else "starting",
                 "models": len(installed),
-                "unavailable_models": len(runtime.catalog.list()) - len(installed),
+                "unavailable_models": len(runtime.catalogue.list()) - len(installed),
             },
             status_code=200 if ready else 503,
         )

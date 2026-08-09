@@ -12,7 +12,7 @@ def _bool(name: str, default: bool = False) -> bool:
 @dataclass(frozen=True)
 class Settings:
     api_key: str
-    catalog_dirs: tuple[Path, ...]
+    catalogue_dirs: tuple[Path, ...]
     comfy_url: str
     deployment_type: str
     models_dir: Path
@@ -33,14 +33,14 @@ class Settings:
         deployment_type = os.getenv("MODE", os.getenv("DEPLOYMENT_TYPE", "pod")).lower()
         if deployment_type not in {"pod", "serverless"}:
             raise ValueError("MODE must be pod or serverless")
-        roots = [Path(os.getenv("BUILTIN_CATALOG_DIR", "/opt/comfy-cloud/catalog"))]
-        custom = os.getenv("CATALOG_DIR")
+        roots = [Path(os.getenv("BUILTIN_CATALOGUE_DIR", "/opt/comfy-cloud/catalogue"))]
+        custom = os.getenv("CATALOGUE_DIR")
         if custom:
             roots.append(Path(custom))
         jobs_dir = os.getenv("JOBS_DIR")
         return cls(
             api_key=os.getenv("API_KEY", "change-me"),
-            catalog_dirs=tuple(roots),
+            catalogue_dirs=tuple(roots),
             comfy_url=os.getenv("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/"),
             deployment_type=deployment_type,
             models_dir=Path(os.getenv("MODELS_DIR", "/opt/ComfyUI/models")),
