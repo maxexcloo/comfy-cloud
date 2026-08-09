@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from comfy_cloud.app import VideoJob, create_app
-from comfy_cloud.comfy import OutputRef
-from comfy_cloud.config import Settings
-from comfy_cloud.jobs import JobStore
-from comfy_cloud.storage import ObjectStorage
+from comfy_control.comfy import OutputRef
+from comfy_control.config import Settings
+from comfy_control.jobs import JobStore
+from comfy_control.storage import ObjectStorage
+from comfy_control.worker import VideoJob, create_app
 
 ROOT = Path(__file__).parents[1]
 

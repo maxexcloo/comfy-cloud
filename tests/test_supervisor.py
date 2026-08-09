@@ -2,7 +2,7 @@ from pathlib import Path
 
 import yaml
 
-from comfy_cloud.supervisor import _comfy_arguments, _prepare_models
+from comfy_control.supervisor import _comfy_arguments, _prepare_models
 
 
 def test_external_models_directory_is_added_to_comfy(monkeypatch, tmp_path):
@@ -16,8 +16,8 @@ def test_external_models_directory_is_added_to_comfy(monkeypatch, tmp_path):
     config_path = Path(arguments[arguments.index("--extra-model-paths-config") + 1])
     config = yaml.safe_load(config_path.read_text())
 
-    assert config["comfy_cloud"]["base_path"] == str(models_dir)
-    assert config["comfy_cloud"]["diffusion_models"] == "diffusion_models"
+    assert config["comfy_control"]["base_path"] == str(models_dir)
+    assert config["comfy_control"]["diffusion_models"] == "diffusion_models"
 
 
 def test_configured_model_profile_is_prepared(monkeypatch, tmp_path):
@@ -30,7 +30,7 @@ def test_configured_model_profile_is_prepared(monkeypatch, tmp_path):
     monkeypatch.setenv("MODELS_DIR", str(tmp_path / "models"))
     monkeypatch.setenv("PROFILES_DIR", str(profiles_dir))
     monkeypatch.setattr(
-        "comfy_cloud.supervisor.fetch_profile",
+        "comfy_control.supervisor.fetch_profile",
         lambda profile_path, models_dir: calls.append((profile_path, models_dir)) or [],
     )
 

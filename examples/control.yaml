@@ -1,0 +1,32 @@
+models:
+  - id: flux/text-to-image
+    operation: image_generation
+    targets:
+      - model: flux-2-klein-4b/text-to-image
+        provider: primary
+      - model: flux-2-klein-4b/text-to-image
+        provider: fallback
+  - id: minimax/text-to-video
+    operation: video_generation
+    targets:
+      - model: minimax-h3/text-to-video
+        provider: primary
+
+providers:
+  - id: fallback
+    api_key: env.FALLBACK_COMFY_API_KEY
+    base_url: env.FALLBACK_COMFY_URL
+    idle_seconds: 0
+  - id: primary
+    api_key: env.PRIMARY_COMFY_API_KEY
+    base_url: env.PRIMARY_COMFY_URL
+    idle_seconds: 600
+    lifecycle:
+      start:
+        headers:
+          authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
+        url: env.PRIMARY_START_URL
+      stop:
+        headers:
+          authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
+        url: env.PRIMARY_STOP_URL

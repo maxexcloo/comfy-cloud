@@ -1,0 +1,157 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "flux-2-klein-9b-fp8.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": { "vae_name": "full_encoder_small_decoder.safetensors" }
+  },
+  "4": { "class_type": "LoadImage", "inputs": { "image": "reference-1.png" } },
+  "5": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": ["4", 0],
+      "upscale_method": "lanczos",
+      "megapixels": 1
+    }
+  },
+  "6": { "class_type": "GetImageSize", "inputs": { "image": ["5", 0] } },
+  "7": {
+    "class_type": "VAEEncode",
+    "inputs": { "pixels": ["5", 0], "vae": ["3", 0] }
+  },
+  "8": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "text": "Edit the reference images", "clip": ["2", 0] }
+  },
+  "9": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": { "conditioning": ["8", 0] }
+  },
+  "10": {
+    "class_type": "ReferenceLatent",
+    "inputs": { "conditioning": ["8", 0], "latent": ["7", 0] }
+  },
+  "11": {
+    "class_type": "ReferenceLatent",
+    "inputs": { "conditioning": ["9", 0], "latent": ["7", 0] }
+  },
+  "12": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": { "width": ["6", 0], "height": ["6", 1], "batch_size": 1 }
+  },
+  "13": { "class_type": "RandomNoise", "inputs": { "noise_seed": 0 } },
+  "14": {
+    "class_type": "KSamplerSelect",
+    "inputs": { "sampler_name": "euler" }
+  },
+  "15": {
+    "class_type": "Flux2Scheduler",
+    "inputs": { "steps": 4, "width": ["6", 0], "height": ["6", 1] }
+  },
+  "16": {
+    "class_type": "CFGGuider",
+    "inputs": {
+      "model": ["1", 0],
+      "positive": ["33", 0],
+      "negative": ["34", 0],
+      "cfg": 1.0
+    }
+  },
+  "17": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": ["13", 0],
+      "guider": ["16", 0],
+      "sampler": ["14", 0],
+      "sigmas": ["15", 0],
+      "latent_image": ["12", 0]
+    }
+  },
+  "18": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["17", 0], "vae": ["3", 0] }
+  },
+  "19": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "flux2-klein-9b-edit-4-reference",
+      "images": ["18", 0]
+    }
+  },
+  "20": { "class_type": "LoadImage", "inputs": { "image": "reference-2.png" } },
+  "21": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": ["20", 0],
+      "upscale_method": "lanczos",
+      "megapixels": 1
+    }
+  },
+  "22": {
+    "class_type": "VAEEncode",
+    "inputs": { "pixels": ["21", 0], "vae": ["3", 0] }
+  },
+  "23": {
+    "class_type": "ReferenceLatent",
+    "inputs": { "conditioning": ["10", 0], "latent": ["22", 0] }
+  },
+  "24": {
+    "class_type": "ReferenceLatent",
+    "inputs": { "conditioning": ["11", 0], "latent": ["22", 0] }
+  },
+  "25": { "class_type": "LoadImage", "inputs": { "image": "reference-3.png" } },
+  "26": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": ["25", 0],
+      "upscale_method": "lanczos",
+      "megapixels": 1
+    }
+  },
+  "27": {
+    "class_type": "VAEEncode",
+    "inputs": { "pixels": ["26", 0], "vae": ["3", 0] }
+  },
+  "28": {
+    "class_type": "ReferenceLatent",
+    "inputs": { "conditioning": ["23", 0], "latent": ["27", 0] }
+  },
+  "29": {
+    "class_type": "ReferenceLatent",
+    "inputs": { "conditioning": ["24", 0], "latent": ["27", 0] }
+  },
+  "30": { "class_type": "LoadImage", "inputs": { "image": "reference-4.png" } },
+  "31": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": ["30", 0],
+      "upscale_method": "lanczos",
+      "megapixels": 1
+    }
+  },
+  "32": {
+    "class_type": "VAEEncode",
+    "inputs": { "pixels": ["31", 0], "vae": ["3", 0] }
+  },
+  "33": {
+    "class_type": "ReferenceLatent",
+    "inputs": { "conditioning": ["28", 0], "latent": ["32", 0] }
+  },
+  "34": {
+    "class_type": "ReferenceLatent",
+    "inputs": { "conditioning": ["29", 0], "latent": ["32", 0] }
+  }
+}

@@ -37,7 +37,7 @@ def _verify(path: Path, expected: str | None) -> None:
 
 @contextmanager
 def _fetch_lock(models_dir: Path):
-    state_dir = models_dir / ".comfy-cloud"
+    state_dir = models_dir / ".comfy-control"
     state_dir.mkdir(parents=True, exist_ok=True)
     with (state_dir / "fetch.lock").open("a+") as lock:
         flock(lock, LOCK_EX)
@@ -89,7 +89,7 @@ def _fetch_huggingface(source: dict[str, Any], models_dir: Path) -> list[Path]:
         from huggingface_hub import snapshot_download
     except ImportError as exc:
         raise RuntimeError(
-            "install comfy-cloud[build] to fetch Hugging Face profiles"
+            "install comfy-control[build] to fetch Hugging Face profiles"
         ) from exc
     revision = source.get("revision")
     if not revision:
@@ -100,7 +100,7 @@ def _fetch_huggingface(source: dict[str, Any], models_dir: Path) -> list[Path]:
         if destination_value
         else Path()
     )
-    with tempfile.TemporaryDirectory(prefix="comfy-cloud-hf-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="comfy-control-hf-") as temporary:
         root = Path(
             snapshot_download(
                 allow_patterns=source.get("include"),

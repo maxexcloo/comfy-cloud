@@ -49,7 +49,7 @@ run = "modal deploy deploy/modal_app.py"
 
 [tasks."modal:logs"]
 description = "Show recent Modal app logs"
-run = "modal app logs comfy-cloud"
+run = "modal app logs comfy-control"
 
 [tasks."modal:status"]
 description = "Show Modal apps"
@@ -57,7 +57,7 @@ run = "modal app list"
 
 [tasks."modal:stop"]
 description = "Stop the Modal app"
-run = "modal app stop comfy-cloud"
+run = "modal app stop comfy-control"
 
 [tasks."runpod:deploy"]
 description = "Create a RunPod pod"
@@ -70,7 +70,7 @@ pod_env="$(jq -cn \
   --arg password "${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD}" \
   --arg profiles "${MODEL_PROFILES:-}" \
   --arg username "${COMFY_UI_USERNAME:-comfy}" \
-  '{API_KEY: $api_key, COMFY_UI_PASSWORD: $password, COMFY_UI_USERNAME: $username, JOBS_DIR: "/opt/ComfyUI/models/.comfy-cloud/jobs", MAXIMUM_PENDING_GENERATIONS: $maximum_pending_generations, MAXIMUM_REQUEST_BYTES: $maximum_request_bytes, MODE: "pod"}
+  '{API_KEY: $api_key, COMFY_UI_PASSWORD: $password, COMFY_UI_USERNAME: $username, JOBS_DIR: "/opt/ComfyUI/models/.comfy-control/jobs", MAXIMUM_PENDING_GENERATIONS: $maximum_pending_generations, MAXIMUM_REQUEST_BYTES: $maximum_request_bytes, MODE: "pod"}
    + if $profiles == "" then {} else {MODEL_PROFILES: $profiles} end
    + if ($hf_token == "" or $hf_token == "REPLACE_ME") then {} else {HF_TOKEN: $hf_token} end')"
 storage_args=(--volume-in-gb "${RUNPOD_VOLUME_GB:-100}")
@@ -82,7 +82,7 @@ runpodctl pod create \
   --env "${pod_env}" \
   --gpu-id "${RUNPOD_GPU_TYPE}" \
   --image "${IMAGE_NAME}" \
-  --name comfy-cloud \
+  --name comfy-control \
   --ports 8000/http \
   --volume-mount-path /opt/ComfyUI/models \
   "${storage_args[@]}"
@@ -113,7 +113,7 @@ description = "Create and start the SaladCloud container group"
 run = """
 jq \
   --arg api_key "${API_KEY:?set API_KEY}" \
-  --arg group "${SALAD_CONTAINER_GROUP:-comfy-cloud}" \
+  --arg group "${SALAD_CONTAINER_GROUP:-comfy-control}" \
   --arg hf_token "${HF_TOKEN:-}" \
   --arg image "${SALAD_IMAGE_NAME:-${IMAGE_NAME}}" \
   --arg maximum_pending_generations "${MAXIMUM_PENDING_GENERATIONS:-8}" \
@@ -132,7 +132,7 @@ jq \
    | .container.environment_variables.COMFY_UI_PASSWORD = $password
    | .container.environment_variables.COMFY_UI_USERNAME = $username
    | .container.environment_variables.HF_TOKEN = $hf_token
-   | .container.environment_variables.JOBS_DIR = "/opt/ComfyUI/models/.comfy-cloud/jobs"
+   | .container.environment_variables.JOBS_DIR = "/opt/ComfyUI/models/.comfy-control/jobs"
    | .container.environment_variables.MAXIMUM_PENDING_GENERATIONS = $maximum_pending_generations
    | .container.environment_variables.MAXIMUM_REQUEST_BYTES = $maximum_request_bytes
    | .replicas = $replicas
@@ -153,7 +153,7 @@ description = "Delete the SaladCloud container group"
 run = """
 curl --fail-with-body --silent --show-error \
   --request DELETE \
-  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-cloud}" \
+  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-control}" \
   --header "Salad-Api-Key: ${SALAD_API_KEY:?set SALAD_API_KEY}"
 """
 
@@ -173,7 +173,7 @@ end_time="$(python -c 'from datetime import UTC, datetime; print(datetime.now(UT
 start_time="$(python -c 'from datetime import UTC, datetime, timedelta; print((datetime.now(UTC) - timedelta(hours=1)).isoformat())')"
 jq -cn \
   --arg end_time "${end_time}" \
-  --arg group "${SALAD_CONTAINER_GROUP:-comfy-cloud}" \
+  --arg group "${SALAD_CONTAINER_GROUP:-comfy-control}" \
   --arg project "${SALAD_PROJECT:?set SALAD_PROJECT}" \
   --arg start_time "${start_time}" \
   '{end_time: $end_time, page_size: 100, query: ("resource.type = \"container\" and resource.labels.project_name = \"" + $project + "\" and resource.labels.container_group_name = \"" + $group + "\""), sort_order: "desc", start_time: $start_time}' \
@@ -191,7 +191,7 @@ description = "Start the SaladCloud container group"
 run = """
 curl --fail-with-body --silent --show-error \
   --request POST \
-  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-cloud}/start" \
+  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-control}/start" \
   --header "Salad-Api-Key: ${SALAD_API_KEY:?set SALAD_API_KEY}"
 """
 
@@ -199,7 +199,7 @@ curl --fail-with-body --silent --show-error \
 description = "Show the SaladCloud container group"
 run = """
 curl --fail-with-body --silent --show-error \
-  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-cloud}" \
+  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-control}" \
   --header "Salad-Api-Key: ${SALAD_API_KEY:?set SALAD_API_KEY}" \
 | jq
 """
@@ -209,7 +209,7 @@ description = "Stop the SaladCloud container group"
 run = """
 curl --fail-with-body --silent --show-error \
   --request POST \
-  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-cloud}/stop" \
+  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-control}/stop" \
   --header "Salad-Api-Key: ${SALAD_API_KEY:?set SALAD_API_KEY}"
 """
 
@@ -219,7 +219,7 @@ run = """
 shell_quote() {
   python -c 'import shlex, sys; print(shlex.quote(sys.argv[1]))' "$1"
 }
-environment="-e API_KEY=$(shell_quote "${API_KEY:?set API_KEY}") -e COMFY_UI_PASSWORD=$(shell_quote "${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD}") -e COMFY_UI_USERNAME=$(shell_quote "${COMFY_UI_USERNAME:-comfy}") -e JOBS_DIR=/opt/ComfyUI/models/.comfy-cloud/jobs -e MAXIMUM_PENDING_GENERATIONS=$(shell_quote "${MAXIMUM_PENDING_GENERATIONS:-8}") -e MAXIMUM_REQUEST_BYTES=$(shell_quote "${MAXIMUM_REQUEST_BYTES:-104857600}") -e MODE=pod -p 8000:8000"
+environment="-e API_KEY=$(shell_quote "${API_KEY:?set API_KEY}") -e COMFY_UI_PASSWORD=$(shell_quote "${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD}") -e COMFY_UI_USERNAME=$(shell_quote "${COMFY_UI_USERNAME:-comfy}") -e JOBS_DIR=/opt/ComfyUI/models/.comfy-control/jobs -e MAXIMUM_PENDING_GENERATIONS=$(shell_quote "${MAXIMUM_PENDING_GENERATIONS:-8}") -e MAXIMUM_REQUEST_BYTES=$(shell_quote "${MAXIMUM_REQUEST_BYTES:-104857600}") -e MODE=pod -p 8000:8000"
 if [[ -n "${HF_TOKEN:-}" && "${HF_TOKEN}" != "REPLACE_ME" ]]; then
   environment="${environment} -e HF_TOKEN=$(shell_quote "${HF_TOKEN}")"
 fi
@@ -231,7 +231,7 @@ vastai --api-key "${VAST_API_KEY:?set VAST_API_KEY}" create instance \
   --disk "${VAST_DISK_GB:-100}" \
   --env "${environment}" \
   --image "${IMAGE_NAME}" \
-  --label comfy-cloud
+  --label comfy-control
 """
 
 [tasks."vast:destroy"]

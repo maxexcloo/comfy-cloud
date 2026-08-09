@@ -1,11 +1,11 @@
 {
   "autostart_policy": true,
-  "display_name": "Comfy Cloud",
-  "name": "comfy-cloud",
+  "display_name": "Comfy Control",
+  "name": "comfy-control",
   "replicas": 1,
   "restart_policy": "always",
   "container": {
-    "image": "ghcr.io/OWNER/comfy-cloud:latest",
+    "image": "ghcr.io/OWNER/inference-control:latest",
     "image_caching": true,
     "priority": "low",
     "environment_variables": {
@@ -13,7 +13,7 @@
       "COMFY_UI_PASSWORD": "CHANGE_ME",
       "COMFY_UI_USERNAME": "comfy",
       "HF_TOKEN": "CHANGE_ME",
-      "JOBS_DIR": "/opt/ComfyUI/models/.comfy-cloud/jobs",
+      "JOBS_DIR": "/opt/ComfyUI/models/.comfy-control/jobs",
       "MAXIMUM_PENDING_GENERATIONS": "8",
       "MAXIMUM_REQUEST_BYTES": "104857600",
       "MODE": "pod"

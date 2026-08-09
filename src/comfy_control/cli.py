@@ -77,7 +77,7 @@ def repository_check(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="comfy-cloud")
+    parser = argparse.ArgumentParser(prog="comfy-control")
     sub = parser.add_subparsers(required=True)
     add = sub.add_parser("workflow-add", help="register an API-format workflow")
     add.add_argument("--id", required=True)

@@ -191,39 +191,39 @@ class Runtime:
         self.background_tasks: set[asyncio.Task[None]] = set()
         self.metric_registry = CollectorRegistry()
         self.generation_duration = Histogram(
-            "comfy_cloud_generation_seconds",
+            "comfy_control_generation_seconds",
             "Generation duration in seconds.",
             registry=self.metric_registry,
         )
         self.generations = Counter(
-            "comfy_cloud_generations",
+            "comfy_control_generations",
             "Completed image generations.",
             registry=self.metric_registry,
         )
         self.pending = Gauge(
-            "comfy_cloud_pending_generations",
+            "comfy_control_pending_generations",
             "Admitted generation requests, including the active request.",
             registry=self.metric_registry,
         )
         self.requests = Counter(
-            "comfy_cloud_requests",
+            "comfy_control_requests",
             "HTTP requests served.",
             registry=self.metric_registry,
         )
         self.requests_by_status = Counter(
-            "comfy_cloud_requests_by_status",
+            "comfy_control_requests_by_status",
             "HTTP requests by response status.",
             ("status",),
             registry=self.metric_registry,
         )
         self.video_jobs = Gauge(
-            "comfy_cloud_video_jobs",
+            "comfy_control_video_jobs",
             "Video jobs by terminal state.",
             ("state",),
             registry=self.metric_registry,
         )
         self.video_jobs_created = Counter(
-            "comfy_cloud_video_jobs_created",
+            "comfy_control_video_jobs_created",
             "Video jobs created.",
             registry=self.metric_registry,
         )
@@ -292,10 +292,11 @@ class Runtime:
             self.store_job(job)
         return job
 
-    def start_background_task(self, coroutine: Any) -> None:
+    def start_background_task(self, coroutine: Any) -> asyncio.Task[Any]:
         task = asyncio.create_task(coroutine)
         self.background_tasks.add(task)
         task.add_done_callback(self.background_tasks.discard)
+        return task
 
     def job_output_url(self, job: VideoJob) -> str | None:
         if self.storage is not None and job.output_key:
@@ -305,7 +306,7 @@ class Runtime:
     async def upload_output(self, job: VideoJob) -> None:
         if self.storage is None or job.output is None:
             return
-        with tempfile.NamedTemporaryFile(prefix="comfy-cloud-", delete=False) as file:
+        with tempfile.NamedTemporaryFile(prefix="comfy-control-", delete=False) as file:
             temporary = Path(file.name)
         try:
             content_type = await self.comfy.save_output(job.output, temporary)
@@ -357,7 +358,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await asyncio.gather(*runtime.background_tasks, return_exceptions=True)
         await runtime.comfy.close()
 
-    app = FastAPI(title="Comfy Cloud", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Comfy Control", version="0.1.0", lifespan=lifespan)
     app.state.runtime = runtime
 
     def require(request: Request) -> JSONResponse | None:
@@ -443,11 +444,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(status_code=204)
 
     def model_object(model: WorkflowModel) -> dict[str, Any]:
+        capabilities: dict[str, Any] = {
+            "operation": model.operation,
+            "input_modalities": ["text", "image"]
+            if model.reference_image_count or "image" in model.input_map
+            else ["text"],
+            "output_modalities": [model.output.type],
+            "parameters": sorted(model.input_map),
+        }
+        if model.operation == "image_edit":
+            capabilities["reference_images"] = {
+                "minimum": model.reference_image_count,
+                "maximum": model.reference_image_count,
+            }
         return {
             "id": model.id,
             "object": "model",
             "created": 0,
             "owned_by": model.owned_by,
+            "capabilities": capabilities,
         }
 
     @app.get("/v1/models")
@@ -478,16 +493,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "model_not_found",
                 "model",
             )
-        value = model_object(model)
-        value["capabilities"] = {
-            "operation": model.operation,
-            "input_modalities": ["text", "image"]
-            if "image" in model.input_map
-            else ["text"],
-            "output_modalities": [model.output.type],
-            "parameters": sorted(model.input_map),
-        }
-        return JSONResponse(value)
+        return JSONResponse(model_object(model))
 
     @app.post("/v1/images/generations")
     async def image_generations(request: Request) -> Response:
@@ -587,12 +593,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "unsupported_operation",
                 "model",
             )
-        image = form.get("image")
-        if image is None or not hasattr(image, "read"):
+        images = list(form.getlist("image"))
+        required_images = model.reference_image_count
+        if len(images) != required_images:
             return openai_error(
-                "image is required", 400, "missing_required_parameter", "image"
+                f"Model '{model.id}' requires exactly {required_images} reference "
+                f"image{'s' if required_images != 1 else ''}; received {len(images)}",
+                400,
+                "invalid_value",
+                "image",
             )
-        if image.size is not None and image.size > settings.maximum_request_bytes:
+        if any(not hasattr(image, "read") for image in images):
+            return openai_error(
+                "image values must be uploaded files", 400, "invalid_value", "image"
+            )
+        if any(
+            image.size is not None and image.size > settings.maximum_request_bytes
+            for image in images
+        ):
             return openai_error("image is too large", 413, "request_too_large", "image")
         prompt = str(form.get("prompt", ""))
         if not prompt:
@@ -621,19 +639,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "size is not supported for image edits", 400, "invalid_value", "size"
             )
         try:
-            uploaded = await runtime.comfy.upload(
-                image.filename,
-                image.file,
-                image.content_type or "application/octet-stream",
-            )
+            uploaded = [
+                await runtime.comfy.upload(
+                    image.filename,
+                    image.file,
+                    image.content_type or "application/octet-stream",
+                )
+                for image in images
+            ]
         except httpx.HTTPError as exc:
             return openai_error(str(exc), 502, "upload_failed", "image")
         values: dict[str, Any] = {
             "prompt": prompt,
-            "image": uploaded,
             "seed": seed,
             "steps": steps,
         }
+        values.update(zip(model.reference_input_names, uploaded, strict=True))
         try:
             await runtime.reserve_generation()
         except GenerationQueueFull as exc:
@@ -717,6 +738,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runtime.video_jobs.labels("failed").inc()
         finally:
             await runtime.release_generation()
+
+    def video_response(job: VideoJob) -> JSONResponse:
+        return JSONResponse(
+            {
+                "id": job.id,
+                "object": "video",
+                "model": job.model,
+                "status": job.status,
+                "created_at": job.created_at,
+                "error": job.error,
+                "output_url": runtime.job_output_url(job),
+            }
+        )
+
+    async def wait_for_video(job: VideoJob) -> VideoJob:
+        while job.status in {"queued", "in_progress"}:
+            await asyncio.sleep(1)
+            job = runtime.get_job(job.id) or job
+        return job
 
     @app.post("/v1/videos")
     async def create_video(request: Request) -> Response:
@@ -820,12 +860,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             frames = max(5, round(seconds * 24))
             values["length"] = frames + (5 - frames % 17) % 17
+        requested_id = request.headers.get("x-comfy-job-id", "")
+        if requested_id and (
+            len(requested_id) > 128
+            or any(
+                character not in "-0123456789_abcdefghijklmnopqrstuvwxyz"
+                for character in requested_id
+            )
+        ):
+            return openai_error("Invalid video job ID", 400, "invalid_job_id")
+        if requested_id and (existing := runtime.get_job(requested_id)) is not None:
+            if request.query_params.get("wait", "").lower() in {"1", "true", "yes"}:
+                existing = await wait_for_video(existing)
+            return video_response(existing)
         try:
             await runtime.reserve_generation()
         except GenerationQueueFull as exc:
             return openai_error(str(exc), 429, "rate_limit_exceeded")
         job = VideoJob(
-            id=f"video_{uuid.uuid4().hex}",
+            id=requested_id or f"video_{uuid.uuid4().hex}",
             model=model.id,
             lease_expires_at=int(
                 time.time()
@@ -836,16 +889,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         runtime.jobs[job.id] = job
         runtime.store_job(job)
         runtime.video_jobs_created.inc()
-        runtime.start_background_task(execute_video(job, model, values))
-        return JSONResponse(
-            {
-                "id": job.id,
-                "object": "video",
-                "model": job.model,
-                "status": job.status,
-                "created_at": job.created_at,
-            }
-        )
+        task = runtime.start_background_task(execute_video(job, model, values))
+        if request.query_params.get("wait", "").lower() in {"1", "true", "yes"}:
+            await asyncio.shield(task)
+        return video_response(job)
 
     @app.get("/v1/videos/{job_id}")
     async def get_video(job_id: str, request: Request) -> Response:

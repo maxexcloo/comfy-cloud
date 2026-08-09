@@ -1,6 +1,6 @@
 [env]
 # Image
-IMAGE_NAME = "ghcr.io/maxexcloo/comfy-cloud:latest"
+IMAGE_NAME = "ghcr.io/maxexcloo/inference-control:latest"
 
 # Gateway
 API_KEY = "REPLACE_ME"
@@ -28,12 +28,12 @@ S3_SECRET_ACCESS_KEY = "REPLACE_ME"
 S3_URL_EXPIRES = "3600"
 
 # Modal
-COMFY_CLOUD_IMAGE = "ghcr.io/maxexcloo/comfy-cloud:latest"
+COMFY_CONTROL_IMAGE = "ghcr.io/maxexcloo/inference-control:latest"
 MODAL_GPU = "L40S"
 MODAL_MIN_CONTAINERS = "0"
-MODAL_MODEL_VOLUME = "comfy-cloud-models"
+MODAL_MODEL_VOLUME = "comfy-control-models"
 MODAL_SCALEDOWN_WINDOW = "60"
-MODAL_SECRET = "comfy-cloud"
+MODAL_SECRET = "comfy-control"
 MODAL_TOKEN_ID = "REPLACE_ME"
 MODAL_TOKEN_SECRET = "REPLACE_ME"
 
@@ -47,9 +47,9 @@ RUNPOD_VOLUME_GB = "100"
 
 # SaladCloud
 SALAD_API_KEY = "REPLACE_ME"
-SALAD_CONTAINER_GROUP = "comfy-cloud"
+SALAD_CONTAINER_GROUP = "comfy-control"
 SALAD_GPU_CLASSES = '["REPLACE_ME"]'
-SALAD_IMAGE_NAME = "ghcr.io/maxexcloo/comfy-cloud:latest"
+SALAD_IMAGE_NAME = "ghcr.io/maxexcloo/inference-control:latest"
 SALAD_ORGANISATION = "REPLACE_ME"
 SALAD_PRIORITY = "low"
 SALAD_PROJECT = "REPLACE_ME"

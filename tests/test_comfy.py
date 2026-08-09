@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from comfy_cloud.comfy import ComfyClient
+from comfy_control.comfy import ComfyClient
 
 
 @pytest.mark.asyncio

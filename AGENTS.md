@@ -5,7 +5,8 @@
 - Keep workflow manifests beside their API-format workflow JSON in `catalogue/`.
 - Keep provider deployment files in `deploy/`.
 - Keep pinned model sources in `profiles/`.
-- Keep gateway code in `src/comfy_cloud/` and tests in `tests/`.
+- Keep standalone stack configuration in `standalone/` and orchestration in root `compose.yaml`.
+- Keep controller and worker code in `src/comfy_control/` and tests in `tests/`.
 
 ## Style
 

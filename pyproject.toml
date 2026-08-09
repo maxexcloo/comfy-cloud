@@ -3,9 +3,9 @@ requires = ["hatchling==1.31.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "comfy-cloud"
+name = "comfy-control"
 version = "0.1.0"
-description = "A small OpenAI-compatible and native ComfyUI cloud gateway"
+description = "A small controller and OpenAI-compatible gateway for on-demand ComfyUI workers"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -26,10 +26,10 @@ test = ["aiohttp>=3.11,<4", "pytest>=8,<10", "pytest-asyncio>=0.24,<2"]
 vast = ["aiohttp>=3.11,<4"]
 
 [project.scripts]
-comfy-cloud = "comfy_cloud.cli:main"
+comfy-control = "comfy_control.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/comfy_cloud"]
+packages = ["src/comfy_control"]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "src"]

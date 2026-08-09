@@ -1,9 +1,9 @@
-"""Vast.ai Serverless PyWorker for the comfy-cloud gateway.
+"""Vast.ai Serverless PyWorker for the comfy-control gateway.
 
 Vast's serverless platform requires a PyWorker ingress in front of the model
 server. This worker is a thin aiohttp proxy: it accepts the OpenAI-compatible
 and native ComfyUI routes, injects the gateway's bearer API key, and forwards
-the request to the comfy-cloud gateway running inside the same container.
+the request to the comfy-control gateway running inside the same container.
 
 Vast wraps serverless requests in an envelope like
 ``{"auth_data": {...}, "payload": {...}, "session_id": ...}``; the payload is
@@ -14,13 +14,13 @@ shapes Bifrost and Open WebUI expect.
 
 Deploy:
 
-1. Build and push the comfy-cloud image.
+1. Build and push the comfy-control image.
 2. In the Vast template, point the container at that image and set the same
    environment variables as the pod deployment (``API_KEY``, ``MODE=serverless``,
    ...). Run the gateway:
-       python -m comfy_cloud.supervisor
+       python -m comfy_control.supervisor
 3. Run this worker as a second process in the same container:
-       python /opt/comfy-cloud/deploy/vast_worker.py
+       python /opt/comfy-control/deploy/vast_worker.py
 4. Configure the serverless endpoint with ``PYWORKER_REPO`` pointing at a repo
    containing this file. Vast's engine handles queueing, autoscaling, and
    readiness; this file only routes.

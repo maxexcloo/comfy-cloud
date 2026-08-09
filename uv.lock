@@ -241,7 +241,7 @@ wheels = [
 ]
 
 [[package]]
-name = "comfy-cloud"
+name = "comfy-control"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

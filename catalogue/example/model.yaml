@@ -2,8 +2,8 @@ id: example/checkpoint-text-to-image
 profile: example
 operation: image_generation
 workflow: workflow.json
-workflow_sha256: 47d0f214a5829150a5d05c9529265ff3d2de85172ef6cc6d90374d09ae466538
-owned_by: comfy-cloud
+workflow_sha256: 9a3a03db94ef637ff3efe74aeff4871a46559e4fa0033d0ef5dec70429581e24
+owned_by: comfy-control
 aliases:
   - example
 input_map:

@@ -1,0 +1,307 @@
+import asyncio
+from pathlib import Path
+
+import httpx
+import pytest
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from comfy_control.control import create_app
+from comfy_control.control_config import ControlFile, ControlSettings
+
+
+def write_config(path: Path) -> None:
+    path.write_text(
+        """
+models:
+  - id: public/image
+    operation: image_generation
+    targets:
+      - model: worker/image
+        provider: worker
+  - id: public/image-edit
+    operation: image_edit
+    targets:
+      - model: worker/image-edit
+        provider: worker
+  - id: public/video
+    operation: video_generation
+    targets:
+      - model: worker/video
+        provider: worker
+providers:
+  - id: worker
+    api_key: worker-key
+    base_url: http://worker
+    idle_seconds: 0
+""".lstrip()
+    )
+
+
+def settings(tmp_path: Path) -> ControlSettings:
+    config = tmp_path / "control.yaml"
+    write_config(config)
+    return ControlSettings(
+        api_key="control-key",
+        config_file=config,
+        database_path=tmp_path / "control.db",
+        maximum_request_bytes=1024 * 1024,
+        ui_password="",
+        ui_username="comfy",
+    )
+
+
+def worker_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/health/ready")
+    async def ready() -> dict[str, str]:
+        return {"status": "ready"}
+
+    @app.post("/v1/images/generations")
+    async def image(request: Request) -> dict[str, object]:
+        body = await request.json()
+        assert body["model"] == "worker/image"
+        return {"created": 1, "data": [{"b64_json": "aW1hZ2U="}]}
+
+    @app.post("/v1/images/edits")
+    async def image_edit(request: Request) -> dict[str, object]:
+        form = await request.form()
+        images = form.getlist("image")
+        assert form["model"] == "worker/image-edit"
+        assert [image.filename for image in images] == ["mara.png", "elise.png"]
+        assert [await image.read() for image in images] == [b"mara", b"elise"]
+        return {"created": 1, "data": [{"b64_json": "ZWRpdA=="}]}
+
+    @app.post("/v1/videos")
+    async def video(request: Request) -> dict[str, object]:
+        assert request.query_params["wait"] == "true"
+        assert request.headers["x-comfy-job-id"].startswith("video_")
+        if request.headers["content-type"].startswith("multipart/form-data"):
+            form = await request.form()
+            assert form["model"] == "worker/video"
+            assert await form["image"].read() == b"image"
+        else:
+            body = await request.json()
+            assert body["model"] == "worker/video"
+        return {
+            "id": "upstream-video",
+            "object": "video",
+            "model": "worker/video",
+            "status": "completed",
+            "created_at": 1,
+            "error": None,
+            "output_url": "https://objects.example/video.mp4",
+        }
+
+    return app
+
+
+async def attach_worker(app: FastAPI) -> None:
+    runtime = app.state.controller.providers["worker"]
+    await runtime.client.aclose()
+    runtime.client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=worker_app()), base_url="http://worker"
+    )
+
+
+@pytest.mark.asyncio
+async def test_controller_lists_and_routes_models(tmp_path):
+    app = create_app(settings(tmp_path))
+    await attach_worker(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        denied = await client.get("/v1/models")
+        dashboard = await client.get("/", auth=("comfy", "control-key"))
+        models = await client.get(
+            "/v1/models", headers={"Authorization": "Bearer control-key"}
+        )
+        image = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer control-key"},
+            json={"model": "public/image", "prompt": "test"},
+        )
+
+    assert denied.status_code == 401
+    assert dashboard.status_code == 200
+    assert [model["id"] for model in models.json()["data"]] == [
+        "public/image",
+        "public/image-edit",
+        "public/video",
+    ]
+    assert image.status_code == 200
+    assert image.headers["x-comfy-provider"] == "worker"
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_controller_preserves_repeated_image_fields_in_order(tmp_path):
+    app = create_app(settings(tmp_path))
+    await attach_worker(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        response = await client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer control-key"},
+            data={"model": "public/image-edit", "prompt": "Mara and Elise"},
+            files=[
+                ("image", ("mara.png", b"mara", "image/png")),
+                ("image", ("elise.png", b"elise", "image/png")),
+            ],
+        )
+
+    assert response.status_code == 200
+    assert response.headers["x-comfy-provider"] == "worker"
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_controller_owns_video_job_and_output_url(tmp_path):
+    app = create_app(settings(tmp_path))
+    await attach_worker(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        submitted = await client.post(
+            "/v1/videos",
+            headers={"Authorization": "Bearer control-key"},
+            json={"model": "public/video", "prompt": "test"},
+        )
+        job_id = submitted.json()["id"]
+        for _ in range(20):
+            status = await client.get(
+                f"/v1/videos/{job_id}",
+                headers={"Authorization": "Bearer control-key"},
+            )
+            if status.json()["status"] == "completed":
+                break
+            await asyncio.sleep(0)
+        content = await client.get(
+            f"/v1/videos/{job_id}/content",
+            headers={"Authorization": "Bearer control-key"},
+            follow_redirects=False,
+        )
+
+    assert submitted.status_code == 200
+    assert status.json()["model"] == "public/video"
+    assert content.status_code == 302
+    assert content.headers["location"] == "https://objects.example/video.mp4"
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_controller_persists_multipart_video_until_completion(tmp_path):
+    app = create_app(settings(tmp_path))
+    await attach_worker(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        submitted = await client.post(
+            "/v1/videos",
+            headers={"Authorization": "Bearer control-key"},
+            data={"model": "public/video", "prompt": "test"},
+            files={"image": ("frame.png", b"image", "image/png")},
+        )
+        job_id = submitted.json()["id"]
+        for _ in range(20):
+            status = await client.get(
+                f"/v1/videos/{job_id}",
+                headers={"Authorization": "Bearer control-key"},
+            )
+            if status.json()["status"] == "completed":
+                break
+            await asyncio.sleep(0)
+
+    assert status.json()["status"] == "completed", status.json()["error"]
+    assert not (tmp_path / "uploads" / job_id).exists()
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_controller_uses_ordered_fallback(tmp_path):
+    configured = settings(tmp_path)
+    configured.config_file.write_text(
+        """
+models:
+  - id: public/image
+    operation: image_generation
+    targets:
+      - model: worker/image
+        provider: primary
+      - model: worker/image
+        provider: fallback
+providers:
+  - id: fallback
+    api_key: worker-key
+    base_url: http://fallback
+    idle_seconds: 0
+  - id: primary
+    api_key: worker-key
+    base_url: http://primary
+    idle_seconds: 0
+    startup_timeout: 0
+""".lstrip()
+    )
+    app = create_app(configured)
+
+    def provider(status_code: int) -> FastAPI:
+        provider_app = FastAPI()
+
+        @provider_app.get("/health/ready")
+        async def ready() -> dict[str, str]:
+            return {"status": "ready"}
+
+        @provider_app.post("/v1/images/generations")
+        async def image() -> JSONResponse:
+            return JSONResponse({"provider": status_code}, status_code=status_code)
+
+        return provider_app
+
+    for provider_id, status_code in (("fallback", 200), ("primary", 503)):
+        runtime = app.state.controller.providers[provider_id]
+        await runtime.client.aclose()
+        runtime.client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=provider(status_code)),
+            base_url=f"http://{provider_id}",
+        )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        response = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer control-key"},
+            json={"model": "public/image", "prompt": "test"},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["x-comfy-provider"] == "fallback"
+    await app.state.controller.close()
+
+
+def test_control_config_expands_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONTROL_TOKEN", "secret")
+    config = tmp_path / "control.yaml"
+    config.write_text(
+        """
+models: []
+providers:
+  - id: worker
+    api_key: env.CONTROL_TOKEN
+    base_url: http://worker
+    lifecycle:
+      start:
+        headers:
+          authorization: Bearer ${CONTROL_TOKEN}
+        url: http://control/start
+""".lstrip()
+    )
+
+    loaded = ControlFile.load(config)
+
+    assert loaded.providers[0].api_key == "secret"
+    assert loaded.providers[0].lifecycle.start is not None
+    assert (
+        loaded.providers[0].lifecycle.start.headers["authorization"] == "Bearer secret"
+    )

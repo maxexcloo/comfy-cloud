@@ -1,6 +1,9 @@
+.env
 .git
+.mise.local.toml
 .pytest_cache/
 .ruff_cache/
+.venv/
 __pycache__/
 dist
 model-packs

@@ -5,7 +5,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.12.3@sha256:2d890623d310b57771ce840f0da5eed5f
 # ComfyUI v0.31.1. Keep the release label and immutable commit in sync.
 ARG COMFYUI_REF=fe4195f7f4275f2626cbafc703acc3ddde1e5490
 ARG MODEL_PROFILE
-ENV BUILTIN_CATALOGUE_DIR=/opt/comfy-cloud/catalogue \
+ENV BUILTIN_CATALOGUE_DIR=/opt/comfy-control/catalogue \
     COMFYUI_DIR=/opt/ComfyUI \
     COMFYUI_URL=http://127.0.0.1:8188 \
     DEBIAN_FRONTEND=noninteractive \
@@ -29,7 +29,7 @@ RUN git init /opt/ComfyUI \
     && git -C /opt/ComfyUI checkout --detach FETCH_HEAD \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /opt/ComfyUI/requirements.txt
 
-WORKDIR /opt/comfy-cloud
+WORKDIR /opt/comfy-control
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY catalogue ./catalogue
@@ -45,9 +45,9 @@ RUN uv export --frozen --no-dev --extra build --extra s3 --extra vast --no-emit-
 RUN --mount=type=secret,id=HF_TOKEN,env=HF_TOKEN \
     --mount=type=secret,id=CIVITAI_TOKEN,env=CIVITAI_TOKEN \
     if [ -n "${MODEL_PROFILE}" ]; then \
-      comfy-cloud models-fetch "/opt/comfy-cloud/profiles/${MODEL_PROFILE}.yaml" \
+      comfy-control models-fetch "/opt/comfy-control/profiles/${MODEL_PROFILE}.yaml" \
         --models-dir /opt/ComfyUI/models; \
     fi
 
 EXPOSE 8000
-CMD ["/opt/venv/bin/python", "-m", "comfy_cloud.supervisor"]
+CMD ["/opt/venv/bin/python", "-m", "comfy_control.supervisor"]

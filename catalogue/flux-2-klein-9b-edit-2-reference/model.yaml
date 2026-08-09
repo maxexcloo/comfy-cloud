@@ -1,0 +1,20 @@
+id: flux-2-klein-9b/image-edit-2-reference
+profile: flux-2-klein-9b
+operation: image_edit
+workflow: workflow.json
+workflow_sha256: 9294372460fc75eacf2c4cd4329ffe74d57891fb08539076a18f941b725e79f1
+owned_by: black-forest-labs
+input_map:
+  prompt: { node: "8", input: text }
+  image_1: { node: "4", input: image }
+  image_2: { node: "20", input: image }
+  seed: { node: "13", input: noise_seed }
+  steps: { node: "15", input: steps }
+output: { node: "19", type: image }
+defaults:
+  seed: 0
+  steps: 4
+required_files:
+  - diffusion_models/flux-2-klein-9b-fp8.safetensors
+  - text_encoders/qwen_3_8b_fp8mixed.safetensors
+  - vae/full_encoder_small_decoder.safetensors

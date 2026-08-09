@@ -26,7 +26,7 @@ def _prepare_models() -> None:
     if not profiles:
         return
     models_dir = Path(os.getenv("MODELS_DIR", "/opt/ComfyUI/models"))
-    profiles_dir = Path(os.getenv("PROFILES_DIR", "/opt/comfy-cloud/profiles"))
+    profiles_dir = Path(os.getenv("PROFILES_DIR", "/opt/comfy-control/profiles"))
     for profile in profiles:
         if any(
             character not in "-0123456789_abcdefghijklmnopqrstuvwxyz"
@@ -47,13 +47,13 @@ def _comfy_arguments(comfy_dir: Path) -> list[str]:
     if models_dir.resolve() == (comfy_dir / "models").resolve():
         return arguments
     config = {
-        "comfy_cloud": {
+        "comfy_control": {
             "base_path": str(models_dir),
             "is_default": True,
             **{key: key for key in MODEL_DIRECTORY_KEYS},
         }
     }
-    config_path = Path(tempfile.gettempdir()) / "comfy-cloud-model-paths.yaml"
+    config_path = Path(tempfile.gettempdir()) / "comfy-control-model-paths.yaml"
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     return [*arguments, "--extra-model-paths-config", str(config_path)]
 
@@ -83,7 +83,7 @@ def main() -> None:
             sys.executable,
             "-m",
             "uvicorn",
-            "comfy_cloud.app:create_app",
+            "comfy_control.worker:create_app",
             "--factory",
             "--host",
             "0.0.0.0",

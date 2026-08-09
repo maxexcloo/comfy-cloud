@@ -1,7 +1,7 @@
 {
   "containerDiskInGb": 30,
   "endpointType": "load-balancer",
-  "imageName": "ghcr.io/OWNER/comfy-cloud:TAG",
+  "imageName": "ghcr.io/OWNER/inference-control:TAG",
   "ports": "8000/http",
   "env": [
     { "key": "API_KEY", "value": "CHANGE_ME" },

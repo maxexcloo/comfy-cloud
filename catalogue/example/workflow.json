@@ -24,7 +24,7 @@
   },
   "4": {
     "class_type": "SaveImage",
-    "inputs": { "filename_prefix": "comfy-cloud", "images": ["6", 0] }
+    "inputs": { "filename_prefix": "comfy-control", "images": ["6", 0] }
   },
   "5": {
     "class_type": "CLIPTextEncode",

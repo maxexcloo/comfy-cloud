@@ -1,12 +1,12 @@
 {
   "disk_space": 100,
-  "image": "ghcr.io/OWNER/comfy-cloud:TAG",
-  "name": "comfy-cloud",
+  "image": "ghcr.io/OWNER/inference-control:TAG",
+  "name": "comfy-control",
   "env": {
     "API_KEY": "CHANGE_ME",
     "COMFY_UI_PASSWORD": "CHANGE_ME",
     "COMFY_UI_USERNAME": "comfy",
-    "JOBS_DIR": "/opt/ComfyUI/models/.comfy-cloud/jobs",
+    "JOBS_DIR": "/opt/ComfyUI/models/.comfy-control/jobs",
     "MAXIMUM_PENDING_GENERATIONS": "8",
     "MAXIMUM_REQUEST_BYTES": "104857600",
     "MODE": "pod"

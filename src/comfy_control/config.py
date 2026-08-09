@@ -40,7 +40,9 @@ class Settings:
         deployment_type = os.getenv("MODE", os.getenv("DEPLOYMENT_TYPE", "pod")).lower()
         if deployment_type not in {"pod", "serverless"}:
             raise ValueError("MODE must be pod or serverless")
-        roots = [Path(os.getenv("BUILTIN_CATALOGUE_DIR", "/opt/comfy-cloud/catalogue"))]
+        roots = [
+            Path(os.getenv("BUILTIN_CATALOGUE_DIR", "/opt/comfy-control/catalogue"))
+        ]
         custom = os.getenv("CATALOGUE_DIR")
         if custom:
             roots.append(Path(custom))

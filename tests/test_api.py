@@ -1,4 +1,3 @@
-import asyncio
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -7,9 +6,9 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from comfy_cloud.app import create_app as create_gateway
-from comfy_cloud.comfy import OutputRef
-from comfy_cloud.config import Settings
+from comfy_control.comfy import OutputRef
+from comfy_control.config import Settings
+from comfy_control.worker import create_app as create_gateway
 
 ROOT = Path(__file__).parents[1]
 
@@ -58,6 +57,30 @@ async def test_models_are_workflows_and_require_auth():
     assert denied.status_code == 401
     assert response.json()["data"][0]["id"] == "example/checkpoint-text-to-image"
     assert detail.json()["capabilities"]["operation"] == "image_generation"
+
+
+@pytest.mark.asyncio
+async def test_image_edit_model_discovery_reports_exact_reference_count():
+    app = create_app(settings())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/v1/models", headers={"Authorization": "Bearer test-key"}
+        )
+        detail = await client.get(
+            "/v1/models/flux-2-klein-9b/image-edit-3-reference",
+            headers={"Authorization": "Bearer test-key"},
+        )
+
+    listed = next(
+        model
+        for model in response.json()["data"]
+        if model["id"] == "flux-2-klein-9b/image-edit-3-reference"
+    )
+    expected = {"minimum": 3, "maximum": 3}
+    assert listed["capabilities"]["reference_images"] == expected
+    assert detail.json()["capabilities"]["reference_images"] == expected
+    assert detail.json()["capabilities"]["input_modalities"] == ["text", "image"]
 
 
 @pytest.mark.asyncio
@@ -236,6 +259,92 @@ async def test_openai_image_edit_uses_multipart_and_workflow():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("references", [2, 3, 4])
+async def test_image_edit_uploads_ordered_references(references):
+    app = create_app(settings())
+    run_values: list[dict] = []
+    uploaded_content: list[bytes] = []
+
+    async def upload(filename, content, content_type):
+        uploaded_content.append(content.read())
+        return f"uploaded-{len(uploaded_content)}.png"
+
+    app.state.runtime.comfy.upload = AsyncMock(side_effect=upload)
+    app.state.runtime.run = AsyncMock(
+        side_effect=lambda model, values: (
+            run_values.append(dict(values)) or [OutputRef("edited.png")]
+        )
+    )
+    app.state.runtime.comfy.fetch_output = AsyncMock(
+        return_value=httpx.Response(
+            200, content=b"edit", headers={"content-type": "image/png"}
+        )
+    )
+    files = [
+        ("image", (f"reference-{index}.png", f"image-{index}".encode(), "image/png"))
+        for index in range(1, references + 1)
+    ]
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-key"},
+            data={
+                "model": f"flux-2-klein-9b/image-edit-{references}-reference",
+                "prompt": "combine the people in order",
+            },
+            files=files,
+        )
+
+    assert response.status_code == 200
+    assert uploaded_content == [
+        f"image-{index}".encode() for index in range(1, references + 1)
+    ]
+    assert run_values == [
+        {
+            "prompt": "combine the people in order",
+            "seed": None,
+            "steps": None,
+            **{
+                f"image_{index}": f"uploaded-{index}.png"
+                for index in range(1, references + 1)
+            },
+        }
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model_references", "supplied_references"), [(2, 1), (2, 3), (4, 5)]
+)
+async def test_image_edit_rejects_wrong_reference_count(
+    model_references, supplied_references
+):
+    app = create_app(settings())
+    app.state.runtime.comfy.upload = AsyncMock()
+    files = [
+        ("image", (f"reference-{index}.png", b"image", "image/png"))
+        for index in range(supplied_references)
+    ]
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-key"},
+            data={
+                "model": f"flux-2-klein-9b/image-edit-{model_references}-reference",
+                "prompt": "combine",
+            },
+            files=files,
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["param"] == "image"
+    assert response.json()["error"]["code"] == "invalid_value"
+    assert app.state.runtime.comfy.upload.await_count == 0
+
+
+@pytest.mark.asyncio
 async def test_image_edit_rejects_unsupported_parameters():
     app = create_app(settings())
     app.state.runtime.catalogue.get("flux-2-klein-4b-edit").required_files = []
@@ -276,7 +385,7 @@ async def test_image_to_video_accepts_multipart_upload():
     files = {"image": ("source.png", b"image-bytes", "image/png")}
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
-            "/v1/videos",
+            "/v1/videos?wait=true",
             headers={"Authorization": "Bearer test-key"},
             data={
                 "model": "minimax-h3-i2v",
@@ -286,9 +395,9 @@ async def test_image_to_video_accepts_multipart_upload():
             },
             files=files,
         )
-        await asyncio.sleep(0)
 
     assert response.status_code == 200
+    assert response.json()["status"] == "completed"
     assert app.state.runtime.comfy.upload.await_args.args[0] == "source.png"
     values = run_values[0]
     assert values["image"] == "frame.png"
@@ -377,9 +486,9 @@ async def test_health_live_ready_and_metrics():
     assert ready.json()["status"] == "ready"
     assert first.headers.get("x-request-id")
     body = metrics.text
-    assert "comfy_cloud_requests_total 2" in body
-    assert 'comfy_cloud_requests_by_status_total{status="200"}' in body
-    assert "comfy_cloud_generations_total 0" in body
+    assert "comfy_control_requests_total 2" in body
+    assert 'comfy_control_requests_by_status_total{status="200"}' in body
+    assert "comfy_control_generations_total 0" in body
 
 
 @pytest.mark.asyncio
@@ -403,20 +512,33 @@ async def test_video_request_maps_openai_size_and_seconds_to_workflow():
         return_value=[OutputRef("result.mp4", media_type="video/mp4")]
     )
     transport = httpx.ASGITransport(app=app)
+    body = {
+        "model": "minimax-h3",
+        "prompt": "a clean video test",
+        "seconds": 5,
+        "size": "1344x768",
+    }
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
-            "/v1/videos",
-            headers={"Authorization": "Bearer test-key"},
-            json={
-                "model": "minimax-h3",
-                "prompt": "a clean video test",
-                "seconds": 5,
-                "size": "1344x768",
+            "/v1/videos?wait=true",
+            headers={
+                "Authorization": "Bearer test-key",
+                "x-comfy-job-id": "video_controller_job",
             },
+            json=body,
         )
-        await asyncio.sleep(0)
+        repeated = await client.post(
+            "/v1/videos?wait=true",
+            headers={
+                "Authorization": "Bearer test-key",
+                "x-comfy-job-id": "video_controller_job",
+            },
+            json=body,
+        )
 
     assert response.status_code == 200
+    assert repeated.json()["id"] == response.json()["id"]
+    assert app.state.runtime.run.await_count == 1
     values = app.state.runtime.run.await_args.args[1]
     assert values["length"] == 124
     assert (values["width"], values["height"]) == (1344, 768)

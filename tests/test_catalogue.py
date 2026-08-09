@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from comfy_cloud.catalogue import Catalogue
+import pytest
+
+from comfy_control.catalogue import Catalogue, WorkflowModel
 
 ROOT = Path(__file__).parents[1]
 
@@ -38,6 +40,56 @@ def test_catalogue_maps_image_edit_inputs_to_reference_workflow():
     assert graph["15"]["inputs"]["steps"] == 8
     assert graph["10"]["class_type"] == "ReferenceLatent"
     assert graph["11"]["class_type"] == "ReferenceLatent"
+
+
+@pytest.mark.parametrize(
+    ("references", "nodes"),
+    [
+        (2, ("4", "20")),
+        (3, ("4", "20", "25")),
+        (4, ("4", "20", "25", "30")),
+    ],
+)
+def test_catalogue_maps_every_ordered_reference_to_its_load_node(references, nodes):
+    catalogue = Catalogue.load((ROOT / "catalogue",))
+    model = catalogue.get(f"flux-2-klein-9b/image-edit-{references}-reference")
+    values = {
+        f"image_{index}": f"upload-{index}.png" for index in range(1, references + 1)
+    }
+    graph = model.render(values)
+
+    assert model.reference_input_names == tuple(values)
+    assert model.reference_image_count == references
+    for index, node in enumerate(nodes, start=1):
+        assert graph[node]["class_type"] == "LoadImage"
+        assert graph[node]["inputs"]["image"] == f"upload-{index}.png"
+
+
+def image_edit_manifest(input_names):
+    return {
+        "id": "test/image-edit",
+        "profile": "test",
+        "operation": "image_edit",
+        "workflow": "workflow.json",
+        "input_map": {
+            "prompt": {"node": "1", "input": "text"},
+            **{
+                name: {"node": str(index + 2), "input": "image"}
+                for index, name in enumerate(input_names)
+            },
+        },
+        "output": {"node": "9", "type": "image"},
+    }
+
+
+def test_catalogue_rejects_non_contiguous_numbered_image_inputs():
+    with pytest.raises(ValueError, match="begin at image_1 and contain no gaps"):
+        WorkflowModel.model_validate(image_edit_manifest(("image_1", "image_3")))
+
+
+def test_catalogue_rejects_legacy_and_numbered_image_inputs_together():
+    with pytest.raises(ValueError, match="must not mix image"):
+        WorkflowModel.model_validate(image_edit_manifest(("image", "image_1")))
 
 
 def test_catalogue_maps_image_to_video_first_frame():
@@ -85,6 +137,9 @@ def test_catalogue_exposes_alias_only_once():
         "flux-2-klein-4b/text-to-image",
         "flux-2-klein-base-9b/text-to-image",
         "flux-2-klein-9b/image-edit",
+        "flux-2-klein-9b/image-edit-2-reference",
+        "flux-2-klein-9b/image-edit-3-reference",
+        "flux-2-klein-9b/image-edit-4-reference",
         "flux-2-klein-9b/text-to-image",
         "krea-2-turbo/text-to-image",
         "minimax-h3/image-to-video",

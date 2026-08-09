@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from comfy_cloud.fetch import fetch_profile
+from comfy_control.fetch import fetch_profile
 
 
 def test_huggingface_destination_places_root_file_in_model_subdirectory(

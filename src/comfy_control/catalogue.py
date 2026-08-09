@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any, Literal
 
@@ -10,6 +11,7 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 Operation = Literal["image_generation", "image_edit", "video_generation"]
+NUMBERED_IMAGE_INPUT = re.compile(r"^image_(\d+)$")
 
 
 class NodeTarget(BaseModel):
@@ -28,7 +30,7 @@ class WorkflowModel(BaseModel):
     operation: Operation
     workflow: str
     workflow_sha256: str | None = None
-    owned_by: str = "comfy-cloud"
+    owned_by: str = "comfy-control"
     aliases: list[str] = Field(default_factory=list)
     input_map: dict[str, NodeTarget | list[NodeTarget]]
     output: OutputTarget
@@ -47,6 +49,25 @@ class WorkflowModel(BaseModel):
             raise ValueError("workflow must be relative to its catalogue manifest")
         if "prompt" not in self.input_map:
             raise ValueError("input_map must include prompt")
+        numbered_images = sorted(
+            int(match.group(1))
+            for name in self.input_map
+            if (match := NUMBERED_IMAGE_INPUT.fullmatch(name))
+        )
+        if "image" in self.input_map and numbered_images:
+            raise ValueError("input_map must not mix image with numbered image inputs")
+        if numbered_images and numbered_images != list(
+            range(1, len(numbered_images) + 1)
+        ):
+            raise ValueError(
+                "numbered image inputs must begin at image_1 and contain no gaps"
+            )
+        if numbered_images and numbered_images[-1] > 4:
+            raise ValueError("numbered image inputs support at most four references")
+        if self.operation == "image_edit" and not (
+            "image" in self.input_map or numbered_images
+        ):
+            raise ValueError("image_edit input_map must include image inputs")
         for required in self.required_files:
             path = Path(required)
             if path.is_absolute() or ".." in path.parts:
@@ -54,6 +75,27 @@ class WorkflowModel(BaseModel):
                     "required_files must be relative to the ComfyUI models directory"
                 )
         return self
+
+    @property
+    def reference_input_names(self) -> tuple[str, ...]:
+        """Return image-edit inputs in their positional API order."""
+        if self.operation != "image_edit":
+            return ()
+        if "image" in self.input_map:
+            return ("image",)
+        numbered = sorted(
+            (
+                (int(match.group(1)), name)
+                for name in self.input_map
+                if (match := NUMBERED_IMAGE_INPUT.fullmatch(name))
+            ),
+            key=lambda item: item[0],
+        )
+        return tuple(name for _, name in numbered)
+
+    @property
+    def reference_image_count(self) -> int:
+        return len(self.reference_input_names)
 
     def missing_files(self, models_dir: Path) -> list[str]:
         return [
