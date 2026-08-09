@@ -25,7 +25,7 @@ repos:
       - id: actionlint
         name: Lint GitHub Actions workflows
         entry: mise exec -- actionlint
-        files: ^\.github/workflows/.*\.yaml$
+        files: ^\.github/workflows/.*\.ya?ml$
         language: system
       - id: hadolint
         name: Lint Dockerfiles
@@ -39,7 +39,7 @@ repos:
       - id: prettier
         name: Check formatting
         entry: mise exec -- prettier --check
-        files: \.(json|md|yaml)$
+        files: \.(json|md|ya?ml)$
         language: system
       - id: ruff-check
         name: Lint Python

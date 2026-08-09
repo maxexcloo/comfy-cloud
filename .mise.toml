@@ -1,13 +1,15 @@
 [tools]
 actionlint = "1.7.12"
+"github:cli/cli" = "2.94.0"
+"github:runpod/runpodctl" = "2.8.1"
 hadolint = "2.15.1"
+jq = "1.8.1"
 "pipx:modal" = "1.5.3"
 "pipx:vastai" = "1.5.2"
 prek = "0.4.12"
 prettier = "3.9.6"
 python = "3.13.15"
 ruff = "0.16.1"
-"github:runpod/runpodctl" = "2.8.1"
 uv = "0.12.1"
 
 [tasks.build]
@@ -25,38 +27,6 @@ find . -path ./.git -prune -o \
   -type d \\( -name .pytest_cache -o -name .ruff_cache -o -name __pycache__ \\) \
   -prune -exec rm -rf -- {} +
 find . -path ./.git -prune -o -type f -name '*.pyc' -exec rm -f -- {} +
-"""
-
-[tasks.deploy-modal]
-description = "Deploy the Modal app"
-run = "modal deploy deploy/modal_app.py"
-
-[tasks.deploy-runpod]
-description = "Create a RunPod pod from the template"
-run = """
-runpodctl pod create \
-  --container-disk-in-gb 100 \
-  --env "{\"API_KEY\":\"${API_KEY}\",\"COMFY_UI_PASSWORD\":\"${COMFY_UI_PASSWORD}\",\"COMFY_UI_USERNAME\":\"${COMFY_UI_USERNAME:-comfy}\",\"MODE\":\"pod\"}" \
-  --gpu-id "${RUNPOD_GPU_TYPE}" \
-  --image "${IMAGE_NAME}" \
-  --name comfy-cloud \
-  --ports 8000/http \
-  --volume-in-gb 100 \
-  --volume-mount-path /opt/ComfyUI/models
-"""
-
-[tasks.deploy-vast]
-description = "Create a Vast.ai instance from the template"
-run = """
-vastai create instance --disk 100 \
-  --env "API_KEY=${API_KEY}" \
-  --env "COMFY_UI_PASSWORD=${COMFY_UI_PASSWORD}" \
-  --env COMFY_UI_USERNAME="${COMFY_UI_USERNAME:-comfy}" \
-  --env MODE=pod \
-  --image "${IMAGE_NAME}" \
-  --label comfy-cloud \
-  --onstart-cmd 'python3 -m comfy_cloud.supervisor' \
-  "${VAST_OFFER_ID:?set VAST_OFFER_ID to an offer from `vastai search offers`}"
 """
 
 [tasks.fmt]
@@ -77,3 +47,219 @@ if [[ ! -f .mise.local.toml ]]; then
 fi
 prek install
 """
+
+[tasks."image:profile"]
+description = "Build a model-profile image on GitHub"
+run = "gh workflow run profile-image.yml --field profile=\"${MODEL_PROFILE:?set MODEL_PROFILE}\""
+
+[tasks."image:status"]
+description = "Show model-profile image builds"
+run = "gh run list --workflow profile-image.yml"
+
+[tasks."modal:deploy"]
+description = "Deploy or update the Modal app"
+run = "modal deploy deploy/modal_app.py"
+
+[tasks."modal:logs"]
+description = "Show recent Modal app logs"
+run = "modal app logs comfy-cloud"
+
+[tasks."modal:status"]
+description = "Show Modal apps"
+run = "modal app list"
+
+[tasks."modal:stop"]
+description = "Stop the Modal app"
+run = "modal app stop comfy-cloud"
+
+[tasks."runpod:deploy"]
+description = "Create a RunPod pod"
+run = """
+pod_env="$(jq -cn \
+  --arg api_key "${API_KEY:?set API_KEY}" \
+  --arg hf_token "${HF_TOKEN:-}" \
+  --arg password "${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD}" \
+  --arg profiles "${MODEL_PROFILES:-flux-2-klein-4b}" \
+  --arg username "${COMFY_UI_USERNAME:-comfy}" \
+  '{API_KEY: $api_key, COMFY_UI_PASSWORD: $password, COMFY_UI_USERNAME: $username, MODE: "pod", MODEL_PROFILES: $profiles}
+   + if ($hf_token == "" or $hf_token == "REPLACE_ME") then {} else {HF_TOKEN: $hf_token} end')"
+storage_args=(--volume-in-gb "${RUNPOD_VOLUME_GB:-100}")
+if [[ -n "${RUNPOD_NETWORK_VOLUME_ID:-}" && "${RUNPOD_NETWORK_VOLUME_ID}" != "REPLACE_ME" ]]; then
+  storage_args=(--network-volume-id "${RUNPOD_NETWORK_VOLUME_ID}")
+fi
+runpodctl pod create \
+  --container-disk-in-gb "${RUNPOD_CONTAINER_DISK_GB:-30}" \
+  --env "${pod_env}" \
+  --gpu-id "${RUNPOD_GPU_TYPE}" \
+  --image "${IMAGE_NAME}" \
+  --name comfy-cloud \
+  --ports 8000/http \
+  --volume-mount-path /opt/ComfyUI/models \
+  "${storage_args[@]}"
+"""
+
+[tasks."runpod:destroy"]
+description = "Delete a RunPod pod and its container disk"
+run = "runpodctl pod delete \"${RUNPOD_POD_ID:?set RUNPOD_POD_ID}\""
+
+[tasks."runpod:list"]
+description = "List RunPod pods"
+run = "runpodctl pod list"
+
+[tasks."runpod:start"]
+description = "Start a RunPod pod"
+run = "runpodctl pod start \"${RUNPOD_POD_ID:?set RUNPOD_POD_ID}\""
+
+[tasks."runpod:status"]
+description = "Show a RunPod pod"
+run = "runpodctl pod get --include-machine --include-network-volume \"${RUNPOD_POD_ID:?set RUNPOD_POD_ID}\""
+
+[tasks."runpod:stop"]
+description = "Stop a RunPod pod while preserving its volume"
+run = "runpodctl pod stop \"${RUNPOD_POD_ID:?set RUNPOD_POD_ID}\""
+
+[tasks."salad:deploy"]
+description = "Create and start the SaladCloud container group"
+run = """
+jq \
+  --arg api_key "${API_KEY:?set API_KEY}" \
+  --arg group "${SALAD_CONTAINER_GROUP:-comfy-cloud}" \
+  --arg hf_token "${HF_TOKEN:-}" \
+  --arg image "${SALAD_IMAGE_NAME:-${IMAGE_NAME}}" \
+  --arg password "${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD}" \
+  --arg priority "${SALAD_PRIORITY:-low}" \
+  --arg profiles "${MODEL_PROFILES:-flux-2-klein-4b}" \
+  --arg username "${COMFY_UI_USERNAME:-comfy}" \
+  --argjson gpu_classes "${SALAD_GPU_CLASSES:?set SALAD_GPU_CLASSES to a JSON array}" \
+  --argjson replicas "${SALAD_REPLICAS:-1}" \
+  '.name = $group
+   | .container.image = $image
+   | .container.priority = $priority
+   | .container.resources.gpu_classes = $gpu_classes
+   | .container.environment_variables.API_KEY = $api_key
+   | .container.environment_variables.COMFY_UI_PASSWORD = $password
+   | .container.environment_variables.COMFY_UI_USERNAME = $username
+   | .container.environment_variables.HF_TOKEN = $hf_token
+   | .container.environment_variables.MODEL_PROFILES = $profiles
+   | .replicas = $replicas
+   | if ($hf_token == "" or $hf_token == "REPLACE_ME") then del(.container.environment_variables.HF_TOKEN) else . end' \
+  deploy/salad-container-group.json \
+| curl --fail-with-body --silent --show-error \
+  --request POST \
+  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers" \
+  --header "Content-Type: application/json" \
+  --header "Salad-Api-Key: ${SALAD_API_KEY:?set SALAD_API_KEY}" \
+  --data-binary @- \
+| jq
+"""
+
+[tasks."salad:destroy"]
+description = "Delete the SaladCloud container group"
+run = """
+curl --fail-with-body --silent --show-error \
+  --request DELETE \
+  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-cloud}" \
+  --header "Salad-Api-Key: ${SALAD_API_KEY:?set SALAD_API_KEY}"
+"""
+
+[tasks."salad:gpu-classes"]
+description = "List SaladCloud GPU classes and prices"
+run = """
+curl --fail-with-body --silent --show-error \
+  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/gpu-classes" \
+  --header "Salad-Api-Key: ${SALAD_API_KEY:?set SALAD_API_KEY}" \
+| jq '.items | sort_by(.name) | map({id, name, prices})'
+"""
+
+[tasks."salad:logs"]
+description = "Show recent SaladCloud container logs"
+run = """
+end_time="$(python -c 'from datetime import UTC, datetime; print(datetime.now(UTC).isoformat())')"
+start_time="$(python -c 'from datetime import UTC, datetime, timedelta; print((datetime.now(UTC) - timedelta(hours=1)).isoformat())')"
+jq -cn \
+  --arg end_time "${end_time}" \
+  --arg group "${SALAD_CONTAINER_GROUP:-comfy-cloud}" \
+  --arg project "${SALAD_PROJECT:?set SALAD_PROJECT}" \
+  --arg start_time "${start_time}" \
+  '{end_time: $end_time, page_size: 100, query: ("resource.type = \"container\" and resource.labels.project_name = \"" + $project + "\" and resource.labels.container_group_name = \"" + $group + "\""), sort_order: "desc", start_time: $start_time}' \
+| curl --fail-with-body --silent --show-error \
+  --request POST \
+  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/log-entries" \
+  --header "Content-Type: application/json" \
+  --header "Salad-Api-Key: ${SALAD_API_KEY:?set SALAD_API_KEY}" \
+  --data-binary @- \
+| jq -r '.items[] | [.time, (.text_log // (.json_log | tojson))] | @tsv'
+"""
+
+[tasks."salad:start"]
+description = "Start the SaladCloud container group"
+run = """
+curl --fail-with-body --silent --show-error \
+  --request POST \
+  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-cloud}/start" \
+  --header "Salad-Api-Key: ${SALAD_API_KEY:?set SALAD_API_KEY}"
+"""
+
+[tasks."salad:status"]
+description = "Show the SaladCloud container group"
+run = """
+curl --fail-with-body --silent --show-error \
+  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-cloud}" \
+  --header "Salad-Api-Key: ${SALAD_API_KEY:?set SALAD_API_KEY}" \
+| jq
+"""
+
+[tasks."salad:stop"]
+description = "Stop the SaladCloud container group"
+run = """
+curl --fail-with-body --silent --show-error \
+  --request POST \
+  --url "https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION:?set SALAD_ORGANISATION}/projects/${SALAD_PROJECT:?set SALAD_PROJECT}/containers/${SALAD_CONTAINER_GROUP:-comfy-cloud}/stop" \
+  --header "Salad-Api-Key: ${SALAD_API_KEY:?set SALAD_API_KEY}"
+"""
+
+[tasks."vast:deploy"]
+description = "Create a Vast.ai instance"
+run = """
+shell_quote() {
+  python -c 'import shlex, sys; print(shlex.quote(sys.argv[1]))' "$1"
+}
+environment="-e API_KEY=$(shell_quote "${API_KEY:?set API_KEY}") -e COMFY_UI_PASSWORD=$(shell_quote "${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD}") -e COMFY_UI_USERNAME=$(shell_quote "${COMFY_UI_USERNAME:-comfy}") -e MODE=pod -e MODEL_PROFILES=$(shell_quote "${MODEL_PROFILES:-flux-2-klein-4b}") -p 8000:8000"
+if [[ -n "${HF_TOKEN:-}" && "${HF_TOKEN}" != "REPLACE_ME" ]]; then
+  environment="${environment} -e HF_TOKEN=$(shell_quote "${HF_TOKEN}")"
+fi
+vastai --api-key "${VAST_API_KEY:?set VAST_API_KEY}" create instance \
+  "${VAST_OFFER_ID:?set VAST_OFFER_ID from `mise run vast:offers`}" \
+  --disk "${VAST_DISK_GB:-100}" \
+  --env "${environment}" \
+  --image "${IMAGE_NAME}" \
+  --label comfy-cloud
+"""
+
+[tasks."vast:destroy"]
+description = "Destroy a Vast.ai instance and its local data"
+run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" destroy instance \"${VAST_INSTANCE_ID:?set VAST_INSTANCE_ID}\""
+
+[tasks."vast:list"]
+description = "List Vast.ai instances"
+run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" show instances"
+
+[tasks."vast:logs"]
+description = "Show Vast.ai instance logs"
+run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" logs \"${VAST_INSTANCE_ID:?set VAST_INSTANCE_ID}\""
+
+[tasks."vast:offers"]
+description = "Find suitable Vast.ai offers"
+run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" search offers 'gpu_ram >= 16 disk_space >= 100 num_gpus = 1 reliability > 0.98 rentable = true' --order dph --storage \"${VAST_DISK_GB:-100}\""
+
+[tasks."vast:start"]
+description = "Start a Vast.ai instance"
+run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" start instance \"${VAST_INSTANCE_ID:?set VAST_INSTANCE_ID}\""
+
+[tasks."vast:status"]
+description = "Show a Vast.ai instance"
+run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" show instance \"${VAST_INSTANCE_ID:?set VAST_INSTANCE_ID}\""
+
+[tasks."vast:stop"]
+description = "Stop a Vast.ai instance while preserving its disk"
+run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" stop instance \"${VAST_INSTANCE_ID:?set VAST_INSTANCE_ID}\""

@@ -1,0 +1,64 @@
+{
+  "autostart_policy": true,
+  "display_name": "Comfy Cloud",
+  "name": "comfy-cloud",
+  "replicas": 1,
+  "restart_policy": "always",
+  "container": {
+    "image": "ghcr.io/OWNER/comfy-cloud:flux-2-klein-4b",
+    "image_caching": true,
+    "priority": "low",
+    "environment_variables": {
+      "API_KEY": "CHANGE_ME",
+      "COMFY_UI_PASSWORD": "CHANGE_ME",
+      "COMFY_UI_USERNAME": "comfy",
+      "HF_TOKEN": "CHANGE_ME",
+      "MODE": "pod",
+      "MODEL_PROFILES": "flux-2-klein-4b"
+    },
+    "resources": {
+      "cpu": 4,
+      "memory": 16384,
+      "storage_amount": 53687091200,
+      "gpu_classes": ["CHANGE_ME"]
+    }
+  },
+  "liveness_probe": {
+    "failure_threshold": 3,
+    "initial_delay_seconds": 0,
+    "period_seconds": 30,
+    "success_threshold": 1,
+    "timeout_seconds": 5,
+    "http": {
+      "path": "/health/live",
+      "port": 8000
+    }
+  },
+  "networking": {
+    "auth": false,
+    "port": 8000,
+    "protocol": "http"
+  },
+  "readiness_probe": {
+    "failure_threshold": 3,
+    "initial_delay_seconds": 0,
+    "period_seconds": 5,
+    "success_threshold": 1,
+    "timeout_seconds": 3,
+    "http": {
+      "path": "/health/ready",
+      "port": 8000
+    }
+  },
+  "startup_probe": {
+    "failure_threshold": 180,
+    "initial_delay_seconds": 0,
+    "period_seconds": 5,
+    "success_threshold": 1,
+    "timeout_seconds": 3,
+    "http": {
+      "path": "/health/live",
+      "port": 8000
+    }
+  }
+}

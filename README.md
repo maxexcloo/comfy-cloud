@@ -1,14 +1,15 @@
 # comfy-cloud
 
-A small, stock-first ComfyUI container for Modal, RunPod, and Vast.ai. It exposes
-both the native ComfyUI API and an OpenAI-compatible workflow catalogue, so the same
-deployment can be used by Bifrost, Open WebUI, the ComfyUI browser, or direct clients.
+A small, stock-first ComfyUI container for Modal, RunPod, SaladCloud, and Vast.ai.
+It exposes both the native ComfyUI API and an OpenAI-compatible workflow catalogue,
+so the same deployment can be used by Bifrost, Open WebUI, the ComfyUI browser, or
+direct clients.
 
 ## What works
 
 - `GET /health/live`, `/health/ready`, and `/health` report readiness; `GET /metrics` exposes Prometheus counters. Responses carry an `x-request-id`.
 - `GET /v1/models` lists registered workflows as models.
-- Hugging Face model sources are pinned in `profiles/`; large files can be split into GHCR-safe packs with the CLI.
+- Hugging Face model sources are pinned in `profiles/`; selected profiles can be prepared automatically and large files can be split into GHCR-safe packs with the CLI.
 - `MODE=pod` serves the ComfyUI frontend at `/`.
 - `MODE=serverless` exposes the APIs but returns 404 for the frontend.
 - Native ComfyUI routes (`/prompt`, `/history`, `/view`, `/queue`, `/object_info`, `/ws`, and uploads) are proxied unchanged.
@@ -23,28 +24,29 @@ under `MODELS_DIR` (default `/opt/ComfyUI/models`).
 Development is driven by mise, matching the homelab repos:
 
 ```bash
-mise run build           # build the deployment image locally
-mise run check           # Prek hooks + pytest
-mise run deploy-modal    # deploy the Modal app
-mise run deploy-runpod   # create a RunPod pod
-mise run deploy-vast     # create a Vast.ai instance
-mise run fmt             # Prettier + Ruff formatting
-mise run setup           # create local configuration and install Prek hooks
+mise run check             # Prek hooks + pytest
+mise run modal:deploy      # deploy the Modal app
+mise run runpod:deploy     # create a RunPod pod
+mise run salad:deploy      # create a SaladCloud container group
+mise run setup             # create local configuration and install Prek hooks
+mise run vast:deploy       # create a Vast.ai instance
 ```
 
 Copy `.mise.local.toml.default` to `.mise.local.toml` (gitignored) and fill in
-secrets — API keys, `HF_TOKEN`/`CIVITAI_TOKEN`, S3 credentials, and the provider
-values (`MODAL_TOKEN_ID/SECRET`, `RUNPOD_API_KEY`, `VAST_API_KEY`,
-`VAST_OFFER_ID`). Non-secret defaults live in the `[env]` section of
-`.mise.toml`.
+secrets, provider identifiers, and the profile you want to run. `MODEL_PROFILES`
+accepts comma-separated bundled profile names and defaults to
+`flux-2-klein-4b` in the template.
 
-The provider CLIs are managed by mise: `modal` and `vastai` via pipx, and
-`runpodctl` from GitHub Releases. `mise install` fetches all tools from
-`.mise.toml`.
+The provider CLIs, GitHub CLI, and JSON tooling are managed by Mise. Run
+`mise tasks` for the complete control surface. Each provider has explicit
+`deploy`, `status`, `start`/`stop`, and `destroy` tasks where its API supports
+them; destructive tasks are deliberately separate.
 
-- `deploy-modal`: `modal deploy deploy/modal_app.py`
-- `deploy-runpod`: `runpodctl pod create ...` with a persistent model volume
-- `deploy-vast`: `vastai create instance ...` (needs `VAST_OFFER_ID` from `vastai search offers`)
+- `image:*`: request and inspect profile-image builds on GitHub.
+- `modal:*`: deploy, inspect logs/status, and stop the app.
+- `runpod:*`: deploy, list, inspect, start, stop, and destroy pods.
+- `salad:*`: deploy, inspect GPUs/logs/status, start, stop, and destroy a container group.
+- `vast:*`: find offers, deploy, inspect logs/status, start, stop, and destroy instances.
 
 Prebuilt images are also published by GitHub Actions:
 
@@ -60,9 +62,10 @@ need its visibility changed to public in the repository owner's package settings
 docker build -t comfy-cloud .
 docker run --gpus all --rm -p 8000:8000 \
   -e API_KEY=local-secret \
-  -e COMFY_UI_USERNAME=comfy \
   -e COMFY_UI_PASSWORD=local-ui-secret \
+  -e COMFY_UI_USERNAME=comfy \
   -e MODE=pod \
+  -e MODEL_PROFILES=flux-2-klein-4b \
   -v "$PWD/models:/opt/ComfyUI/models" \
   comfy-cloud
 ```
@@ -206,7 +209,19 @@ Open WebUI can use either integration:
 ## Model packs
 
 Keep the generic runtime and workflows in the image; keep weights in a mounted
-volume or separate model image. Fetch a pinned bundled profile into that volume:
+volume or separate profile image. The normal deployment path prepares profiles
+before ComfyUI starts:
+
+```bash
+MODEL_PROFILES=flux-2-klein-4b
+```
+
+Preparation is safe to repeat. A profile digest and file sizes are recorded under
+`MODELS_DIR/.comfy-cloud`; unchanged files are reused, downloads are installed
+atomically, and a filesystem lock prevents multiple workers from downloading the
+same profile concurrently. Readiness stays false until preparation finishes.
+
+Profiles can still be fetched manually:
 
 ```bash
 comfy-cloud models-fetch profiles/flux-2-klein-4b.yaml \
@@ -235,6 +250,18 @@ storage is billed per GB. Approximate sizes and monthly volume cost at
 For a first test, fetch the 4B distilled profile alone — the fastest model and
 the cheapest volume.
 
+For ephemeral SaladCloud nodes, request the small profile image instead:
+
+```bash
+mise run image:profile
+```
+
+This triggers GitHub to publish
+`ghcr.io/OWNER/comfy-cloud:flux-2-klein-4b`. It is manual because publishing
+weights may impose upstream licence obligations. Larger profiles remain on
+persistent volumes: the 9B and MiniMax sets exceed SaladCloud's image limit, and
+keeping them out of the runtime image avoids slow pulls for every provider.
+
 Hugging Face sources require a pinned `revision` and optionally use `HF_TOKEN`.
 Civitai sources use an immutable `version_id`, optional `filename`, a ComfyUI-relative
 `destination`, and optional `sha256`; private downloads use `CIVITAI_TOKEN`:
@@ -256,9 +283,7 @@ comfy-cloud unpack model-pack/model.safetensors.pack.json /opt/ComfyUI/models/di
 ```
 
 The chunk directory can be copied into separate OCI layers or published as an OCI
-artefact. Reconstruction verifies every part and the final file. The provided
-profile files describe upstream sources but do not download gated weights during
-container startup.
+artefact. Reconstruction verifies every part and the final file.
 
 ## Deployment
 
@@ -267,19 +292,32 @@ For a first deployment:
 1. Push `main` and wait for the `container` workflow to publish
    `ghcr.io/OWNER/comfy-cloud:latest`.
 2. Make the first GHCR package public, or configure provider registry credentials.
-3. Run `mise run setup`, set a complete `IMAGE_NAME` reference and real secrets in
-   `.mise.local.toml`, then choose one deployment task below.
-4. Confirm `GET /health/ready` returns 200 before installing a model profile into
-   the mounted `/opt/ComfyUI/models` volume.
+3. Run `mise run setup`, set real secrets and provider identifiers in
+   `.mise.local.toml`, then choose one `provider:deploy` task below.
+4. Wait for automatic profile preparation, then confirm `GET /health/ready`
+   returns 200.
 
 The gateway refuses to start with absent or placeholder API credentials. A fresh
-deployment intentionally advertises no models until their required files have been
-installed.
+deployment advertises a workflow only after its required files are available.
 
-- Modal: set `COMFY_CLOUD_IMAGE`, create the secret referenced by `MODAL_SECRET`, then run `modal deploy deploy/modal_app.py`.
-- RunPod pod: run `mise run deploy-runpod`, or import `deploy/runpod-template.json`; both use persistent model storage.
-- RunPod serverless: import the image as a **Load Balancer** endpoint, expose port `8000`, set `PORT=8000`, `PORT_HEALTH=8000`, and `MODE=serverless`. The image implements RunPod's `/ping` readiness contract.
-- Vast.ai: use `deploy/vast-template.json` as the starting template and attach adequate disk/model storage.
+| Provider          | Model storage         | Idle approach            | Best fit                                |
+| ----------------- | --------------------- | ------------------------ | --------------------------------------- |
+| Modal             | Modal Volume          | 60-second scale-down     | Clean managed API and bursty traffic    |
+| RunPod pod        | Pod/network volume    | Explicit `runpod:stop`   | Simplest and fastest first deployment   |
+| RunPod serverless | Network volume        | Zero workers + FlashBoot | Irregular direct API traffic            |
+| SaladCloud        | Profile image         | Explicit `salad:stop`    | Cheapest interruptible 4B inference     |
+| Vast.ai           | Instance/local volume | Explicit `vast:stop`     | Cheap experiments with manual lifecycle |
+
+- Modal: create the secret referenced by `MODAL_SECRET`, then run `mise run modal:deploy`. `MODAL_MIN_CONTAINERS=0` and a 60-second scale-down window are the low-idle defaults.
+- RunPod pod: run `mise run runpod:deploy`, or import `deploy/runpod-template.json`. The default persistent volume downloads the selected profile once.
+- RunPod serverless: import `deploy/runpod-serverless.json` as a **Load Balancer** endpoint, attach a pre-populated network volume, enable FlashBoot, use zero active workers, and mount models under `/runpod-volume/models`.
+- SaladCloud: run `mise run salad:gpu-classes`, select suitable UUIDs, build the `flux-2-klein-4b` profile image, then run `mise run salad:deploy`. Salad storage is ephemeral, so the generic image would download weights after every reallocation.
+- Vast.ai: run `mise run vast:offers`, set `VAST_OFFER_ID`, then run `mise run vast:deploy`. Stopping preserves instance data; destroying does not.
+
+For the first test, use one 24 GB GPU, one replica/worker, and only
+`flux-2-klein-4b`. Adding every profile increases download time, storage, VRAM
+requirements, and the chance of paying for idle capacity without making a single
+request faster.
 
 For direct Bifrost/Open WebUI compatibility, use an HTTP/load-balancing serverless
 product rather than a queue endpoint that wraps requests in a provider-specific

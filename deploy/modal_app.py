@@ -11,14 +11,20 @@ image = modal.Image.from_registry(
 models = modal.Volume.from_name(
     os.getenv("MODAL_MODEL_VOLUME", "comfy-cloud-models"), create_if_missing=True
 )
+environment = {
+    "MODEL_PROFILES": os.getenv("MODEL_PROFILES", "flux-2-klein-4b"),
+    "MODELS_DIR": "/opt/ComfyUI/models",
+}
 
 
 @app.function(
-    image=image,
     gpu=os.getenv("MODAL_GPU", "L40S"),
-    volumes={"/opt/ComfyUI/models": models},
+    image=image,
+    min_containers=int(os.getenv("MODAL_MIN_CONTAINERS", "0")),
+    scaledown_window=int(os.getenv("MODAL_SCALEDOWN_WINDOW", "60")),
+    env=environment,
     secrets=[modal.Secret.from_name(os.getenv("MODAL_SECRET", "comfy-cloud"))],
-    scaledown_window=300,
+    volumes={"/opt/ComfyUI/models": models},
 )
 @modal.web_server(8000, startup_timeout=900)
 def serve():

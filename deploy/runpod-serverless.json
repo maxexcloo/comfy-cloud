@@ -1,12 +1,14 @@
 {
+  "containerDiskInGb": 30,
   "endpointType": "load-balancer",
   "imageName": "ghcr.io/OWNER/comfy-cloud:TAG",
-  "containerDiskInGb": 100,
   "ports": "8000/http",
   "env": [
+    { "key": "API_KEY", "value": "CHANGE_ME" },
     { "key": "MODE", "value": "serverless" },
+    { "key": "MODELS_DIR", "value": "/runpod-volume/models" },
+    { "key": "MODEL_PROFILES", "value": "flux-2-klein-4b" },
     { "key": "PORT", "value": "8000" },
-    { "key": "PORT_HEALTH", "value": "8000" },
-    { "key": "API_KEY", "value": "CHANGE_ME" }
+    { "key": "PORT_HEALTH", "value": "8000" }
   ]
 }

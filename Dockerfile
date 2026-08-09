@@ -3,10 +3,12 @@ FROM nvidia/cuda:12.9.2-cudnn-runtime-ubuntu24.04
 COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /usr/local/bin/uv
 
 ARG COMFYUI_REF=v0.31.1
+ARG MODEL_PROFILE
 ENV BUILTIN_CATALOGUE_DIR=/opt/comfy-cloud/catalogue \
     COMFYUI_DIR=/opt/ComfyUI \
     COMFYUI_URL=http://127.0.0.1:8188 \
     DEBIAN_FRONTEND=noninteractive \
+    HF_XET_HIGH_PERFORMANCE=1 \
     MODE=pod \
     PATH=/opt/venv/bin:${PATH} \
     PIP_NO_CACHE_DIR=1 \
@@ -36,6 +38,13 @@ RUN uv export --frozen --no-dev --extra build --extra s3 --extra vast --no-emit-
     && uv build --wheel --out-dir /tmp/dist \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --no-deps /tmp/dist/*.whl \
     && rm -rf /tmp/dist /tmp/requirements.txt
+
+RUN --mount=type=secret,id=HF_TOKEN,env=HF_TOKEN \
+    --mount=type=secret,id=CIVITAI_TOKEN,env=CIVITAI_TOKEN \
+    if [ -n "${MODEL_PROFILE}" ]; then \
+      comfy-cloud models-fetch "/opt/comfy-cloud/profiles/${MODEL_PROFILE}.yaml" \
+        --models-dir /opt/ComfyUI/models; \
+    fi
 
 EXPOSE 8000
 CMD ["/opt/venv/bin/python", "-m", "comfy_cloud.supervisor"]
