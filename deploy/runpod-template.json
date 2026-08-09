@@ -10,7 +10,6 @@
     { "key": "API_KEY", "value": "CHANGE_ME" },
     { "key": "COMFY_UI_PASSWORD", "value": "CHANGE_ME" },
     { "key": "COMFY_UI_USERNAME", "value": "comfy" },
-    { "key": "MODE", "value": "pod" },
-    { "key": "MODEL_PROFILES", "value": "flux-2-klein-4b" }
+    { "key": "MODE", "value": "pod" }
   ]
 }

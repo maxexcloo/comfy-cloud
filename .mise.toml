@@ -1,6 +1,5 @@
 [tools]
 actionlint = "1.7.12"
-"github:cli/cli" = "2.97.0"
 "github:runpod/runpodctl" = "2.9.0"
 hadolint = "2.15.1"
 jq = "1.8.1"
@@ -11,10 +10,6 @@ prettier = "3.9.6"
 python = "3.14.7"
 ruff = "0.16.2"
 uv = "0.12.3"
-
-[tasks.build]
-description = "Build the deployment image"
-run = "docker build --tag \"${IMAGE_NAME}\" ."
 
 [tasks.check]
 description = "Run all repository checks"
@@ -48,14 +43,6 @@ fi
 prek install
 """
 
-[tasks."image:profile"]
-description = "Build a model-profile image on GitHub"
-run = "gh workflow run profile-image.yml --field profile=\"${MODEL_PROFILE:?set MODEL_PROFILE}\""
-
-[tasks."image:status"]
-description = "Show model-profile image builds"
-run = "gh run list --workflow profile-image.yml"
-
 [tasks."modal:deploy"]
 description = "Deploy or update the Modal app"
 run = "modal deploy deploy/modal_app.py"
@@ -79,9 +66,10 @@ pod_env="$(jq -cn \
   --arg api_key "${API_KEY:?set API_KEY}" \
   --arg hf_token "${HF_TOKEN:-}" \
   --arg password "${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD}" \
-  --arg profiles "${MODEL_PROFILES:-flux-2-klein-4b}" \
+  --arg profiles "${MODEL_PROFILES:-}" \
   --arg username "${COMFY_UI_USERNAME:-comfy}" \
-  '{API_KEY: $api_key, COMFY_UI_PASSWORD: $password, COMFY_UI_USERNAME: $username, MODE: "pod", MODEL_PROFILES: $profiles}
+  '{API_KEY: $api_key, COMFY_UI_PASSWORD: $password, COMFY_UI_USERNAME: $username, MODE: "pod"}
+   + if $profiles == "" then {} else {MODEL_PROFILES: $profiles} end
    + if ($hf_token == "" or $hf_token == "REPLACE_ME") then {} else {HF_TOKEN: $hf_token} end')"
 storage_args=(--volume-in-gb "${RUNPOD_VOLUME_GB:-100}")
 if [[ -n "${RUNPOD_NETWORK_VOLUME_ID:-}" && "${RUNPOD_NETWORK_VOLUME_ID}" != "REPLACE_ME" ]]; then
@@ -128,7 +116,7 @@ jq \
   --arg image "${SALAD_IMAGE_NAME:-${IMAGE_NAME}}" \
   --arg password "${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD}" \
   --arg priority "${SALAD_PRIORITY:-low}" \
-  --arg profiles "${MODEL_PROFILES:-flux-2-klein-4b}" \
+  --arg profiles "${MODEL_PROFILES:-}" \
   --arg username "${COMFY_UI_USERNAME:-comfy}" \
   --argjson gpu_classes "${SALAD_GPU_CLASSES:?set SALAD_GPU_CLASSES to a JSON array}" \
   --argjson replicas "${SALAD_REPLICAS:-1}" \
@@ -140,8 +128,8 @@ jq \
    | .container.environment_variables.COMFY_UI_PASSWORD = $password
    | .container.environment_variables.COMFY_UI_USERNAME = $username
    | .container.environment_variables.HF_TOKEN = $hf_token
-   | .container.environment_variables.MODEL_PROFILES = $profiles
    | .replicas = $replicas
+   | if $profiles == "" then del(.container.environment_variables.MODEL_PROFILES) else .container.environment_variables.MODEL_PROFILES = $profiles end
    | if ($hf_token == "" or $hf_token == "REPLACE_ME") then del(.container.environment_variables.HF_TOKEN) else . end' \
   deploy/salad-container-group.json \
 | curl --fail-with-body --silent --show-error \
@@ -224,9 +212,12 @@ run = """
 shell_quote() {
   python -c 'import shlex, sys; print(shlex.quote(sys.argv[1]))' "$1"
 }
-environment="-e API_KEY=$(shell_quote "${API_KEY:?set API_KEY}") -e COMFY_UI_PASSWORD=$(shell_quote "${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD}") -e COMFY_UI_USERNAME=$(shell_quote "${COMFY_UI_USERNAME:-comfy}") -e MODE=pod -e MODEL_PROFILES=$(shell_quote "${MODEL_PROFILES:-flux-2-klein-4b}") -p 8000:8000"
+environment="-e API_KEY=$(shell_quote "${API_KEY:?set API_KEY}") -e COMFY_UI_PASSWORD=$(shell_quote "${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD}") -e COMFY_UI_USERNAME=$(shell_quote "${COMFY_UI_USERNAME:-comfy}") -e MODE=pod -p 8000:8000"
 if [[ -n "${HF_TOKEN:-}" && "${HF_TOKEN}" != "REPLACE_ME" ]]; then
   environment="${environment} -e HF_TOKEN=$(shell_quote "${HF_TOKEN}")"
+fi
+if [[ -n "${MODEL_PROFILES:-}" ]]; then
+  environment="${environment} -e MODEL_PROFILES=$(shell_quote "${MODEL_PROFILES}")"
 fi
 vastai --api-key "${VAST_API_KEY:?set VAST_API_KEY}" create instance \
   "${VAST_OFFER_ID:?set VAST_OFFER_ID from `mise run vast:offers`}" \

@@ -11,10 +11,9 @@ image = modal.Image.from_registry(
 models = modal.Volume.from_name(
     os.getenv("MODAL_MODEL_VOLUME", "comfy-cloud-models"), create_if_missing=True
 )
-environment = {
-    "MODEL_PROFILES": os.getenv("MODEL_PROFILES", "flux-2-klein-4b"),
-    "MODELS_DIR": "/opt/ComfyUI/models",
-}
+environment = {"MODELS_DIR": "/opt/ComfyUI/models"}
+if model_profiles := os.getenv("MODEL_PROFILES"):
+    environment["MODEL_PROFILES"] = model_profiles
 
 
 @app.function(

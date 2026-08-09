@@ -5,7 +5,7 @@
   "replicas": 1,
   "restart_policy": "always",
   "container": {
-    "image": "ghcr.io/OWNER/comfy-cloud:flux-2-klein-4b",
+    "image": "ghcr.io/OWNER/comfy-cloud:latest",
     "image_caching": true,
     "priority": "low",
     "environment_variables": {
@@ -13,8 +13,7 @@
       "COMFY_UI_PASSWORD": "CHANGE_ME",
       "COMFY_UI_USERNAME": "comfy",
       "HF_TOKEN": "CHANGE_ME",
-      "MODE": "pod",
-      "MODEL_PROFILES": "flux-2-klein-4b"
+      "MODE": "pod"
     },
     "resources": {
       "cpu": 4,

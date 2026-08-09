@@ -1,8 +1,6 @@
 [env]
-# Image and model profile
+# Image
 IMAGE_NAME = "ghcr.io/maxexcloo/comfy-cloud:latest"
-MODEL_PROFILE = "flux-2-klein-4b"
-MODEL_PROFILES = "flux-2-klein-4b"
 
 # Gateway
 API_KEY = "REPLACE_ME"
@@ -45,7 +43,7 @@ RUNPOD_VOLUME_GB = "100"
 SALAD_API_KEY = "REPLACE_ME"
 SALAD_CONTAINER_GROUP = "comfy-cloud"
 SALAD_GPU_CLASSES = '["REPLACE_ME"]'
-SALAD_IMAGE_NAME = "ghcr.io/maxexcloo/comfy-cloud:flux-2-klein-4b"
+SALAD_IMAGE_NAME = "ghcr.io/maxexcloo/comfy-cloud:latest"
 SALAD_ORGANISATION = "REPLACE_ME"
 SALAD_PRIORITY = "low"
 SALAD_PROJECT = "REPLACE_ME"

@@ -33,20 +33,23 @@ mise run vast:deploy       # create a Vast.ai instance
 ```
 
 Copy `.mise.local.toml.default` to `.mise.local.toml` (gitignored) and fill in
-secrets, provider identifiers, and the profile you want to run. `MODEL_PROFILES`
-accepts comma-separated bundled profile names and defaults to
-`flux-2-klein-4b` in the template.
+secrets and provider identifiers. No model profile is selected by default. Add
+`MODEL_PROFILES` with one or more comma-separated bundled profile names when a
+deployment should prepare models automatically.
 
-The provider CLIs, GitHub CLI, and JSON tooling are managed by Mise. Run
+The provider CLIs and API dependencies are managed by Mise. Run
 `mise tasks` for the complete control surface. Each provider has explicit
 `deploy`, `status`, `start`/`stop`, and `destroy` tasks where its API supports
-them; destructive tasks are deliberately separate.
+them; destructive tasks are deliberately separate. Mise does not build or publish
+images: GitHub Actions handles both images automatically after each push to `main`.
 
-- `image:*`: request and inspect profile-image builds on GitHub.
 - `modal:*`: deploy, inspect logs/status, and stop the app.
 - `runpod:*`: deploy, list, inspect, start, stop, and destroy pods.
 - `salad:*`: deploy, inspect GPUs/logs/status, start, stop, and destroy a container group.
 - `vast:*`: find offers, deploy, inspect logs/status, start, stop, and destroy instances.
+
+SaladCloud has no first-party CLI comparable to `runpodctl` or `vastai`, so its
+tasks call the supported REST API directly with `curl` and `jq`.
 
 Prebuilt images are also published by GitHub Actions:
 
@@ -54,21 +57,11 @@ Prebuilt images are also published by GitHub Actions:
 docker pull ghcr.io/maxexcloo/comfy-cloud:latest
 ```
 
-Pushes to `main` publish `latest`, `main`, and `sha-...` tags. Git tags such as
-`v0.1.0` also publish `v0.1.0`, `0.1.0`, and `0.1`. The first GHCR package may
-need its visibility changed to public in the repository owner's package settings.
-
-```bash
-docker build -t comfy-cloud .
-docker run --gpus all --rm -p 8000:8000 \
-  -e API_KEY=local-secret \
-  -e COMFY_UI_PASSWORD=local-ui-secret \
-  -e COMFY_UI_USERNAME=comfy \
-  -e MODE=pod \
-  -e MODEL_PROFILES=flux-2-klein-4b \
-  -v "$PWD/models:/opt/ComfyUI/models" \
-  comfy-cloud
-```
+Pushes to `main` publish the generic `latest`, `main`, and `sha-...` tags plus
+the weight-bearing `flux-2-klein-4b` and `flux-2-klein-4b-<commit>` tags. Git
+tags such as `v0.1.0` also publish `v0.1.0`, `0.1.0`, and `0.1`. The first GHCR
+package may need its visibility changed to public in the repository owner's
+package settings.
 
 Then use:
 
@@ -250,17 +243,14 @@ storage is billed per GB. Approximate sizes and monthly volume cost at
 For a first test, fetch the 4B distilled profile alone — the fastest model and
 the cheapest volume.
 
-For ephemeral SaladCloud nodes, request the small profile image instead:
-
-```bash
-mise run image:profile
-```
-
-This triggers GitHub to publish
-`ghcr.io/OWNER/comfy-cloud:flux-2-klein-4b`. It is manual because publishing
-weights may impose upstream licence obligations. Larger profiles remain on
-persistent volumes: the 9B and MiniMax sets exceed SaladCloud's image limit, and
-keeping them out of the runtime image avoids slow pulls for every provider.
+For ephemeral SaladCloud nodes, GitHub automatically publishes
+`ghcr.io/OWNER/comfy-cloud:flux-2-klein-4b` after the generic image succeeds on
+`main`. The jobs share the runtime layer cache, so only the model layer differs.
+Larger profiles remain on persistent volumes: the 9B and MiniMax sets exceed
+SaladCloud's image limit, and keeping them out of the runtime image avoids slow
+pulls for every provider. Publishing weights may impose upstream licence
+obligations; repository owners remain responsible for reviewing them before
+enabling package access.
 
 Hugging Face sources require a pinned `revision` and optionally use `HF_TOKEN`.
 Civitai sources use an immutable `version_id`, optional `filename`, a ComfyUI-relative
@@ -311,7 +301,7 @@ deployment advertises a workflow only after its required files are available.
 - Modal: create the secret referenced by `MODAL_SECRET`, then run `mise run modal:deploy`. `MODAL_MIN_CONTAINERS=0` and a 60-second scale-down window are the low-idle defaults.
 - RunPod pod: run `mise run runpod:deploy`, or import `deploy/runpod-template.json`. The default persistent volume downloads the selected profile once.
 - RunPod serverless: import `deploy/runpod-serverless.json` as a **Load Balancer** endpoint, attach a pre-populated network volume, enable FlashBoot, use zero active workers, and mount models under `/runpod-volume/models`.
-- SaladCloud: run `mise run salad:gpu-classes`, select suitable UUIDs, build the `flux-2-klein-4b` profile image, then run `mise run salad:deploy`. Salad storage is ephemeral, so the generic image would download weights after every reallocation.
+- SaladCloud: run `mise run salad:gpu-classes`, select suitable UUIDs, then explicitly set `SALAD_IMAGE_NAME` and `MODEL_PROFILES` before `mise run salad:deploy`. GitHub publishes the named `flux-2-klein-4b` image automatically, but Salad does not select it by default. Salad storage is ephemeral, so the generic image would download selected weights after every reallocation.
 - Vast.ai: run `mise run vast:offers`, set `VAST_OFFER_ID`, then run `mise run vast:deploy`. Stopping preserves instance data; destroying does not.
 
 For the first test, use one 24 GB GPU, one replica/worker, and only

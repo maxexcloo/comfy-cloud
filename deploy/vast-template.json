@@ -6,8 +6,7 @@
     "API_KEY": "CHANGE_ME",
     "COMFY_UI_PASSWORD": "CHANGE_ME",
     "COMFY_UI_USERNAME": "comfy",
-    "MODE": "pod",
-    "MODEL_PROFILES": "flux-2-klein-4b"
+    "MODE": "pod"
   },
   "ports": [8000]
 }
