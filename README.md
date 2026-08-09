@@ -23,26 +23,26 @@ under `MODELS_DIR` (default `/opt/ComfyUI/models`).
 Development is driven by mise, matching the homelab repos:
 
 ```bash
-mise run setup   # creates .mise.local.toml from the template, then installs pre-commit hooks
-mise run check   # pre-commit hooks + pytest
-mise run fmt     # prettier + ruff format
-mise run deploy  # deploy to a provider (set PROVIDER=modal|runpod|vast)
+mise run check           # Prek hooks + pytest
+mise run deploy-modal    # deploy the Modal app
+mise run deploy-runpod   # create a RunPod pod
+mise run deploy-vast     # create a Vast.ai instance
+mise run fmt             # Prettier + Ruff formatting
+mise run setup           # create local configuration and install Prek hooks
 ```
 
 Copy `.mise.local.toml.default` to `.mise.local.toml` (gitignored) and fill in
-secrets — API keys, `HF_TOKEN`/`CIVITAI_TOKEN`, S3 credentials, `GHCR_TOKEN`,
-and the provider values (`PROVIDER`, `MODAL_TOKEN_ID/SECRET`, `RUNPOD_API_KEY`,
-`VAST_API_KEY`, `VAST_OFFER_ID`). Non-secret defaults live in the `[env]`
-section of `.mise.toml`.
+secrets — API keys, `HF_TOKEN`/`CIVITAI_TOKEN`, S3 credentials, and the provider
+values (`MODAL_TOKEN_ID/SECRET`, `RUNPOD_API_KEY`, `VAST_API_KEY`,
+`VAST_OFFER_ID`). Non-secret defaults live in the `[env]` section of
+`.mise.toml`.
 
-`mise run deploy` dispatches on `PROVIDER` to the per-provider task. The provider
-CLIs are managed by mise: `modal` and `vastai` via pipx, `runpodctl` via ubi.
-`mise install` fetches all tools from `.mise.toml`.
+The provider CLIs are managed by mise: `modal` and `vastai` via pipx, and
+`runpodctl` via ubi. `mise install` fetches all tools from `.mise.toml`.
 
 - `deploy-modal`: `modal deploy deploy/modal_app.py`
 - `deploy-runpod`: `runpodctl create pod ...` from the template values
 - `deploy-vast`: `vastai create instance ...` (needs `VAST_OFFER_ID` from `vastai search offers`)
-- `deploy-image`: build and push the runtime image to GHCR
 
 Prebuilt images are also published by GitHub Actions:
 

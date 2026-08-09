@@ -2,23 +2,23 @@
 actionlint = "1.7.12"
 hadolint = "2.15.1"
 "pipx:modal" = "1.5.3"
+"pipx:vastai" = "1.5.2"
 prek = "0.4.12"
 prettier = "3.9.6"
 python = "3.13"
 ruff = "0.16.1"
 "ubi:runpod/runpodctl" = "2.8.1"
 uv = "0.12.1"
-"pipx:vastai" = "1.5.2"
 
 [tasks.check]
 description = "Run all repository checks"
-run = "prek run --all-files && uv run --extra test pytest -q"
+run = "prek run --all-files && uv run --isolated --extra test pytest -q"
 
 [tasks.cleanup]
 description = "Remove caches and bytecode"
 run = """
 find . -path ./.git -prune -o \
-  -type d \\( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache \\) \
+  -type d \\( -name .pytest_cache -o -name .ruff_cache -o -name __pycache__ \\) \
   -prune -exec rm -rf -- {} +
 find . -path ./.git -prune -o -type f -name '*.pyc' -exec rm -f -- {} +
 """

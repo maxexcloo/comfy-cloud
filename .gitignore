@@ -1,8 +1,6 @@
+.mise.local.toml
 .pytest_cache/
 .ruff_cache/
-.uv-cache/
-.venv*
 __pycache__/
-models
-output
-.mise.local.toml
+models/
+output/

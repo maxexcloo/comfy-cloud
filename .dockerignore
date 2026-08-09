@@ -1,6 +1,9 @@
 .git
 .pytest_cache/
+.ruff_cache/
 __pycache__/
 dist
 model-packs
+models
+output
 tests
