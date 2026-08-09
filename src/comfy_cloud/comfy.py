@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import mimetypes
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any
+from pathlib import Path
+from typing import Any, BinaryIO
 
 import httpx
 
@@ -47,7 +49,9 @@ class ComfyClient:
             raise RuntimeError(f"ComfyUI rejected workflow: {data}")
         return data["prompt_id"]
 
-    async def upload(self, filename: str, content: bytes, content_type: str) -> str:
+    async def upload(
+        self, filename: str, content: bytes | BinaryIO, content_type: str
+    ) -> str:
         response = await self.http.post(
             "/upload/image",
             files={"image": (filename, content, content_type)},
@@ -107,11 +111,33 @@ class ComfyClient:
     async def fetch_output(self, ref: OutputRef) -> httpx.Response:
         response = await self.http.get(
             "/view",
-            params={
-                "filename": ref.filename,
-                "subfolder": ref.subfolder,
-                "type": ref.type,
-            },
+            params=self._output_params(ref),
         )
         response.raise_for_status()
         return response
+
+    async def save_output(self, ref: OutputRef, destination: Path) -> str:
+        async with self.http.stream(
+            "GET", "/view", params=self._output_params(ref)
+        ) as response:
+            response.raise_for_status()
+            with destination.open("wb") as output:
+                async for chunk in response.aiter_bytes():
+                    output.write(chunk)
+            return response.headers.get("content-type", ref.media_type)
+
+    async def stream_output(self, ref: OutputRef) -> AsyncIterator[bytes]:
+        async with self.http.stream(
+            "GET", "/view", params=self._output_params(ref)
+        ) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes():
+                yield chunk
+
+    @staticmethod
+    def _output_params(ref: OutputRef) -> dict[str, str]:
+        return {
+            "filename": ref.filename,
+            "subfolder": ref.subfolder,
+            "type": ref.type,
+        }

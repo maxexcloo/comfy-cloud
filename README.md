@@ -23,6 +23,7 @@ under `MODELS_DIR` (default `/opt/ComfyUI/models`).
 Development is driven by mise, matching the homelab repos:
 
 ```bash
+mise run build           # build the deployment image locally
 mise run check           # Prek hooks + pytest
 mise run deploy-modal    # deploy the Modal app
 mise run deploy-runpod   # create a RunPod pod
@@ -38,10 +39,11 @@ values (`MODAL_TOKEN_ID/SECRET`, `RUNPOD_API_KEY`, `VAST_API_KEY`,
 `.mise.toml`.
 
 The provider CLIs are managed by mise: `modal` and `vastai` via pipx, and
-`runpodctl` via ubi. `mise install` fetches all tools from `.mise.toml`.
+`runpodctl` from GitHub Releases. `mise install` fetches all tools from
+`.mise.toml`.
 
 - `deploy-modal`: `modal deploy deploy/modal_app.py`
-- `deploy-runpod`: `runpodctl create pod ...` from the template values
+- `deploy-runpod`: `runpodctl pod create ...` with a persistent model volume
 - `deploy-vast`: `vastai create instance ...` (needs `VAST_OFFER_ID` from `vastai search offers`)
 
 Prebuilt images are also published by GitHub Actions:
@@ -132,7 +134,7 @@ by the running ComfyUI (`/object_info`). A workflow whose nodes are missing is
 hidden and rejected if addressed directly, so a stale workflow never appears
 runnable against an older ComfyUI image.
 
-Three stock, self-hosted native workflows are bundled and become discoverable
+Eight stock, self-hosted native workflows are bundled and become discoverable
 after their required files are installed:
 
 - `flux-2-klein-4b/image-edit`
@@ -186,9 +188,10 @@ S3_PUBLIC_BASE_URL=           # optional: use public URLs instead of presigned
 S3_URL_EXPIRES=3600           # presigned URL lifetime in seconds
 ```
 
-Object storage requires `boto3` (install the `s3` extra: `pip install '.[s3]'`).
-When storage is unavailable or an upload fails, the gateway falls back to
-proxying ComfyUI output, so storage is strictly additive.
+The published image includes object-storage support. For a source installation,
+install the `s3` extra with `pip install '.[s3]'`. Persisted jobs store the object
+key and mint a fresh presigned URL for each request. When storage is unavailable
+or an upload fails, the gateway falls back to proxying ComfyUI output.
 
 ## Bifrost and Open WebUI
 
@@ -226,7 +229,7 @@ storage is billed per GB. Approximate sizes and monthly volume cost at
 | ------------------------------ | ------- | ----- | ----------- |
 | `flux-2-klein-4b`              | ~8 GB   | 16 GB | ~$0.56      |
 | `flux-2-klein-9b` (incl. base) | ~40 GB  | 24 GB | ~$2.80      |
-| `krea-2-turbo`                 | ~15 GB  | 24 GB | ~$1.05      |
+| `krea-2-turbo`                 | ~15 GB  | 48 GB | ~$1.05      |
 | `minimax-h3-fl2va`             | ~60 GB  | 80 GB | ~$4.20      |
 
 For a first test, fetch the 4B distilled profile alone — the fastest model and
@@ -259,18 +262,32 @@ container startup.
 
 ## Deployment
 
+For a first deployment:
+
+1. Push `main` and wait for the `container` workflow to publish
+   `ghcr.io/OWNER/comfy-cloud:latest`.
+2. Make the first GHCR package public, or configure provider registry credentials.
+3. Run `mise run setup`, set a complete `IMAGE_NAME` reference and real secrets in
+   `.mise.local.toml`, then choose one deployment task below.
+4. Confirm `GET /health/ready` returns 200 before installing a model profile into
+   the mounted `/opt/ComfyUI/models` volume.
+
+The gateway refuses to start with absent or placeholder API credentials. A fresh
+deployment intentionally advertises no models until their required files have been
+installed.
+
 - Modal: set `COMFY_CLOUD_IMAGE`, create the secret referenced by `MODAL_SECRET`, then run `modal deploy deploy/modal_app.py`.
-- RunPod pod: import `deploy/runpod-template.json`, replace the image and secrets, and attach model storage.
+- RunPod pod: run `mise run deploy-runpod`, or import `deploy/runpod-template.json`; both use persistent model storage.
 - RunPod serverless: import the image as a **Load Balancer** endpoint, expose port `8000`, set `PORT=8000`, `PORT_HEALTH=8000`, and `MODE=serverless`. The image implements RunPod's `/ping` readiness contract.
 - Vast.ai: use `deploy/vast-template.json` as the starting template and attach adequate disk/model storage.
 
 For direct Bifrost/Open WebUI compatibility, use an HTTP/load-balancing serverless
 product rather than a queue endpoint that wraps requests in a provider-specific
 `/run` envelope. Vast Serverless requires a PyWorker ingress: run
-`deploy/vast_worker.py` inside the same container as the gateway (with `aiohttp`
-installed) and point Vast's `PYWORKER_REPO` at a repository containing it. The
-worker forwards the OpenAI-compatible and native ComfyUI routes to the gateway,
-injects the bearer key, and streams responses back unchanged.
+`deploy/vast_worker.py` inside the same container as the gateway and point Vast's
+`PYWORKER_REPO` at this repository. The published image includes `aiohttp` and the
+worker. It preserves methods, query strings, multipart uploads, and streamed
+responses while injecting the gateway bearer key.
 
 ## Important limits
 

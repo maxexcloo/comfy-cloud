@@ -17,3 +17,5 @@ defaults:
   height: 1024
   seed: 0
   steps: 20
+required_files:
+  - checkpoints/example.safetensors

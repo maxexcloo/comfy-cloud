@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import tempfile
 import time
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
 
 import httpx
 import websockets
 from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from .auth import request_authorized, websocket_authorized
 from .catalogue import Catalogue, WorkflowModel
@@ -46,6 +48,47 @@ NATIVE_API_PREFIXES = (
 )
 
 
+class ParameterError(ValueError):
+    def __init__(self, parameter: str, message: str):
+        super().__init__(message)
+        self.parameter = parameter
+
+
+def integer_parameter(
+    value: Any,
+    parameter: str,
+    *,
+    default: int | None = None,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int | None:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        raise ParameterError(parameter, f"{parameter} must be an integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ParameterError(parameter, f"{parameter} must be an integer") from exc
+    if minimum is not None and parsed < minimum:
+        raise ParameterError(parameter, f"{parameter} must be at least {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise ParameterError(parameter, f"{parameter} must be at most {maximum}")
+    return parsed
+
+
+def dimensions_parameter(value: Any) -> tuple[int | None, int | None]:
+    if value in (None, "", "auto"):
+        return None, None
+    try:
+        width, height = (int(part) for part in value.lower().split("x", 1))
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ParameterError("size", "size must be WIDTHxHEIGHT or auto") from exc
+    if width <= 0 or height <= 0:
+        raise ParameterError("size", "size dimensions must be positive")
+    return width, height
+
+
 def openai_error(
     message: str, status: int, code: str, param: str | None = None
 ) -> JSONResponse:
@@ -70,6 +113,7 @@ class VideoJob:
     created_at: int = field(default_factory=lambda: int(time.time()))
     error: str | None = None
     output: OutputRef | None = None
+    output_key: str | None = None
     output_url: str | None = None
 
     def record(self) -> dict[str, Any]:
@@ -87,6 +131,7 @@ class VideoJob:
             }
             if self.output is not None
             else None,
+            "output_key": self.output_key,
             "output_url": self.output_url,
         }
 
@@ -110,6 +155,7 @@ class VideoJob:
             created_at=record.get("created_at", 0),
             error=record.get("error"),
             output=output,
+            output_key=record.get("output_key"),
             output_url=record.get("output_url"),
         )
 
@@ -123,6 +169,7 @@ class Runtime:
         self.jobs: dict[str, VideoJob] = {}
         self.job_store = JobStore(settings.jobs_dir)
         self.inference_lock = asyncio.Lock()
+        self.background_tasks: set[asyncio.Task[None]] = set()
         self.metrics: dict[str, int | float] = {
             "requests_total": 0,
             "requests_by_status": {},
@@ -133,7 +180,10 @@ class Runtime:
             "video_jobs_failed": 0,
         }
         for record in self.job_store.load():
-            job = VideoJob.from_record(record)
+            try:
+                job = VideoJob.from_record(record)
+            except (KeyError, TypeError, ValueError):
+                continue
             if job.status in {"queued", "in_progress"}:
                 job.status = "failed"
                 job.error = "worker restarted before the job completed"
@@ -153,16 +203,35 @@ class Runtime:
     def store_job(self, job: VideoJob) -> None:
         self.job_store.save(job.record())
 
+    def start_background_task(self, coroutine: Any) -> None:
+        task = asyncio.create_task(coroutine)
+        self.background_tasks.add(task)
+        task.add_done_callback(self.background_tasks.discard)
+
+    def job_output_url(self, job: VideoJob) -> str | None:
+        if self.storage is not None and job.output_key:
+            return self.storage.url(job.output_key)
+        return job.output_url
+
     async def upload_output(self, job: VideoJob) -> None:
         if self.storage is None or job.output is None:
             return
-        response = await self.comfy.fetch_output(job.output)
-        job.output_url = await self.storage.upload(
-            job.output.filename,
-            response.content,
-            response.headers.get("content-type", job.output.media_type),
-            job.output.subfolder,
-        )
+        with tempfile.NamedTemporaryFile(prefix="comfy-cloud-", delete=False) as file:
+            temporary = Path(file.name)
+        try:
+            content_type = await self.comfy.save_output(job.output, temporary)
+            output_url = await self.storage.upload_path(
+                job.output.filename,
+                temporary,
+                content_type,
+                job.output.subfolder,
+            )
+            if output_url:
+                job.output_key = self.storage.key(
+                    job.output.filename, job.output.subfolder
+                )
+        finally:
+            temporary.unlink(missing_ok=True)
 
     async def object_info(self) -> dict[str, Any] | None:
         try:
@@ -172,6 +241,8 @@ class Runtime:
 
     async def model(self, model_id: str) -> WorkflowModel:
         object_info = await self.object_info()
+        if object_info is None:
+            raise KeyError("ComfyUI node information is unavailable")
         return self.catalogue.get_available(
             model_id, self.settings.models_dir, object_info
         )
@@ -179,6 +250,8 @@ class Runtime:
     def available_models(
         self, object_info: dict[str, Any] | None
     ) -> list[WorkflowModel]:
+        if object_info is None:
+            return []
         return self.catalogue.list_available(self.settings.models_dir, object_info)
 
 
@@ -189,6 +262,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         yield
+        for task in runtime.background_tasks:
+            task.cancel()
+        if runtime.background_tasks:
+            await asyncio.gather(*runtime.background_tasks, return_exceptions=True)
         await runtime.comfy.close()
 
     app = FastAPI(title="Comfy Cloud", version="0.1.0", lifespan=lifespan)
@@ -332,12 +409,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return denied
         try:
             body = await request.json()
+            if not isinstance(body, dict):
+                raise TypeError
             model = await runtime.model(body.get("model", ""))
         except KeyError:
             return openai_error(
                 "Requested model was not found", 404, "model_not_found", "model"
             )
-        except ValueError:
+        except (TypeError, ValueError):
             return openai_error("Request body must be JSON", 400, "invalid_json")
         if model.operation != "image_generation":
             return openai_error(
@@ -351,33 +430,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return openai_error(
                 "prompt is required", 400, "missing_required_parameter", "prompt"
             )
-        size = body.get("size")
-        width = height = None
-        if size and size != "auto":
-            try:
-                width, height = (int(part) for part in size.lower().split("x", 1))
-            except (ValueError, AttributeError):
-                return openai_error(
-                    "size must be WIDTHxHEIGHT or auto", 400, "invalid_value", "size"
-                )
+        try:
+            width, height = dimensions_parameter(body.get("size"))
+            count = integer_parameter(
+                body.get("n"), "n", default=1, minimum=1, maximum=4
+            )
+            seed = integer_parameter(body.get("seed"), "seed", minimum=0)
+            steps = integer_parameter(body.get("steps"), "steps", minimum=1)
+        except ParameterError as exc:
+            return openai_error(str(exc), 400, "invalid_value", exc.parameter)
+        response_format = body.get("response_format", "b64_json")
+        if response_format not in ("b64_json", "url"):
+            return openai_error(
+                "response_format must be b64_json or url",
+                400,
+                "invalid_value",
+                "response_format",
+            )
         values = {
             "prompt": prompt,
             "negative_prompt": body.get("negative_prompt"),
             "width": width,
             "height": height,
-            "seed": body.get("seed"),
-            "steps": body.get("steps"),
+            "seed": seed,
+            "steps": steps,
         }
-        count = int(body.get("n", 1))
-        if count < 1 or count > 4:
-            return openai_error("n must be between 1 and 4", 400, "invalid_value", "n")
-        response_format = body.get("response_format", "b64_json")
         try:
             started = time.monotonic()
             refs: list[OutputRef] = []
             for index in range(count):
-                if values["seed"] is not None:
-                    values["seed"] = int(values["seed"]) + index
+                if seed is not None:
+                    values["seed"] = seed + index
                 refs.extend(await runtime.run(model, values))
             runtime.metrics["generations_total"] = (
                 int(runtime.metrics["generations_total"]) + 1
@@ -388,7 +471,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(
                 {
                     "created": int(time.time()),
-                    "data": await image_data(refs[:count], response_format),
+                    "data": await image_data(
+                        refs[:count], response_format, request_base_url(request)
+                    ),
                 }
             )
         except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
@@ -422,19 +507,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return openai_error(
                 "prompt is required", 400, "missing_required_parameter", "prompt"
             )
-        count = int(form.get("n", 1))
-        if count < 1 or count > 4:
-            return openai_error("n must be between 1 and 4", 400, "invalid_value", "n")
         try:
-            seed = int(form["seed"]) if form.get("seed") is not None else None
-        except (TypeError, ValueError):
-            return openai_error("seed must be an integer", 400, "invalid_value", "seed")
-        try:
-            steps = int(form["steps"]) if form.get("steps") is not None else None
-        except (TypeError, ValueError):
-            return openai_error(
-                "steps must be an integer", 400, "invalid_value", "steps"
+            count = integer_parameter(
+                form.get("n"), "n", default=1, minimum=1, maximum=4
             )
+            seed = integer_parameter(form.get("seed"), "seed", minimum=0)
+            steps = integer_parameter(form.get("steps"), "steps", minimum=1)
+        except ParameterError as exc:
+            return openai_error(str(exc), 400, "invalid_value", exc.parameter)
         response_format = str(form.get("response_format", "b64_json"))
         if response_format not in ("b64_json", "url"):
             return openai_error(
@@ -450,7 +530,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         uploaded = await runtime.comfy.upload(
             image.filename,
-            await image.read(),
+            image.file,
             image.content_type or "application/octet-stream",
         )
         values: dict[str, Any] = {
@@ -475,14 +555,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(
                 {
                     "created": int(time.time()),
-                    "data": await image_data(refs[:count], response_format),
+                    "data": await image_data(
+                        refs[:count], response_format, request_base_url(request)
+                    ),
                 }
             )
         except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
             return openai_error(str(exc), 500, "generation_failed")
 
     async def image_data(
-        refs: list[OutputRef], response_format: str
+        refs: list[OutputRef], response_format: str, base_url: str
     ) -> list[dict[str, Any]]:
         data = []
         for ref in refs:
@@ -506,11 +588,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "type": ref.type,
                     }
                 )
-                data.append({"url": f"{settings.public_base_url}/view?{query}"})
+                data.append({"url": f"{base_url}/view?{query}"})
             else:
                 output = await runtime.comfy.fetch_output(ref)
                 data.append({"b64_json": base64.b64encode(output.content).decode()})
         return data
+
+    def request_base_url(request: Request) -> str:
+        return settings.public_base_url or str(request.base_url).rstrip("/")
 
     async def execute_video(
         job: VideoJob, model: WorkflowModel, values: dict[str, Any]
@@ -549,7 +634,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if image is not None and hasattr(image, "read"):
                 body["image"] = await runtime.comfy.upload(
                     image.filename,
-                    await image.read(),
+                    image.file,
                     image.content_type or "application/octet-stream",
                 )
             for field in ("width", "height", "length", "seed", "steps"):
@@ -563,7 +648,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             try:
                 body = await request.json()
-            except ValueError:
+                if not isinstance(body, dict):
+                    raise TypeError
+            except (TypeError, ValueError):
                 return openai_error(
                     "Request body must be JSON or multipart form", 400, "invalid_json"
                 )
@@ -580,6 +667,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "unsupported_operation",
                 "model",
             )
+        prompt = body.get("prompt")
+        if not isinstance(prompt, str) or not prompt:
+            return openai_error(
+                "prompt is required", 400, "missing_required_parameter", "prompt"
+            )
         if "image" in model.input_map and not body.get("image"):
             return openai_error(
                 "image is required for this video model",
@@ -588,16 +680,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "image",
             )
         values = dict(body)
-        size = body.get("size")
-        if size and size != "auto":
-            try:
-                values["width"], values["height"] = (
-                    int(part) for part in size.lower().split("x", 1)
-                )
-            except (AttributeError, ValueError):
-                return openai_error(
-                    "size must be WIDTHxHEIGHT or auto", 400, "invalid_value", "size"
-                )
+        try:
+            width, height = dimensions_parameter(body.get("size"))
+            if width is not None:
+                values["width"], values["height"] = width, height
+            for parameter in ("length", "seed", "steps"):
+                if parameter in body:
+                    values[parameter] = integer_parameter(
+                        body[parameter],
+                        parameter,
+                        minimum=0 if parameter == "seed" else 1,
+                    )
+        except ParameterError as exc:
+            return openai_error(str(exc), 400, "invalid_value", exc.parameter)
         if body.get("seconds") is not None:
             try:
                 seconds = float(body["seconds"])
@@ -617,7 +712,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         runtime.metrics["video_jobs_created"] = (
             int(runtime.metrics["video_jobs_created"]) + 1
         )
-        asyncio.create_task(execute_video(job, model, values))
+        runtime.start_background_task(execute_video(job, model, values))
         return JSONResponse(
             {
                 "id": job.id,
@@ -643,7 +738,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "status": job.status,
                 "created_at": job.created_at,
                 "error": job.error,
-                "output_url": job.output_url,
+                "output_url": runtime.job_output_url(job),
             }
         )
 
@@ -654,12 +749,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         job = runtime.jobs.get(job_id)
         if not job or not job.output:
             return openai_error("Video is not ready", 409, "video_not_ready")
-        if job.output_url:
-            return Response(status_code=302, headers={"Location": job.output_url})
-        output = await runtime.comfy.fetch_output(job.output)
-        return Response(
-            output.content,
-            media_type=output.headers.get("content-type", job.output.media_type),
+        if output_url := runtime.job_output_url(job):
+            return Response(status_code=302, headers={"Location": output_url})
+        return StreamingResponse(
+            runtime.comfy.stream_output(job.output),
+            media_type=job.output.media_type,
         )
 
     @app.websocket("/ws")
@@ -672,8 +766,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.comfy_url.replace("http://", "ws://").replace("https://", "wss://")
             + "/ws"
         )
-        if websocket.url.query:
-            target += "?" + websocket.url.query
+        query = [
+            (key, value)
+            for key, value in parse_qsl(websocket.url.query, keep_blank_values=True)
+            if key != "token"
+        ]
+        if query:
+            target += "?" + urlencode(query)
         try:
             async with websockets.connect(target) as upstream:
 
@@ -739,6 +838,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     return app
-
-
-app = create_app()

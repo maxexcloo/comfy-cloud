@@ -11,6 +11,13 @@ import httpx
 import yaml
 
 
+def _relative_path(value: Any, field: str) -> Path:
+    path = Path(value or "")
+    if not value or path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"{field} must be relative to the models directory")
+    return path
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -35,11 +42,12 @@ def _fetch_huggingface(source: dict[str, Any], models_dir: Path) -> list[Path]:
     revision = source.get("revision")
     if not revision:
         raise ValueError("Hugging Face sources must pin revision")
-    destination = Path(source.get("destination", ""))
-    if destination.is_absolute() or ".." in destination.parts:
-        raise ValueError(
-            "Hugging Face destination must be relative to the models directory"
-        )
+    destination_value = source.get("destination")
+    destination = (
+        _relative_path(destination_value, "Hugging Face destination")
+        if destination_value
+        else Path()
+    )
     with tempfile.TemporaryDirectory(prefix="comfy-cloud-hf-") as temporary:
         root = Path(
             snapshot_download(
@@ -71,6 +79,7 @@ def _fetch_civitai(source: dict[str, Any], models_dir: Path) -> list[Path]:
     destination = source.get("destination")
     if not version_id or not destination:
         raise ValueError("Civitai sources require version_id and destination")
+    destination_path = _relative_path(destination, "Civitai destination")
     with httpx.Client(timeout=None, follow_redirects=True, headers=headers) as client:
         metadata = client.get(f"https://civitai.com/api/v1/model-versions/{version_id}")
         metadata.raise_for_status()
@@ -85,14 +94,19 @@ def _fetch_civitai(source: dict[str, Any], models_dir: Path) -> list[Path]:
             raise ValueError(
                 f"Civitai version {version_id} did not contain the requested file"
             )
-        target = models_dir / destination
+        target = models_dir / destination_path
         target.parent.mkdir(parents=True, exist_ok=True)
-        with client.stream("GET", selected["downloadUrl"]) as response:
-            response.raise_for_status()
-            with target.open("wb") as output:
-                for chunk in response.iter_bytes(8 * 1024 * 1024):
-                    output.write(chunk)
-    _verify(target, source.get("sha256"))
+        temporary = target.with_suffix(target.suffix + ".download")
+        try:
+            with client.stream("GET", selected["downloadUrl"]) as response:
+                response.raise_for_status()
+                with temporary.open("wb") as output:
+                    for chunk in response.iter_bytes(8 * 1024 * 1024):
+                        output.write(chunk)
+            _verify(temporary, source.get("sha256"))
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
     return [target]
 
 

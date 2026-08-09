@@ -85,20 +85,35 @@ def test_runtime_loads_persisted_jobs_and_fails_stale(tmp_path):
     assert "restarted" in stale.error
 
 
+def test_runtime_ignores_invalid_job_records(tmp_path):
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    (jobs / "invalid.json").write_text('{"status": "completed"}')
+
+    app = create_app(settings(tmp_path))
+
+    assert app.state.runtime.jobs == {}
+
+
 @pytest.mark.asyncio
 async def test_completed_video_uploads_to_storage(tmp_path):
     app = create_app(settings(tmp_path))
 
     class FakeStorage:
-        async def upload(self, filename, content, content_type, subfolder=""):
+        def key(self, filename, subfolder=""):
+            return f"outputs/{subfolder}{filename}"
+
+        async def upload_path(self, filename, path, content_type, subfolder=""):
+            assert path.read_bytes() == b"video-bytes"
             return f"https://bucket/{subfolder}/{filename}"
 
     app.state.runtime.storage = FakeStorage()
-    app.state.runtime.comfy.fetch_output = AsyncMock(
-        return_value=httpx.Response(
-            200, content=b"video-bytes", headers={"content-type": "video/mp4"}
-        )
-    )
+
+    async def save_output(ref, destination):
+        destination.write_bytes(b"video-bytes")
+        return "video/mp4"
+
+    app.state.runtime.comfy.save_output = AsyncMock(side_effect=save_output)
     job = VideoJob(
         id="video_1",
         model="minimax-h3",
@@ -108,7 +123,7 @@ async def test_completed_video_uploads_to_storage(tmp_path):
     app.state.runtime.jobs[job.id] = job
     await app.state.runtime.upload_output(job)
 
-    assert job.output_url == "https://bucket//result.mp4"
+    assert job.output_key == "outputs/result.mp4"
 
 
 @pytest.mark.asyncio
@@ -135,6 +150,41 @@ async def test_video_content_redirects_to_storage_url(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_video_storage_url_is_refreshed_for_each_request(tmp_path):
+    app = create_app(settings(tmp_path))
+
+    class FakeStorage:
+        calls = 0
+
+        def url(self, key):
+            self.calls += 1
+            return f"https://bucket/{key}?signature={self.calls}"
+
+    app.state.runtime.storage = FakeStorage()
+    job = VideoJob(
+        id="video_1",
+        model="minimax-h3",
+        status="completed",
+        output=OutputRef("result.mp4", media_type="video/mp4"),
+        output_key="outputs/result.mp4",
+    )
+    app.state.runtime.jobs[job.id] = job
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", follow_redirects=False
+    ) as client:
+        first = await client.get(
+            "/v1/videos/video_1/content", headers={"Authorization": "Bearer test-key"}
+        )
+        second = await client.get(
+            "/v1/videos/video_1/content", headers={"Authorization": "Bearer test-key"}
+        )
+
+    assert first.headers["location"].endswith("signature=1")
+    assert second.headers["location"].endswith("signature=2")
+
+
+@pytest.mark.asyncio
 async def test_video_content_streams_when_no_storage(tmp_path):
     app = create_app(settings(tmp_path))
     job = VideoJob(
@@ -144,11 +194,11 @@ async def test_video_content_streams_when_no_storage(tmp_path):
         output=OutputRef("result.mp4", media_type="video/mp4"),
     )
     app.state.runtime.jobs[job.id] = job
-    app.state.runtime.comfy.fetch_output = AsyncMock(
-        return_value=httpx.Response(
-            200, content=b"video-bytes", headers={"content-type": "video/mp4"}
-        )
-    )
+
+    async def stream_output(ref):
+        yield b"video-bytes"
+
+    app.state.runtime.comfy.stream_output = stream_output
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get(
@@ -169,6 +219,12 @@ async def test_image_url_response_uses_storage_when_configured(tmp_path):
 
     app.state.runtime.storage = FakeStorage()
     app.state.runtime.catalogue.get("example").required_files = []
+    app.state.runtime.object_info = AsyncMock(
+        return_value={
+            node["class_type"]: {}
+            for node in app.state.runtime.catalogue.get("example")._graph.values()
+        }
+    )
     app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])
     app.state.runtime.comfy.fetch_output = AsyncMock(
         return_value=httpx.Response(

@@ -4,9 +4,14 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+PLACEHOLDER_SECRETS = {"change-me", "change_me", "replace-me", "replace_me"}
 
-def _bool(name: str, default: bool = False) -> bool:
-    return os.getenv(name, str(default)).lower() in {"1", "true", "yes", "on"}
+
+def _required_secret(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value or value.lower() in PLACEHOLDER_SECRETS:
+        raise ValueError(f"{name} must be set to a non-placeholder value")
+    return value
 
 
 @dataclass(frozen=True)
@@ -16,7 +21,7 @@ class Settings:
     comfy_url: str
     deployment_type: str
     models_dir: Path
-    public_base_url: str
+    public_base_url: str | None
     request_timeout: float
     ui_password: str
     ui_username: str
@@ -38,17 +43,22 @@ class Settings:
         if custom:
             roots.append(Path(custom))
         jobs_dir = os.getenv("JOBS_DIR")
+        api_key = _required_secret("API_KEY")
+        ui_password = (
+            _required_secret("COMFY_UI_PASSWORD")
+            if deployment_type == "pod"
+            else os.getenv("COMFY_UI_PASSWORD", "")
+        )
+        public_base_url = os.getenv("PUBLIC_BASE_URL")
         return cls(
-            api_key=os.getenv("API_KEY", "change-me"),
+            api_key=api_key,
             catalogue_dirs=tuple(roots),
             comfy_url=os.getenv("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/"),
             deployment_type=deployment_type,
             models_dir=Path(os.getenv("MODELS_DIR", "/opt/ComfyUI/models")),
-            public_base_url=os.getenv(
-                "PUBLIC_BASE_URL", "http://localhost:8000"
-            ).rstrip("/"),
+            public_base_url=public_base_url.rstrip("/") if public_base_url else None,
             request_timeout=float(os.getenv("REQUEST_TIMEOUT", "60")),
-            ui_password=os.getenv("COMFY_UI_PASSWORD", "change-me"),
+            ui_password=ui_password,
             ui_username=os.getenv("COMFY_UI_USERNAME", "comfy"),
             workflow_timeout=float(os.getenv("WORKFLOW_TIMEOUT", "900")),
             jobs_dir=Path(jobs_dir) if jobs_dir else None,

@@ -5,10 +5,14 @@ hadolint = "2.15.1"
 "pipx:vastai" = "1.5.2"
 prek = "0.4.12"
 prettier = "3.9.6"
-python = "3.13"
+python = "3.13.15"
 ruff = "0.16.1"
-"ubi:runpod/runpodctl" = "2.8.1"
+"github:runpod/runpodctl" = "2.8.1"
 uv = "0.12.1"
+
+[tasks.build]
+description = "Build the deployment image"
+run = "docker build --tag \"${IMAGE_NAME}\" ."
 
 [tasks.check]
 description = "Run all repository checks"
@@ -30,15 +34,15 @@ run = "modal deploy deploy/modal_app.py"
 [tasks.deploy-runpod]
 description = "Create a RunPod pod from the template"
 run = """
-runpodctl create pod \
-  --containerDiskSize 100 \
-  --env "API_KEY=${API_KEY}" \
-  --env "COMFY_UI_PASSWORD=${COMFY_UI_PASSWORD}" \
-  --env COMFY_UI_USERNAME="${COMFY_UI_USERNAME:-comfy}" \
-  --env MODE=pod \
-  --imageName "${IMAGE_NAME}:latest" \
+runpodctl pod create \
+  --container-disk-in-gb 100 \
+  --env "{\"API_KEY\":\"${API_KEY}\",\"COMFY_UI_PASSWORD\":\"${COMFY_UI_PASSWORD}\",\"COMFY_UI_USERNAME\":\"${COMFY_UI_USERNAME:-comfy}\",\"MODE\":\"pod\"}" \
+  --gpu-id "${RUNPOD_GPU_TYPE}" \
+  --image "${IMAGE_NAME}" \
   --name comfy-cloud \
-  --ports 8000/http
+  --ports 8000/http \
+  --volume-in-gb 100 \
+  --volume-mount-path /opt/ComfyUI/models
 """
 
 [tasks.deploy-vast]
@@ -49,7 +53,7 @@ vastai create instance --disk 100 \
   --env "COMFY_UI_PASSWORD=${COMFY_UI_PASSWORD}" \
   --env COMFY_UI_USERNAME="${COMFY_UI_USERNAME:-comfy}" \
   --env MODE=pod \
-  --image "${IMAGE_NAME}:latest" \
+  --image "${IMAGE_NAME}" \
   --label comfy-cloud \
   --onstart-cmd 'python3 -m comfy_cloud.supervisor' \
   "${VAST_OFFER_ID:?set VAST_OFFER_ID to an offer from `vastai search offers`}"

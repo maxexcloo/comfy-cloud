@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 
 class ObjectStorage:
@@ -58,9 +59,18 @@ class ObjectStorage:
         except ImportError:
             return None
 
-    def _key(self, filename: str, subfolder: str) -> str:
+    def key(self, filename: str, subfolder: str = "") -> str:
         parts = [part for part in (self.prefix, subfolder, filename) if part]
         return "/".join(parts)
+
+    def url(self, key: str) -> str:
+        if self.public_base_url:
+            return f"{self.public_base_url}/{key}"
+        return self._client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": key},
+            ExpiresIn=self.expires,
+        )
 
     def _upload(self, key: str, content: bytes, content_type: str) -> None:
         self._client.put_object(
@@ -70,18 +80,34 @@ class ObjectStorage:
             ContentType=content_type or "application/octet-stream",
         )
 
+    def _upload_path(self, key: str, path: Path, content_type: str) -> None:
+        self._client.upload_file(
+            str(path),
+            self.bucket,
+            key,
+            ExtraArgs={"ContentType": content_type or "application/octet-stream"},
+        )
+
     async def upload(
         self, filename: str, content: bytes, content_type: str, subfolder: str = ""
     ) -> str | None:
         try:
-            key = self._key(filename, subfolder)
+            key = self.key(filename, subfolder)
             await asyncio.to_thread(self._upload, key, content, content_type)
-            if self.public_base_url:
-                return f"{self.public_base_url}/{key}"
-            return self._client.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": self.bucket, "Key": key},
-                ExpiresIn=self.expires,
-            )
+            return self.url(key)
+        except Exception:  # noqa: BLE001 - storage must never break generation
+            return None
+
+    async def upload_path(
+        self,
+        filename: str,
+        path: Path,
+        content_type: str,
+        subfolder: str = "",
+    ) -> str | None:
+        try:
+            key = self.key(filename, subfolder)
+            await asyncio.to_thread(self._upload_path, key, path, content_type)
+            return self.url(key)
         except Exception:  # noqa: BLE001 - storage must never break generation
             return None

@@ -1,15 +1,29 @@
 import asyncio
+import json
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 
-from comfy_cloud.app import create_app
+from comfy_cloud.app import create_app as create_gateway
 from comfy_cloud.comfy import OutputRef
 from comfy_cloud.config import Settings
 
 ROOT = Path(__file__).parents[1]
+
+
+def create_app(settings: Settings):
+    app = create_gateway(settings)
+    object_info = {}
+    for workflow_path in ROOT.glob("catalogue/*/workflow.json"):
+        for node in json.loads(workflow_path.read_text()).values():
+            object_info[node["class_type"]] = {}
+    for model in app.state.runtime.catalogue.list():
+        model.required_files = []
+    app.state.runtime.object_info = AsyncMock(return_value=object_info)
+    return app
 
 
 def settings(deployment_type: str = "serverless") -> Settings:
@@ -75,6 +89,58 @@ async def test_openai_image_generation_uses_workflow_model():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("body", "parameter"),
+    [
+        ({"model": "example", "prompt": "test", "n": "many"}, "n"),
+        (
+            {"model": "example", "prompt": "test", "response_format": "jpeg"},
+            "response_format",
+        ),
+        ({"model": "example", "prompt": "test", "seed": True}, "seed"),
+        ({"model": "example", "prompt": "test", "size": "-1x512"}, "size"),
+    ],
+)
+async def test_image_generation_rejects_invalid_parameters(body, parameter):
+    app = create_app(settings())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer test-key"},
+            json=body,
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["param"] == parameter
+
+
+@pytest.mark.asyncio
+async def test_image_url_uses_request_base_when_not_configured():
+    app = create_app(replace(settings(), public_base_url=None))
+    app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://deployment.example"
+    ) as client:
+        response = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer test-key"},
+            json={
+                "model": "example",
+                "prompt": "test",
+                "response_format": "url",
+            },
+        )
+
+    assert response.json()["data"] == [
+        {
+            "url": "https://deployment.example/view?filename=result.png&subfolder=&type=output"
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_openai_image_edit_uses_multipart_and_workflow():
     app = create_app(settings())
     app.state.runtime.catalogue.get("flux-2-klein-4b-edit").required_files = []
@@ -95,7 +161,14 @@ async def test_openai_image_edit_uses_multipart_and_workflow():
             ),
         ]
     )
-    app.state.runtime.comfy.upload = AsyncMock(return_value="uploaded.png")
+    uploaded_content = b""
+
+    async def upload(filename, content, content_type):
+        nonlocal uploaded_content
+        uploaded_content = content.read()
+        return "uploaded.png"
+
+    app.state.runtime.comfy.upload = AsyncMock(side_effect=upload)
     transport = httpx.ASGITransport(app=app)
     files = {"image": ("source.png", b"image-bytes", "image/png")}
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -115,11 +188,9 @@ async def test_openai_image_edit_uses_multipart_and_workflow():
     assert response.status_code == 200
     data = response.json()["data"]
     assert data == [{"b64_json": "ZWRpdC0x"}, {"b64_json": "ZWRpdC0y"}]
-    uploaded_name, content, content_type = (
-        app.state.runtime.comfy.upload.await_args.args
-    )
+    uploaded_name, _, content_type = app.state.runtime.comfy.upload.await_args.args
     assert uploaded_name == "source.png"
-    assert content == b"image-bytes"
+    assert uploaded_content == b"image-bytes"
     assert content_type == "image/png"
     assert app.state.runtime.run.call_count == 2
     first_values = run_values[0]
@@ -211,6 +282,7 @@ async def test_image_to_video_requires_uploaded_image():
 @pytest.mark.asyncio
 async def test_model_with_unregistered_nodes_is_not_advertised():
     app = create_app(settings())
+    app.state.runtime.object_info = AsyncMock(return_value={})
 
     async def comfy_handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/object_info":
@@ -232,6 +304,20 @@ async def test_model_with_unregistered_nodes_is_not_advertised():
             headers={"Authorization": "Bearer test-key"},
         )
     await app.state.runtime.comfy.http.aclose()
+
+    assert listing.json()["data"] == []
+    assert detail.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_models_fail_closed_when_node_information_is_unavailable():
+    app = create_app(settings())
+    app.state.runtime.object_info = AsyncMock(return_value=None)
+    transport = httpx.ASGITransport(app=app)
+    headers = {"Authorization": "Bearer test-key"}
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        listing = await client.get("/v1/models", headers=headers)
+        detail = await client.get("/v1/models/example", headers=headers)
 
     assert listing.json()["data"] == []
     assert detail.status_code == 404

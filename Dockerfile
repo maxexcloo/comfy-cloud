@@ -1,29 +1,41 @@
 FROM nvidia/cuda:12.9.2-cudnn-runtime-ubuntu24.04
 
-ARG COMFYUI_REF=v0.30.0
+COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /usr/local/bin/uv
+
+ARG COMFYUI_REF=v0.31.1
 ENV BUILTIN_CATALOGUE_DIR=/opt/comfy-cloud/catalogue \
     COMFYUI_DIR=/opt/ComfyUI \
     COMFYUI_URL=http://127.0.0.1:8188 \
     DEBIAN_FRONTEND=noninteractive \
     MODE=pod \
+    PATH=/opt/venv/bin:${PATH} \
     PIP_NO_CACHE_DIR=1 \
     PORT=8000 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/opt/venv
 
-RUN apt-get update && \
+RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates ffmpeg git python3 python3-pip python3-venv && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    uv venv "${VIRTUAL_ENV}"
 
 RUN git clone --filter=blob:none --branch "${COMFYUI_REF}" --depth 1 \
       https://github.com/Comfy-Org/ComfyUI.git /opt/ComfyUI \
-    && python3 -m pip install --break-system-packages -r /opt/ComfyUI/requirements.txt
+    && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /opt/ComfyUI/requirements.txt
 
 WORKDIR /opt/comfy-cloud
-COPY pyproject.toml README.md ./
+COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY catalogue ./catalogue
+COPY deploy ./deploy
 COPY profiles ./profiles
-RUN python3 -m pip install --break-system-packages .
+RUN uv export --frozen --no-dev --extra build --extra s3 --extra vast --no-emit-project \
+      --no-hashes --output-file /tmp/requirements.txt \
+    && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /tmp/requirements.txt \
+    && uv build --wheel --out-dir /tmp/dist \
+    && uv pip install --python "${VIRTUAL_ENV}/bin/python" --no-deps /tmp/dist/*.whl \
+    && rm -rf /tmp/dist /tmp/requirements.txt
 
 EXPOSE 8000
-CMD ["python3", "-m", "comfy_cloud.supervisor"]
+CMD ["/opt/venv/bin/python", "-m", "comfy_cloud.supervisor"]

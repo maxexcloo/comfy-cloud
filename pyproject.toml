@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -21,7 +21,8 @@ dependencies = [
 [project.optional-dependencies]
 build = ["huggingface-hub>=0.28,<2"]
 s3 = ["boto3>=1.35,<2"]
-test = ["pytest>=8,<10", "pytest-asyncio>=0.24,<2"]
+test = ["aiohttp>=3.11,<4", "pytest>=8,<10", "pytest-asyncio>=0.24,<2"]
+vast = ["aiohttp>=3.11,<4"]
 
 [project.scripts]
 comfy-cloud = "comfy_cloud.cli:main"
@@ -30,6 +31,6 @@ comfy-cloud = "comfy_cloud.cli:main"
 packages = ["src/comfy_cloud"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -7,9 +7,18 @@ from pathlib import Path
 DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024 * 1024
 
 
+def _safe_filename(value: str, field: str) -> str:
+    path = Path(value)
+    if path.is_absolute() or len(path.parts) != 1 or path.name in {"", ".", ".."}:
+        raise ValueError(f"{field} must be a filename")
+    return path.name
+
+
 def pack_file(
     source: Path, destination: Path, chunk_size: int = DEFAULT_CHUNK_SIZE
 ) -> dict:
+    if chunk_size <= 0:
+        raise ValueError("chunk size must be positive")
     destination.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
     chunks: list[dict] = []
@@ -54,11 +63,13 @@ def pack_file(
 def unpack_file(manifest_path: Path, destination: Path) -> Path:
     manifest = json.loads(manifest_path.read_text())
     destination.mkdir(parents=True, exist_ok=True)
-    output = destination / manifest["name"]
+    output = destination / _safe_filename(manifest["name"], "model name")
     digest = hashlib.sha256()
     with output.open("wb") as target:
         for item in manifest["chunks"]:
-            chunk = manifest_path.parent / item["file"]
+            chunk = manifest_path.parent / _safe_filename(
+                item["file"], "chunk filename"
+            )
             chunk_digest = hashlib.sha256()
             with chunk.open("rb") as source:
                 while block := source.read(8 * 1024 * 1024):

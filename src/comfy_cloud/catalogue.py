@@ -42,6 +42,9 @@ class WorkflowModel(BaseModel):
     def validate_id(self) -> WorkflowModel:
         if not self.id or self.id.startswith("/") or ".." in self.id:
             raise ValueError("model id must be a stable relative identifier")
+        workflow = Path(self.workflow)
+        if workflow.is_absolute() or ".." in workflow.parts:
+            raise ValueError("workflow must be relative to its catalogue manifest")
         if "prompt" not in self.input_map:
             raise ValueError("input_map must include prompt")
         for required in self.required_files:

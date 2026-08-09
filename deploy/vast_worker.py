@@ -20,41 +20,37 @@ Deploy:
    ...). Run the gateway:
        python -m comfy_cloud.supervisor
 3. Run this worker as a second process in the same container:
-       pip install aiohttp
-       python vast_worker.py
+       python /opt/comfy-cloud/deploy/vast_worker.py
 4. Configure the serverless endpoint with ``PYWORKER_REPO`` pointing at a repo
-   containing this file (plus a ``requirements.txt`` with ``aiohttp``). Vast's
-   engine handles queueing, autoscaling, and readiness; this file only routes.
+   containing this file. Vast's engine handles queueing, autoscaling, and
+   readiness; this file only routes.
 """
 
 import json
 import logging
 import os
 
-from aiohttp import web
+from aiohttp import ClientSession, web
 
 log = logging.getLogger(__name__)
 
+API_KEY = os.environ.get("API_KEY", "")
+CLIENT_KEY = web.AppKey("client", ClientSession)
 GATEWAY_HOST = os.environ.get("VAST_GATEWAY_HOST", "127.0.0.1")
 GATEWAY_PORT = int(os.environ.get("VAST_GATEWAY_PORT", "8000"))
 GATEWAY_BASE = f"http://{GATEWAY_HOST}:{GATEWAY_PORT}"
-API_KEY = os.environ.get("API_KEY", "")
-
-# Routes this worker accepts. Keep this in sync with the gateway routes your
-# clients actually use; Vast registers one handler per route.
-ROUTES = [
-    "/v1/models",
-    "/v1/images/generations",
-    "/v1/images/edits",
-    "/v1/videos",
-    "/health",
-    "/ping",
-    "/prompt",
-    "/view",
-    "/queue",
-    "/object_info",
-    "/system_stats",
-]
+HOP_HEADERS = {
+    "connection",
+    "content-length",
+    "host",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+}
 
 
 def _unwrapped(body: dict) -> dict:
@@ -78,12 +74,18 @@ async def proxy(request: web.Request) -> web.StreamResponse:
             pass
 
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": request.content_type or "application/json",
+        key: value
+        for key, value in request.headers.items()
+        if key.lower() not in HOP_HEADERS | {"authorization"}
     }
+    headers["Authorization"] = f"Bearer {API_KEY}"
     try:
-        async with request.app["client"].post(
-            GATEWAY_BASE + request.path, data=body, headers=headers
+        async with request.app[CLIENT_KEY].request(
+            request.method,
+            GATEWAY_BASE + request.rel_url.raw_path_qs,
+            allow_redirects=False,
+            data=body,
+            headers=headers,
         ) as upstream:
             response = web.StreamResponse(status=upstream.status)
             for key, value in upstream.headers.items():
@@ -100,23 +102,27 @@ async def proxy(request: web.Request) -> web.StreamResponse:
 
 
 async def on_startup(app: web.Application) -> None:
-    import aiohttp
-
-    app["client"] = aiohttp.ClientSession()
+    if not API_KEY or API_KEY.lower() in {"change-me", "replace_me"}:
+        raise RuntimeError("API_KEY must be set to a non-placeholder value")
+    app[CLIENT_KEY] = ClientSession()
     log.info("gateway ready")
 
 
 async def on_cleanup(app: web.Application) -> None:
-    await app["client"].close()
+    await app[CLIENT_KEY].close()
+
+
+def create_app() -> web.Application:
+    app = web.Application()
+    app.on_startup.append(on_startup)
+    app.on_cleanup.append(on_cleanup)
+    app.router.add_route("*", "/{path:.*}", proxy)
+    return app
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
-    app = web.Application()
-    app.on_startup.append(on_startup)
-    app.on_cleanup.append(on_cleanup)
-    for route in ROUTES:
-        app.router.add_route("*", route, proxy)
+    app = create_app()
     host = os.environ.get("VAST_WORKER_HOST", "0.0.0.0")
     port = int(os.environ.get("VAST_WORKER_PORT", "9000"))
     web.run_app(app, host=host, port=port)

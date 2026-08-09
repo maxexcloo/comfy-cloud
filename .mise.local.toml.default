@@ -31,6 +31,7 @@ MODAL_MODEL_VOLUME = "comfy-cloud-models"
 
 # RunPod
 RUNPOD_API_KEY = "REPLACE_ME"
+RUNPOD_GPU_TYPE = "NVIDIA GeForce RTX 4090"
 
 # Vast.ai
 VAST_API_KEY = "REPLACE_ME"
