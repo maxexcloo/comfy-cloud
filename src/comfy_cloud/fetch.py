@@ -107,7 +107,7 @@ def _fetch_huggingface(source: dict[str, Any], models_dir: Path) -> list[Path]:
                 local_dir=temporary,
                 repo_id=source["repo"],
                 revision=revision,
-                token=os.getenv("HF_TOKEN"),
+                token=os.getenv("HF_TOKEN") or None,
             )
         )
         copied: list[Path] = []

@@ -10,7 +10,11 @@ from comfy_cloud.fetch import fetch_profile
 def test_huggingface_destination_places_root_file_in_model_subdirectory(
     monkeypatch, tmp_path
 ):
+    received_token = "unset"
+
     def snapshot_download(**kwargs):
+        nonlocal received_token
+        received_token = kwargs["token"]
         root = Path(kwargs["local_dir"])
         (root / "model.safetensors").write_bytes(b"model")
         return str(root)
@@ -20,6 +24,7 @@ def test_huggingface_destination_places_root_file_in_model_subdirectory(
         "huggingface_hub",
         SimpleNamespace(snapshot_download=snapshot_download),
     )
+    monkeypatch.setenv("HF_TOKEN", "")
     profile = tmp_path / "profile.yaml"
     profile.write_text(
         """
@@ -36,6 +41,7 @@ sources:
 
     assert downloaded == [tmp_path / "models/diffusion_models/model.safetensors"]
     assert downloaded[0].read_bytes() == b"model"
+    assert received_token is None
 
 
 def test_prepared_profile_is_not_downloaded_again(monkeypatch, tmp_path):

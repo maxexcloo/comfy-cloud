@@ -49,6 +49,22 @@ class ComfyClient:
             raise RuntimeError(f"ComfyUI rejected workflow: {data}")
         return data["prompt_id"]
 
+    async def cancel(self, prompt_id: str) -> None:
+        """Remove a queued prompt or interrupt it when it is currently running."""
+        try:
+            response = await self.http.get("/queue")
+            response.raise_for_status()
+            queue = response.json()
+            running = any(
+                len(item) > 1 and item[1] == prompt_id
+                for item in queue.get("queue_running", [])
+            )
+            await self.http.post("/queue", json={"delete": [prompt_id]})
+            if running:
+                await self.http.post("/interrupt")
+        except httpx.HTTPError:
+            return
+
     async def upload(
         self, filename: str, content: bytes | BinaryIO, content_type: str
     ) -> str:

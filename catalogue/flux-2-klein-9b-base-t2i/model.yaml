@@ -2,6 +2,7 @@ id: flux-2-klein-base-9b/text-to-image
 profile: flux-2-klein-9b
 operation: image_generation
 workflow: workflow.json
+workflow_sha256: 3a8d482e59a77003cbf5ea5b53adda2c494b84858db3384a5fe5bf0ddd92210d
 owned_by: black-forest-labs
 aliases: [flux-2-klein-base-9b]
 input_map:

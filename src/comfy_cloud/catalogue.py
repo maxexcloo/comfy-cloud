@@ -80,6 +80,17 @@ class WorkflowModel(BaseModel):
         ):
             raise ValueError(f"workflow checksum mismatch: {workflow_path}")
         graph = json.loads(payload)
+        if not isinstance(graph, dict) or not graph:
+            raise ValueError(
+                f"workflow must contain a non-empty graph: {workflow_path}"
+            )
+        for node_id, node in graph.items():
+            if not isinstance(node, dict):
+                raise TypeError(f"{self.id}: node {node_id} must be a mapping")
+            if not isinstance(node.get("class_type"), str):
+                raise TypeError(f"{self.id}: node {node_id} has no class_type")
+            if not isinstance(node.get("inputs"), dict):
+                raise TypeError(f"{self.id}: node {node_id} has no inputs")
         for name, configured_targets in self.input_map.items():
             targets = (
                 configured_targets
@@ -91,8 +102,6 @@ class WorkflowModel(BaseModel):
                     raise ValueError(
                         f"{self.id}: mapping {name} references missing node {target.node}"
                     )
-                if "inputs" not in graph[target.node]:
-                    raise ValueError(f"{self.id}: node {target.node} has no inputs")
                 if target.input not in graph[target.node]["inputs"]:
                     raise ValueError(
                         f"{self.id}: mapping {name} references missing input {target.input} on node {target.node}"

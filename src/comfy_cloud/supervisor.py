@@ -14,6 +14,7 @@ import yaml
 from .fetch import fetch_profile
 
 MODEL_DIRECTORY_KEYS = ("checkpoints", "diffusion_models", "text_encoders", "vae")
+SHUTDOWN_TIMEOUT = 10
 
 
 def _prepare_models() -> None:
@@ -57,6 +58,20 @@ def _comfy_arguments(comfy_dir: Path) -> list[str]:
     return [*arguments, "--extra-model-paths-config", str(config_path)]
 
 
+def _stop_processes(processes: tuple[subprocess.Popen, ...]) -> None:
+    running = [process for process in processes if process.poll() is None]
+    for process in running:
+        process.terminate()
+    deadline = time.monotonic() + SHUTDOWN_TIMEOUT
+    for process in running:
+        try:
+            process.wait(timeout=max(0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            process.kill()
+    for process in running:
+        process.wait()
+
+
 def main() -> None:
     comfy_dir = Path(os.getenv("COMFYUI_DIR", "/opt/ComfyUI"))
     _prepare_models()
@@ -77,10 +92,15 @@ def main() -> None:
         ]
     )
 
+    processes = (gateway, comfy)
+    stopping = False
+
     def stop(*_: object) -> None:
-        for process in (gateway, comfy):
-            if process.poll() is None:
-                process.terminate()
+        nonlocal stopping
+        if stopping:
+            return
+        stopping = True
+        _stop_processes(processes)
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)

@@ -10,6 +10,12 @@
     { "key": "API_KEY", "value": "CHANGE_ME" },
     { "key": "COMFY_UI_PASSWORD", "value": "CHANGE_ME" },
     { "key": "COMFY_UI_USERNAME", "value": "comfy" },
+    {
+      "key": "JOBS_DIR",
+      "value": "/opt/ComfyUI/models/.comfy-cloud/jobs"
+    },
+    { "key": "MAXIMUM_PENDING_GENERATIONS", "value": "8" },
+    { "key": "MAXIMUM_REQUEST_BYTES", "value": "104857600" },
     { "key": "MODE", "value": "pod" }
   ]
 }

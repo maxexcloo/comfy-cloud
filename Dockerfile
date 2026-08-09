@@ -1,8 +1,9 @@
-FROM nvidia/cuda:13.3.1-cudnn-runtime-ubuntu24.04
+FROM nvidia/cuda:13.3.1-cudnn-runtime-ubuntu24.04@sha256:2c9730db1d78ce3a7503a2f4ff2d64add3e7d1a47d57da504376192dda335242
 
-COPY --from=ghcr.io/astral-sh/uv:0.12.3 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.3@sha256:2d890623d310b57771ce840f0da5eed5fc6d657da05ffaa45d82797b53fa3abc /uv /usr/local/bin/uv
 
-ARG COMFYUI_REF=v0.31.1
+# ComfyUI v0.31.1. Keep the release label and immutable commit in sync.
+ARG COMFYUI_REF=fe4195f7f4275f2626cbafc703acc3ddde1e5490
 ARG MODEL_PROFILE
 ENV BUILTIN_CATALOGUE_DIR=/opt/comfy-cloud/catalogue \
     COMFYUI_DIR=/opt/ComfyUI \
@@ -22,8 +23,10 @@ RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/ubuntu.sources && \
     rm -rf /var/lib/apt/lists/* && \
     uv venv "${VIRTUAL_ENV}"
 
-RUN git clone --filter=blob:none --branch "${COMFYUI_REF}" --depth 1 \
-      https://github.com/Comfy-Org/ComfyUI.git /opt/ComfyUI \
+RUN git init /opt/ComfyUI \
+    && git -C /opt/ComfyUI remote add origin https://github.com/Comfy-Org/ComfyUI.git \
+    && git -C /opt/ComfyUI fetch --depth 1 origin "${COMFYUI_REF}" \
+    && git -C /opt/ComfyUI checkout --detach FETCH_HEAD \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /opt/ComfyUI/requirements.txt
 
 WORKDIR /opt/comfy-cloud

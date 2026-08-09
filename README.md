@@ -7,7 +7,7 @@ direct clients.
 
 ## What works
 
-- `GET /health/live`, `/health/ready`, and `/health` report readiness; `GET /metrics` exposes Prometheus counters. Responses carry an `x-request-id`.
+- `GET /health/live`, `/health/ready`, and `/health` report readiness; `GET /metrics` exposes standard Prometheus metrics. Responses carry an `x-request-id`.
 - `GET /v1/models` lists registered workflows as models.
 - Hugging Face model sources are pinned in `profiles/`; selected profiles can be prepared automatically and large files can be split into GHCR-safe packs with the CLI.
 - `MODE=pod` serves the ComfyUI frontend at `/`.
@@ -18,6 +18,23 @@ direct clients.
 ComfyUI remains unmodified. The gateway is a sidecar process in the same container.
 Catalogue entries with `required_files` are only advertised when every file exists
 under `MODELS_DIR` (default `/opt/ComfyUI/models`).
+
+## How requests flow
+
+1. The supervisor prepares selected model profiles, then starts stock ComfyUI on
+   its private port and the gateway on the public port.
+2. The gateway loads catalogue manifests and their checksum-pinned API-format
+   workflows.
+3. Model discovery checks both required files and ComfyUI's registered node types.
+4. An OpenAI request selects a catalogue model; portable values are copied into
+   the configured workflow node inputs.
+5. The gateway admits a bounded number of requests, serialises GPU execution,
+   submits the graph to ComfyUI, and polls its history.
+6. Outputs are returned as base64, an authenticated local URL, or an object-storage
+   URL. Video requests return a durable job record while execution continues.
+
+Native ComfyUI requests bypass workflow translation but use the same authentication
+and upstream ComfyUI process.
 
 ## Quick start
 
@@ -119,6 +136,11 @@ comfy-cloud workflow-add \
 Restart the container after changing the catalogue. This intentionally avoids a
 mutable administration service.
 
+Mount the custom directory and set `CATALOGUE_DIR=/data/catalogue`; writing the
+files alone does not register the directory with the running gateway. New entries
+created by `workflow-add` include a workflow checksum automatically. Run
+`comfy-cloud repository-check` for bundled catalogue/profile consistency.
+
 The bundled `example/checkpoint-text-to-image` workflow demonstrates the format;
 replace its checkpoint or register the official API workflow for the installed
 profile. UI-format workflow templates cannot be submitted directly—export them
@@ -162,12 +184,16 @@ MiniMax accepts OpenAI-style `size` and `seconds`; seconds are snapped to H3's
 native frame grid. Generation returns a video job that can be polled through
 `GET /v1/videos/{id}` and downloaded from `GET /v1/videos/{id}/content`.
 
+The `minimax-h3-ref2va` profile is intentionally download-only: no portable stock
+reference-to-video catalogue workflow is bundled yet.
+
 ## Durable jobs and object storage
 
-Video jobs are persisted as JSON in `JOBS_DIR` (default: disabled). Point it at a
-mounted volume to keep job records across worker restarts; any job that was
-queued or in progress when the worker stopped is reported as failed with a
-"worker restarted" error.
+Video jobs are persisted as atomically replaced JSON in `JOBS_DIR` (default:
+disabled). Point it at a POSIX-compatible shared mounted volume to keep job records
+across restarts and make them visible to sibling workers. Active jobs carry a
+lease; an abandoned job becomes failed after its lease expires. Legacy records
+without a lease are failed on restart.
 
 Set S3-compatible credentials to upload generated images and videos instead of
 proxying them through the gateway, and to return signed URLs that survive the
@@ -188,6 +214,20 @@ The published image includes object-storage support. For a source installation,
 install the `s3` extra with `pip install '.[s3]'`. Persisted jobs store the object
 key and mint a fresh presigned URL for each request. When storage is unavailable
 or an upload fails, the gateway falls back to proxying ComfyUI output.
+
+## Runtime limits and security
+
+The gateway deliberately uses one shared API key. Terminate TLS and apply
+internet-facing identity, per-client quotas, and request-rate controls at the
+provider load balancer or a dedicated reverse proxy.
+
+`MAXIMUM_PENDING_GENERATIONS` defaults to `8` and bounds the admitted GPU queue;
+excess requests receive HTTP 429. `MAXIMUM_REQUEST_BYTES` defaults to 100 MiB and
+rejects oversized uploads and proxied request bodies. A timed-out gateway workflow
+is removed from the ComfyUI queue or interrupted when it is the running prompt.
+Health, readiness, RunPod ping, and Prometheus endpoints remain unauthenticated so
+provider probes and monitoring systems can reach them; they expose no generated
+content.
 
 ## Bifrost and Open WebUI
 
@@ -319,7 +359,7 @@ responses while injecting the gateway bearer key.
 
 ## Important limits
 
-- Without `JOBS_DIR`, video job state is held in the worker process. Without S3 storage, completed outputs live only on the worker that produced them. Configure both for scale-to-zero.
+- Without `JOBS_DIR`, video job state is held in the worker process. Without S3 storage, completed outputs live only on the worker that produced them. Configure both on persistent storage for scale-to-zero; the bundled persistent-volume deployments now set `JOBS_DIR` automatically.
 - URL image responses proxy ComfyUI output and require the same bearer key when storage is not configured; `b64_json` is the default and most portable response.
 - The project does not grant model redistribution rights. Review and comply with every upstream licence before publishing weight-bearing images or packs.
 

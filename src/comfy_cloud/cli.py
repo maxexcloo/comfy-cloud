@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -10,6 +11,7 @@ import yaml
 from .catalogue import Catalogue, WorkflowModel
 from .fetch import fetch_profile
 from .model_pack import pack_file, unpack_file
+from .validation import validate_repository
 
 
 def workflow_add(args: argparse.Namespace) -> None:
@@ -20,11 +22,12 @@ def workflow_add(args: argparse.Namespace) -> None:
     workflow_target = destination / "workflow.json"
     shutil.copy2(workflow, workflow_target)
     manifest = {
+        **mapping,
         "id": args.id,
         "profile": args.profile or args.id.split("/", 1)[0],
         "operation": args.operation,
         "workflow": "workflow.json",
-        **mapping,
+        "workflow_sha256": hashlib.sha256(workflow_target.read_bytes()).hexdigest(),
     }
     manifest_path = destination / "model.yaml"
     manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False))
@@ -68,6 +71,11 @@ def models_fetch(args: argparse.Namespace) -> None:
     print(json.dumps([str(path) for path in files], indent=2))
 
 
+def repository_check(args: argparse.Namespace) -> None:
+    validate_repository(Path(args.catalogue_dir), Path(args.profiles_dir))
+    print("catalogue workflows and model profiles are consistent")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="comfy-cloud")
     sub = parser.add_subparsers(required=True)
@@ -104,6 +112,12 @@ def main() -> None:
     fetch.add_argument("profile")
     fetch.add_argument("--models-dir", default="models")
     fetch.set_defaults(func=models_fetch)
+    check = sub.add_parser(
+        "repository-check", help="validate bundled workflows and model profiles"
+    )
+    check.add_argument("--catalogue-dir", default="catalogue")
+    check.add_argument("--profiles-dir", default="profiles")
+    check.set_defaults(func=repository_check)
     args = parser.parse_args()
     args.func(args)
 

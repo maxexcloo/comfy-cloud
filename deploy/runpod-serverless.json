@@ -5,6 +5,9 @@
   "ports": "8000/http",
   "env": [
     { "key": "API_KEY", "value": "CHANGE_ME" },
+    { "key": "JOBS_DIR", "value": "/runpod-volume/jobs" },
+    { "key": "MAXIMUM_PENDING_GENERATIONS", "value": "8" },
+    { "key": "MAXIMUM_REQUEST_BYTES", "value": "104857600" },
     { "key": "MODE", "value": "serverless" },
     { "key": "MODELS_DIR", "value": "/runpod-volume/models" },
     { "key": "PORT", "value": "8000" },

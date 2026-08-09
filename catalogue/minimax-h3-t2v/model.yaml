@@ -2,6 +2,7 @@ id: minimax-h3/text-to-video
 profile: minimax-h3-fl2va
 operation: video_generation
 workflow: workflow.json
+workflow_sha256: c2ec2416507a613c3ffbf794f7ddeaafc8383137b8f866208e3257ea90a23825
 owned_by: minimax
 aliases: [minimax-h3]
 input_map:

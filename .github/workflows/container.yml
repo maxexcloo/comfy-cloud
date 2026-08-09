@@ -48,11 +48,34 @@ jobs:
           cache-to: type=gha,mode=max,scope=runtime
           context: .
           labels: ${{ steps.metadata.outputs.labels }}
+          load: ${{ github.event_name == 'pull_request' }}
           platforms: linux/amd64
           provenance: mode=max
           push: ${{ github.event_name != 'pull_request' }}
           sbom: true
           tags: ${{ steps.metadata.outputs.tags }}
+      - name: Smoke-test container
+        if: github.event_name == 'pull_request'
+        env:
+          SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.metadata.outputs.version }}
+        run: |
+          docker run --detach --name comfy-cloud-smoke \
+            --env API_KEY=smoke-test-key \
+            --env COMFYUI_ARGS="--cpu --listen 127.0.0.1 --port 8188" \
+            --env MODE=serverless \
+            --publish 8000:8000 \
+            "${SMOKE_IMAGE}"
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8000/health/ready >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker logs comfy-cloud-smoke
+          exit 1
+      - name: Remove smoke-test container
+        if: always() && github.event_name == 'pull_request'
+        run: docker rm --force comfy-cloud-smoke || true
 
   profile:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -79,9 +102,6 @@ jobs:
           provenance: mode=max
           push: true
           sbom: true
-          secrets: |
-            CIVITAI_TOKEN=${{ secrets.CIVITAI_TOKEN }}
-            HF_TOKEN=${{ secrets.HF_TOKEN }}
           tags: |
             ${{ env.IMAGE_NAME }}:flux-2-klein-4b
             ${{ env.IMAGE_NAME }}:flux-2-klein-4b-${{ github.sha }}

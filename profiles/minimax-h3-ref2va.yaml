@@ -1,5 +1,6 @@
 name: minimax-h3-ref2va
 minimum_vram_gb: 80
+catalogued: false
 sources:
   - type: huggingface
     repo: Comfy-Org/MiniMax-H3

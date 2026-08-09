@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import tempfile
 import time
 import uuid
@@ -15,8 +16,17 @@ import httpx
 import websockets
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from prometheus_client import (
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
+from prometheus_client.exposition import CONTENT_TYPE_LATEST
+from starlette.background import BackgroundTask
 
-from .auth import request_authorized, websocket_authorized
+from .auth import request_authorised, websocket_authorised
 from .catalogue import Catalogue, WorkflowModel
 from .comfy import ComfyClient, OutputRef
 from .config import Settings
@@ -52,6 +62,10 @@ class ParameterError(ValueError):
     def __init__(self, parameter: str, message: str):
         super().__init__(message)
         self.parameter = parameter
+
+
+class GenerationQueueFull(RuntimeError):
+    pass
 
 
 def integer_parameter(
@@ -112,6 +126,7 @@ class VideoJob:
     status: str = "queued"
     created_at: int = field(default_factory=lambda: int(time.time()))
     error: str | None = None
+    lease_expires_at: int | None = None
     output: OutputRef | None = None
     output_key: str | None = None
     output_url: str | None = None
@@ -123,6 +138,7 @@ class VideoJob:
             "status": self.status,
             "created_at": self.created_at,
             "error": self.error,
+            "lease_expires_at": self.lease_expires_at,
             "output": {
                 "filename": self.output.filename,
                 "subfolder": self.output.subfolder,
@@ -154,6 +170,7 @@ class VideoJob:
             status=record.get("status", "queued"),
             created_at=record.get("created_at", 0),
             error=record.get("error"),
+            lease_expires_at=record.get("lease_expires_at"),
             output=output,
             output_key=record.get("output_key"),
             output_url=record.get("output_url"),
@@ -169,24 +186,60 @@ class Runtime:
         self.jobs: dict[str, VideoJob] = {}
         self.job_store = JobStore(settings.jobs_dir)
         self.inference_lock = asyncio.Lock()
+        self.admission_lock = asyncio.Lock()
+        self.pending_generations = 0
         self.background_tasks: set[asyncio.Task[None]] = set()
-        self.metrics: dict[str, int | float] = {
-            "requests_total": 0,
-            "requests_by_status": {},
-            "generations_total": 0,
-            "generation_seconds_total": 0.0,
-            "video_jobs_created": 0,
-            "video_jobs_completed": 0,
-            "video_jobs_failed": 0,
-        }
+        self.metric_registry = CollectorRegistry()
+        self.generation_duration = Histogram(
+            "comfy_cloud_generation_seconds",
+            "Generation duration in seconds.",
+            registry=self.metric_registry,
+        )
+        self.generations = Counter(
+            "comfy_cloud_generations",
+            "Completed image generations.",
+            registry=self.metric_registry,
+        )
+        self.pending = Gauge(
+            "comfy_cloud_pending_generations",
+            "Admitted generation requests, including the active request.",
+            registry=self.metric_registry,
+        )
+        self.requests = Counter(
+            "comfy_cloud_requests",
+            "HTTP requests served.",
+            registry=self.metric_registry,
+        )
+        self.requests_by_status = Counter(
+            "comfy_cloud_requests_by_status",
+            "HTTP requests by response status.",
+            ("status",),
+            registry=self.metric_registry,
+        )
+        self.video_jobs = Gauge(
+            "comfy_cloud_video_jobs",
+            "Video jobs by terminal state.",
+            ("state",),
+            registry=self.metric_registry,
+        )
+        self.video_jobs_created = Counter(
+            "comfy_cloud_video_jobs_created",
+            "Video jobs created.",
+            registry=self.metric_registry,
+        )
+        self.video_jobs.labels("completed").set(0)
+        self.video_jobs.labels("failed").set(0)
         for record in self.job_store.load():
             try:
                 job = VideoJob.from_record(record)
             except (KeyError, TypeError, ValueError):
                 continue
-            if job.status in {"queued", "in_progress"}:
+            if job.status in {"queued", "in_progress"} and (
+                job.lease_expires_at is None or job.lease_expires_at <= time.time()
+            ):
                 job.status = "failed"
                 job.error = "worker restarted before the job completed"
+                job.lease_expires_at = None
                 self.job_store.save(job.record())
             self.jobs[job.id] = job
 
@@ -196,12 +249,48 @@ class Runtime:
         graph = model.render(values)
         async with self.inference_lock:
             prompt_id = await self.comfy.submit(graph)
-            return await self.comfy.wait(
-                prompt_id, model.output.node, self.settings.workflow_timeout
-            )
+            try:
+                return await self.comfy.wait(
+                    prompt_id, model.output.node, self.settings.workflow_timeout
+                )
+            except (TimeoutError, asyncio.CancelledError):
+                await self.comfy.cancel(prompt_id)
+                raise
+
+    async def reserve_generation(self) -> None:
+        async with self.admission_lock:
+            if self.pending_generations >= self.settings.maximum_pending_generations:
+                raise GenerationQueueFull("generation queue is full")
+            self.pending_generations += 1
+            self.pending.set(self.pending_generations)
+
+    async def release_generation(self) -> None:
+        async with self.admission_lock:
+            self.pending_generations -= 1
+            self.pending.set(self.pending_generations)
 
     def store_job(self, job: VideoJob) -> None:
         self.job_store.save(job.record())
+
+    def get_job(self, job_id: str) -> VideoJob | None:
+        record = self.job_store.get(job_id)
+        if record is not None:
+            try:
+                self.jobs[job_id] = VideoJob.from_record(record)
+            except (KeyError, TypeError, ValueError):
+                pass
+        job = self.jobs.get(job_id)
+        if (
+            job is not None
+            and job.status in {"queued", "in_progress"}
+            and job.lease_expires_at is not None
+            and job.lease_expires_at <= time.time()
+        ):
+            job.status = "failed"
+            job.error = "worker lease expired before the job completed"
+            job.lease_expires_at = None
+            self.store_job(job)
+        return job
 
     def start_background_task(self, coroutine: Any) -> None:
         task = asyncio.create_task(coroutine)
@@ -272,7 +361,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.runtime = runtime
 
     def require(request: Request) -> JSONResponse | None:
-        if not request_authorized(request, settings):
+        if not request_authorised(request, settings):
             return JSONResponse(
                 status_code=401,
                 headers={"WWW-Authenticate": "Bearer"},
@@ -286,15 +375,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return None
 
+    async def limited_body(request: Request) -> bytes:
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > settings.maximum_request_bytes:
+                raise ParameterError("body", "Request body is too large")
+        return bytes(body)
+
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
-        response = await call_next(request)
+        try:
+            content_length = int(request.headers.get("content-length", "0"))
+        except ValueError:
+            content_length = 0
+        if content_length > settings.maximum_request_bytes:
+            response = openai_error(
+                "Request body is too large", 413, "request_too_large"
+            )
+        else:
+            response = await call_next(request)
         response.headers["x-request-id"] = request_id
         status = str(response.status_code)
-        runtime.metrics["requests_total"] = int(runtime.metrics["requests_total"]) + 1
-        by_status: dict = runtime.metrics["requests_by_status"]
-        by_status[status] = int(by_status.get(status, 0)) + 1
+        runtime.requests.inc()
+        runtime.requests_by_status.labels(status).inc()
         return response
 
     @app.get("/health/live")
@@ -325,29 +430,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/metrics")
     async def metrics() -> Response:
-        m = runtime.metrics
-        lines = [
-            "# HELP comfy_cloud_requests_total Total HTTP requests served.",
-            "# TYPE comfy_cloud_requests_total counter",
-            f"comfy_cloud_requests_total {m['requests_total']}",
-            "# HELP comfy_cloud_requests_by_status HTTP requests by response status.",
-            "# TYPE comfy_cloud_requests_by_status counter",
-        ]
-        for status, count in sorted(m["requests_by_status"].items()):
-            lines.append(f'comfy_cloud_requests_by_status{{status="{status}"}} {count}')
-        lines += [
-            "# HELP comfy_cloud_generations_total Completed image generations.",
-            "# TYPE comfy_cloud_generations_total counter",
-            f"comfy_cloud_generations_total {m['generations_total']}",
-            "# HELP comfy_cloud_generation_seconds_total Cumulative generation time.",
-            "# TYPE comfy_cloud_generation_seconds_total counter",
-            f"comfy_cloud_generation_seconds_total {m['generation_seconds_total']:.3f}",
-            "# HELP comfy_cloud_video_jobs Video jobs by terminal state.",
-            "# TYPE comfy_cloud_video_jobs gauge",
-            f'comfy_cloud_video_jobs{{state="completed"}} {m["video_jobs_completed"]}',
-            f'comfy_cloud_video_jobs{{state="failed"}} {m["video_jobs_failed"]}',
-        ]
-        return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
+        return Response(
+            generate_latest(runtime.metric_registry),
+            media_type=CONTENT_TYPE_LATEST,
+        )
 
     @app.get("/ping", include_in_schema=False)
     async def ping() -> Response:
@@ -408,10 +494,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if denied := require(request):
             return denied
         try:
-            body = await request.json()
+            body = json.loads(await limited_body(request))
             if not isinstance(body, dict):
                 raise TypeError
             model = await runtime.model(body.get("model", ""))
+        except ParameterError:
+            return openai_error("Request body is too large", 413, "request_too_large")
         except KeyError:
             return openai_error(
                 "Requested model was not found", 404, "model_not_found", "model"
@@ -456,18 +544,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "steps": steps,
         }
         try:
+            await runtime.reserve_generation()
+        except GenerationQueueFull as exc:
+            return openai_error(str(exc), 429, "rate_limit_exceeded")
+        try:
             started = time.monotonic()
             refs: list[OutputRef] = []
             for index in range(count):
                 if seed is not None:
                     values["seed"] = seed + index
                 refs.extend(await runtime.run(model, values))
-            runtime.metrics["generations_total"] = (
-                int(runtime.metrics["generations_total"]) + 1
-            )
-            runtime.metrics["generation_seconds_total"] = float(
-                runtime.metrics["generation_seconds_total"]
-            ) + (time.monotonic() - started)
+            runtime.generations.inc()
+            runtime.generation_duration.observe(time.monotonic() - started)
             return JSONResponse(
                 {
                     "created": int(time.time()),
@@ -478,6 +566,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
             return openai_error(str(exc), 500, "generation_failed")
+        finally:
+            await runtime.release_generation()
 
     @app.post("/v1/images/edits")
     async def image_edits(request: Request) -> Response:
@@ -502,6 +592,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return openai_error(
                 "image is required", 400, "missing_required_parameter", "image"
             )
+        if image.size is not None and image.size > settings.maximum_request_bytes:
+            return openai_error("image is too large", 413, "request_too_large", "image")
         prompt = str(form.get("prompt", ""))
         if not prompt:
             return openai_error(
@@ -528,11 +620,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return openai_error(
                 "size is not supported for image edits", 400, "invalid_value", "size"
             )
-        uploaded = await runtime.comfy.upload(
-            image.filename,
-            image.file,
-            image.content_type or "application/octet-stream",
-        )
+        try:
+            uploaded = await runtime.comfy.upload(
+                image.filename,
+                image.file,
+                image.content_type or "application/octet-stream",
+            )
+        except httpx.HTTPError as exc:
+            return openai_error(str(exc), 502, "upload_failed", "image")
         values: dict[str, Any] = {
             "prompt": prompt,
             "image": uploaded,
@@ -540,18 +635,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "steps": steps,
         }
         try:
+            await runtime.reserve_generation()
+        except GenerationQueueFull as exc:
+            return openai_error(str(exc), 429, "rate_limit_exceeded")
+        try:
             started = time.monotonic()
             refs: list[OutputRef] = []
             for index in range(count):
                 if seed is not None:
                     values["seed"] = seed + index
                 refs.extend(await runtime.run(model, values))
-            runtime.metrics["generations_total"] = (
-                int(runtime.metrics["generations_total"]) + 1
-            )
-            runtime.metrics["generation_seconds_total"] = float(
-                runtime.metrics["generation_seconds_total"]
-            ) + (time.monotonic() - started)
+            runtime.generations.inc()
+            runtime.generation_duration.observe(time.monotonic() - started)
             return JSONResponse(
                 {
                     "created": int(time.time()),
@@ -562,6 +657,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
             return openai_error(str(exc), 500, "generation_failed")
+        finally:
+            await runtime.release_generation()
 
     async def image_data(
         refs: list[OutputRef], response_format: str, base_url: str
@@ -602,21 +699,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> None:
         try:
             job.status = "in_progress"
+            job.lease_expires_at = int(
+                time.time() + runtime.settings.workflow_timeout + 60
+            )
             runtime.store_job(job)
             job.output = (await runtime.run(model, values))[0]
             await runtime.upload_output(job)
             job.status = "completed"
+            job.lease_expires_at = None
             runtime.store_job(job)
-            runtime.metrics["video_jobs_completed"] = (
-                int(runtime.metrics["video_jobs_completed"]) + 1
-            )
+            runtime.video_jobs.labels("completed").inc()
         except Exception as exc:  # noqa: BLE001 - task boundary exposes errors through job status
             job.status = "failed"
             job.error = str(exc)
+            job.lease_expires_at = None
             runtime.store_job(job)
-            runtime.metrics["video_jobs_failed"] = (
-                int(runtime.metrics["video_jobs_failed"]) + 1
-            )
+            runtime.video_jobs.labels("failed").inc()
+        finally:
+            await runtime.release_generation()
 
     @app.post("/v1/videos")
     async def create_video(request: Request) -> Response:
@@ -632,11 +732,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
             image = form.get("image")
             if image is not None and hasattr(image, "read"):
-                body["image"] = await runtime.comfy.upload(
-                    image.filename,
-                    image.file,
-                    image.content_type or "application/octet-stream",
-                )
+                if (
+                    image.size is not None
+                    and image.size > settings.maximum_request_bytes
+                ):
+                    return openai_error(
+                        "image is too large", 413, "request_too_large", "image"
+                    )
+                try:
+                    body["image"] = await runtime.comfy.upload(
+                        image.filename,
+                        image.file,
+                        image.content_type or "application/octet-stream",
+                    )
+                except httpx.HTTPError as exc:
+                    return openai_error(str(exc), 502, "upload_failed", "image")
             for field in ("width", "height", "length", "seed", "steps"):
                 if field in body:
                     try:
@@ -647,9 +757,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         )
         else:
             try:
-                body = await request.json()
+                body = json.loads(await limited_body(request))
                 if not isinstance(body, dict):
                     raise TypeError
+            except ParameterError:
+                return openai_error(
+                    "Request body is too large", 413, "request_too_large"
+                )
             except (TypeError, ValueError):
                 return openai_error(
                     "Request body must be JSON or multipart form", 400, "invalid_json"
@@ -706,12 +820,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             frames = max(5, round(seconds * 24))
             values["length"] = frames + (5 - frames % 17) % 17
-        job = VideoJob(id=f"video_{uuid.uuid4().hex}", model=model.id)
+        try:
+            await runtime.reserve_generation()
+        except GenerationQueueFull as exc:
+            return openai_error(str(exc), 429, "rate_limit_exceeded")
+        job = VideoJob(
+            id=f"video_{uuid.uuid4().hex}",
+            model=model.id,
+            lease_expires_at=int(
+                time.time()
+                + settings.workflow_timeout * settings.maximum_pending_generations
+                + 60
+            ),
+        )
         runtime.jobs[job.id] = job
         runtime.store_job(job)
-        runtime.metrics["video_jobs_created"] = (
-            int(runtime.metrics["video_jobs_created"]) + 1
-        )
+        runtime.video_jobs_created.inc()
         runtime.start_background_task(execute_video(job, model, values))
         return JSONResponse(
             {
@@ -727,7 +851,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def get_video(job_id: str, request: Request) -> Response:
         if denied := require(request):
             return denied
-        job = runtime.jobs.get(job_id)
+        job = runtime.get_job(job_id)
         if not job:
             return openai_error("Video job was not found", 404, "not_found")
         return JSONResponse(
@@ -746,7 +870,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def video_content(job_id: str, request: Request) -> Response:
         if denied := require(request):
             return denied
-        job = runtime.jobs.get(job_id)
+        job = runtime.get_job(job_id)
         if not job or not job.output:
             return openai_error("Video is not ready", 409, "video_not_ready")
         if output_url := runtime.job_output_url(job):
@@ -758,7 +882,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.websocket("/ws")
     async def websocket_proxy(websocket: WebSocket) -> None:
-        if not websocket_authorized(websocket, settings):
+        if not websocket_authorised(websocket, settings):
             await websocket.close(code=4401)
             return
         await websocket.accept()
@@ -809,32 +933,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 {"detail": "ComfyUI frontend is disabled in serverless mode"},
                 status_code=404,
             )
-        if not request_authorized(request, settings, allow_basic=settings.ui_enabled):
+        if not request_authorised(request, settings, allow_basic=settings.ui_enabled):
             return Response(
                 status_code=401,
                 headers={"WWW-Authenticate": 'Basic realm="ComfyUI", Bearer'},
             )
-        body = await request.body()
+        try:
+            body = await limited_body(request)
+        except ParameterError:
+            return openai_error("Request body is too large", 413, "request_too_large")
         headers = {
             key: value
             for key, value in request.headers.items()
             if key.lower()
             not in HOP_HEADERS | {"host", "authorization", "content-length"}
         }
-        upstream = await runtime.comfy.http.request(
+        upstream_request = runtime.comfy.http.build_request(
             request.method,
             "/" + path,
             params=request.query_params,
             headers=headers,
             content=body,
         )
+        try:
+            upstream = await runtime.comfy.http.send(upstream_request, stream=True)
+        except httpx.HTTPError as exc:
+            return JSONResponse(
+                {"detail": f"ComfyUI request failed: {exc}"}, status_code=502
+            )
         response_headers = {
             key: value
             for key, value in upstream.headers.items()
-            if key.lower() not in HOP_HEADERS | {"content-length", "content-encoding"}
+            if key.lower() not in HOP_HEADERS
         }
-        return Response(
-            upstream.content, status_code=upstream.status_code, headers=response_headers
+        body_iterator = (
+            iter([upstream.content])
+            if upstream.is_stream_consumed
+            else upstream.aiter_raw()
+        )
+        return StreamingResponse(
+            body_iterator,
+            status_code=upstream.status_code,
+            headers=response_headers,
+            background=BackgroundTask(upstream.aclose),
         )
 
     return app

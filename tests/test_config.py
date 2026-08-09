@@ -18,3 +18,15 @@ def test_pod_settings_require_ui_password(monkeypatch):
 
     with pytest.raises(ValueError, match="COMFY_UI_PASSWORD"):
         Settings.from_env()
+
+
+@pytest.mark.parametrize(
+    "name", ["MAXIMUM_PENDING_GENERATIONS", "MAXIMUM_REQUEST_BYTES"]
+)
+def test_settings_reject_non_positive_limits(monkeypatch, name):
+    monkeypatch.setenv("API_KEY", "test-key")
+    monkeypatch.setenv("MODE", "serverless")
+    monkeypatch.setenv(name, "0")
+
+    with pytest.raises(ValueError, match=name):
+        Settings.from_env()

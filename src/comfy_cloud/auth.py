@@ -26,13 +26,13 @@ def _valid_header(header: str | None, settings: Settings, allow_basic: bool) -> 
     return False
 
 
-def request_authorized(
+def request_authorised(
     request: Request, settings: Settings, allow_basic: bool = True
 ) -> bool:
     return _valid_header(request.headers.get("authorization"), settings, allow_basic)
 
 
-def websocket_authorized(websocket: WebSocket, settings: Settings) -> bool:
+def websocket_authorised(websocket: WebSocket, settings: Settings) -> bool:
     token = websocket.query_params.get("token")
     if token and hmac.compare_digest(token, settings.api_key):
         return True

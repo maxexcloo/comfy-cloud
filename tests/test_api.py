@@ -89,6 +89,40 @@ async def test_openai_image_generation_uses_workflow_model():
 
 
 @pytest.mark.asyncio
+async def test_generation_queue_rejects_excess_work():
+    app = create_app(replace(settings(), maximum_pending_generations=1))
+    await app.state.runtime.reserve_generation()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer test-key"},
+            json={"model": "example", "prompt": "test"},
+        )
+
+    assert response.status_code == 429
+    assert response.json()["error"]["code"] == "rate_limit_exceeded"
+
+
+@pytest.mark.asyncio
+async def test_request_size_limit_is_enforced():
+    app = create_app(replace(settings(), maximum_request_bytes=8))
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/generations",
+            content=b'{"prompt":"too large"}',
+            headers={
+                "Authorization": "Bearer test-key",
+                "Content-Type": "application/json",
+            },
+        )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "request_too_large"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("body", "parameter"),
     [
@@ -344,7 +378,7 @@ async def test_health_live_ready_and_metrics():
     assert first.headers.get("x-request-id")
     body = metrics.text
     assert "comfy_cloud_requests_total 2" in body
-    assert 'comfy_cloud_requests_by_status{status="200"}' in body
+    assert 'comfy_cloud_requests_by_status_total{status="200"}' in body
     assert "comfy_cloud_generations_total 0" in body
 
 

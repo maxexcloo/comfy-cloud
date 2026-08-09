@@ -2,6 +2,7 @@ id: krea-2-turbo/text-to-image
 profile: krea-2-turbo
 operation: image_generation
 workflow: workflow.json
+workflow_sha256: 8ddf9b1f1a0c2b4a4f55de445229ed73b61142baddc06d52d76dd87bc74678fd
 owned_by: krea
 aliases: [krea-2-turbo]
 input_map:

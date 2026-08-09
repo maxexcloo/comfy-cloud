@@ -27,6 +27,8 @@ class Settings:
     ui_username: str
     workflow_timeout: float
     jobs_dir: Path | None = None
+    maximum_pending_generations: int = 8
+    maximum_request_bytes: int = 100 * 1024 * 1024
     storage_env: dict[str, str] | None = None
 
     @property
@@ -50,6 +52,14 @@ class Settings:
             else os.getenv("COMFY_UI_PASSWORD", "")
         )
         public_base_url = os.getenv("PUBLIC_BASE_URL")
+        maximum_pending_generations = int(os.getenv("MAXIMUM_PENDING_GENERATIONS", "8"))
+        maximum_request_bytes = int(
+            os.getenv("MAXIMUM_REQUEST_BYTES", str(100 * 1024 * 1024))
+        )
+        if maximum_pending_generations < 1:
+            raise ValueError("MAXIMUM_PENDING_GENERATIONS must be at least 1")
+        if maximum_request_bytes < 1:
+            raise ValueError("MAXIMUM_REQUEST_BYTES must be at least 1")
         return cls(
             api_key=api_key,
             catalogue_dirs=tuple(roots),
@@ -62,4 +72,6 @@ class Settings:
             ui_username=os.getenv("COMFY_UI_USERNAME", "comfy"),
             workflow_timeout=float(os.getenv("WORKFLOW_TIMEOUT", "900")),
             jobs_dir=Path(jobs_dir) if jobs_dir else None,
+            maximum_pending_generations=maximum_pending_generations,
+            maximum_request_bytes=maximum_request_bytes,
         )

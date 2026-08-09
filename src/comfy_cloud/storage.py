@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 
 class ObjectStorage:
@@ -95,7 +98,8 @@ class ObjectStorage:
             key = self.key(filename, subfolder)
             await asyncio.to_thread(self._upload, key, content, content_type)
             return self.url(key)
-        except Exception:  # noqa: BLE001 - storage must never break generation
+        except Exception as exc:  # noqa: BLE001 - storage must never break generation
+            log.warning("object storage upload failed: %s", exc)
             return None
 
     async def upload_path(
@@ -109,5 +113,6 @@ class ObjectStorage:
             key = self.key(filename, subfolder)
             await asyncio.to_thread(self._upload_path, key, path, content_type)
             return self.url(key)
-        except Exception:  # noqa: BLE001 - storage must never break generation
+        except Exception as exc:  # noqa: BLE001 - storage must never break generation
+            log.warning("object storage upload failed: %s", exc)
             return None

@@ -4,8 +4,14 @@ IMAGE_NAME = "ghcr.io/maxexcloo/comfy-cloud:latest"
 
 # Gateway
 API_KEY = "REPLACE_ME"
+CATALOGUE_DIR = ""
 COMFY_UI_PASSWORD = "REPLACE_ME"
 COMFY_UI_USERNAME = "REPLACE_ME"
+JOBS_DIR = ""
+MAXIMUM_PENDING_GENERATIONS = "8"
+MAXIMUM_REQUEST_BYTES = "104857600"
+MODEL_PROFILES = ""
+PUBLIC_BASE_URL = ""
 
 # Model downloads (gated repos require HF_TOKEN)
 CIVITAI_TOKEN = ""

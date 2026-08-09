@@ -20,6 +20,16 @@ class JobStore:
         if directory is not None:
             directory.mkdir(parents=True, exist_ok=True)
 
+    def _path(self, job_id: str) -> Path:
+        if not job_id or any(
+            character not in "-0123456789_abcdefghijklmnopqrstuvwxyz"
+            for character in job_id
+        ):
+            raise ValueError("invalid job id")
+        if self.directory is None:
+            raise RuntimeError("job storage is disabled")
+        return self.directory / f"{job_id}.json"
+
     def load(self) -> list[dict[str, Any]]:
         if self.directory is None:
             return []
@@ -31,10 +41,18 @@ class JobStore:
                 continue
         return records
 
+    def get(self, job_id: str) -> dict[str, Any] | None:
+        if self.directory is None:
+            return None
+        try:
+            return json.loads(self._path(job_id).read_text())
+        except (OSError, ValueError):
+            return None
+
     def save(self, record: dict[str, Any]) -> None:
         if self.directory is None:
             return
-        path = self.directory / f"{record['id']}.json"
+        path = self._path(record["id"])
         temporary = path.with_suffix(".tmp")
         temporary.write_text(json.dumps(record))
         temporary.replace(path)
@@ -42,4 +60,4 @@ class JobStore:
     def delete(self, job_id: str) -> None:
         if self.directory is None:
             return
-        (self.directory / f"{job_id}.json").unlink(missing_ok=True)
+        self._path(job_id).unlink(missing_ok=True)

@@ -85,6 +85,35 @@ def test_runtime_loads_persisted_jobs_and_fails_stale(tmp_path):
     assert "restarted" in stale.error
 
 
+def test_runtime_preserves_job_with_active_lease(tmp_path):
+    store = JobStore(tmp_path / "jobs")
+    store.save(
+        VideoJob(
+            id="video_active",
+            model="minimax-h3",
+            status="in_progress",
+            lease_expires_at=4_102_444_800,
+        ).record()
+    )
+
+    app = create_app(settings(tmp_path))
+
+    assert app.state.runtime.jobs["video_active"].status == "in_progress"
+
+
+def test_runtime_refreshes_job_created_by_another_worker(tmp_path):
+    first = create_app(settings(tmp_path))
+    second = create_app(settings(tmp_path))
+    job = VideoJob(id="video_shared", model="minimax-h3", status="completed")
+    first.state.runtime.jobs[job.id] = job
+    first.state.runtime.store_job(job)
+
+    refreshed = second.state.runtime.get_job(job.id)
+
+    assert refreshed is not None
+    assert refreshed.status == "completed"
+
+
 def test_runtime_ignores_invalid_job_records(tmp_path):
     jobs = tmp_path / "jobs"
     jobs.mkdir()
