@@ -40,7 +40,7 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           cache-from: type=gha,scope=control
-          cache-to: type=gha,mode=max,scope=control
+          cache-to: type=gha,mode=max,scope=control,ignore-error=true
           context: .
           file: Dockerfile.control
           labels: ${{ steps.metadata.outputs.labels }}
@@ -95,7 +95,7 @@ jobs:
             --env MODE=serverless \
             --publish 8000:8000 \
             "${SMOKE_IMAGE}"
-          for attempt in {1..60}; do
+          for _ in {1..60}; do
             if curl --fail --silent http://127.0.0.1:8000/health/ready >/dev/null; then
               exit 0
             fi

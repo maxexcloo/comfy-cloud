@@ -1,6 +1,6 @@
 {
   "disk_space": 100,
-  "image": "ghcr.io/OWNER/inference-control:TAG",
+  "image": "ghcr.io/OWNER/ai-router:TAG",
   "name": "comfy-control",
   "env": {
     "API_KEY": "CHANGE_ME",

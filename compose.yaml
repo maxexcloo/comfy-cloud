@@ -1,4 +1,4 @@
-name: inference-control
+name: ai-router
 
 services:
   bifrost:

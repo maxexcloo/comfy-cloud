@@ -1,4 +1,4 @@
-# Inference Control
+# AI Router
 
 A standalone personal AI gateway combining Bifrost, CLIProxyAPI, and Comfy Control.
 It gives Open WebUI and other clients one authenticated OpenAI-compatible endpoint
@@ -91,7 +91,7 @@ providers:
 ```yaml
 services:
   comfy-control:
-    image: ghcr.io/maxexcloo/inference-control:control
+    image: ghcr.io/maxexcloo/ai-router:control
     ports: ["28081:8000"]
     environment:
       CONTROL_API_KEY: change-me
@@ -177,7 +177,7 @@ tasks call the supported REST API directly with `curl` and `jq`.
 Prebuilt images are also published by GitHub Actions:
 
 ```bash
-docker pull ghcr.io/maxexcloo/inference-control:latest
+docker pull ghcr.io/maxexcloo/ai-router:latest
 ```
 
 Pushes to `main` publish the generic `latest` and `main` tags plus the
@@ -237,7 +237,7 @@ curl http://localhost:8000/v1/images/edits \
 ```
 
 Model discovery reports the exact count as
-`capabilities.reference_images.minimum` and `.maximum`. Inference Control does not
+`capabilities.reference_images.minimum` and `.maximum`. AI Router does not
 store identities, rewrite prompts, assign character roles, build collages, or run
 face matching; callers own those semantics and must refer to images by position.
 
@@ -426,7 +426,7 @@ For a first test, fetch the 4B distilled profile alone — the fastest model and
 the cheapest volume.
 
 For ephemeral SaladCloud nodes, GitHub automatically publishes
-`ghcr.io/OWNER/inference-control:flux-2-klein-4b` after the generic image succeeds on
+`ghcr.io/OWNER/ai-router:flux-2-klein-4b` after the generic image succeeds on
 `main`. The jobs share the runtime layer cache, so only the model layer differs.
 Larger profiles remain on persistent volumes: the 9B and MiniMax sets exceed
 SaladCloud's image limit, and keeping them out of the runtime image avoids slow
@@ -462,7 +462,7 @@ artefact. Reconstruction verifies every part and the final file.
 For a first deployment:
 
 1. Push `main` and wait for the `container` workflow to publish
-   `ghcr.io/OWNER/inference-control:latest`.
+   `ghcr.io/OWNER/ai-router:latest`.
 2. Make the first GHCR package public, or configure provider registry credentials.
 3. Run `mise run setup`, set real secrets and provider identifiers in
    `.mise.local.toml`, then choose one `provider:deploy` task below.

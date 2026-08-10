@@ -1,7 +1,7 @@
 {
   "containerDiskInGb": 30,
   "dockerArgs": "",
-  "imageName": "ghcr.io/OWNER/inference-control:TAG",
+  "imageName": "ghcr.io/OWNER/ai-router:TAG",
   "name": "comfy-control",
   "ports": "8000/http",
   "volumeInGb": 100,
