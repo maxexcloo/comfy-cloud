@@ -2,7 +2,7 @@ name: ai-router
 
 services:
   bifrost:
-    image: maximhq/bifrost:v1.6.9
+    image: maximhq/bifrost:2.1.29
     depends_on:
       cliproxy:
         condition: service_healthy
