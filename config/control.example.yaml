@@ -21,12 +21,29 @@ providers:
     api_key: env.PRIMARY_COMFY_API_KEY
     base_url: env.PRIMARY_COMFY_URL
     idle_seconds: 600
+    actions:
+      deploy:
+        confirmation: Deploy the primary provider?
+        headers:
+          authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
+        url: env.PRIMARY_DEPLOY_URL
+      destroy:
+        confirmation: Destroy the primary provider and its local data?
+        headers:
+          authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
+        url: env.PRIMARY_DESTROY_URL
+      status:
+        method: GET
+        headers:
+          authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
+        url: env.PRIMARY_STATUS_URL
     lifecycle:
       start:
         headers:
           authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
         url: env.PRIMARY_START_URL
       stop:
+        confirmation: Stop the primary provider?
         headers:
           authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
         url: env.PRIMARY_STOP_URL

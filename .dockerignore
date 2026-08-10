@@ -5,8 +5,8 @@
 .ruff_cache/
 .venv/
 __pycache__/
-dist
-model-packs
-models
-output
-tests
+dist/
+model-packs/
+models/
+output/
+tests/

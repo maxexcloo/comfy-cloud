@@ -20,7 +20,7 @@ Deploy:
    ...). Run the gateway:
        python -m comfy_control.supervisor
 3. Run this worker as a second process in the same container:
-       python /opt/comfy-control/deploy/vast_worker.py
+       python /opt/comfy-control/deploy/vast/worker.py
 4. Configure the serverless endpoint with ``PYWORKER_REPO`` pointing at a repo
    containing this file. Vast's engine handles queueing, autoscaling, and
    readiness; this file only routes.

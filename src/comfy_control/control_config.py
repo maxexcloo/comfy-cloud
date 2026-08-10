@@ -10,13 +10,21 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 from .catalogue import Operation
+from .config import required_secret
 
 
 class LifecycleAction(BaseModel):
-    method: Literal["DELETE", "PATCH", "POST", "PUT"] = "POST"
+    method: Literal["DELETE", "GET", "PATCH", "POST", "PUT"] = "POST"
     url: str
+    confirmation: str | None = None
     headers: dict[str, str] = Field(default_factory=dict)
     json_body: dict[str, Any] | None = Field(default=None, alias="json")
+
+    @model_validator(mode="after")
+    def validate_action(self) -> LifecycleAction:
+        if not self.url.startswith(("http://", "https://")):
+            raise ValueError("action url must use HTTP or HTTPS")
+        return self
 
 
 class ProviderLifecycle(BaseModel):
@@ -32,14 +40,31 @@ class Provider(BaseModel):
     idle_seconds: int = 600
     request_timeout: float = 1200
     startup_timeout: float = 900
+    actions: dict[str, LifecycleAction] = Field(default_factory=dict)
     lifecycle: ProviderLifecycle = Field(default_factory=ProviderLifecycle)
 
     @model_validator(mode="after")
     def validate_provider(self) -> Provider:
-        if not self.id or "/" in self.id:
-            raise ValueError("provider id must be a non-empty path segment")
+        if not re.fullmatch(r"[a-z][a-z0-9-]*", self.id):
+            raise ValueError("provider id must be a lowercase slug")
+        if not self.base_url.startswith(("http://", "https://")):
+            raise ValueError("provider base_url must use HTTP or HTTPS")
+        if not self.api_key:
+            raise ValueError("provider api_key must not be empty")
         if self.idle_seconds < 0:
             raise ValueError("idle_seconds must not be negative")
+        if self.request_timeout <= 0 or self.startup_timeout < 0:
+            raise ValueError("provider timeouts must not be negative")
+        invalid_actions = sorted(
+            name
+            for name in self.actions
+            if not re.fullmatch(r"[a-z][a-z0-9-]*", name) or name in {"start", "stop"}
+        )
+        if invalid_actions:
+            raise ValueError(
+                "provider action names must be lowercase slugs other than start/stop: "
+                + ", ".join(invalid_actions)
+            )
         self.base_url = self.base_url.rstrip("/")
         return self
 
@@ -130,16 +155,16 @@ class ControlSettings:
 
     @classmethod
     def from_env(cls) -> ControlSettings:
-        api_key = os.getenv("CONTROL_API_KEY", "").strip()
-        if not api_key:
-            raise ValueError("CONTROL_API_KEY must be set")
+        maximum_request_bytes = int(
+            os.getenv("CONTROL_MAXIMUM_REQUEST_BYTES", str(100 * 1024 * 1024))
+        )
+        if maximum_request_bytes < 1:
+            raise ValueError("CONTROL_MAXIMUM_REQUEST_BYTES must be at least 1")
         return cls(
-            api_key=api_key,
+            api_key=required_secret("CONTROL_API_KEY"),
             config_file=Path(os.getenv("CONTROL_CONFIG", "/config/control.yaml")),
             database_path=Path(os.getenv("CONTROL_DATABASE", "/data/comfy-control.db")),
-            maximum_request_bytes=int(
-                os.getenv("CONTROL_MAXIMUM_REQUEST_BYTES", str(100 * 1024 * 1024))
-            ),
-            ui_password=os.getenv("CONTROL_UI_PASSWORD", ""),
+            maximum_request_bytes=maximum_request_bytes,
+            ui_password=required_secret("CONTROL_UI_PASSWORD"),
             ui_username=os.getenv("CONTROL_UI_USERNAME", "comfy"),
         )

@@ -27,6 +27,11 @@ repos:
         entry: mise exec -- actionlint
         files: ^\.github/workflows/.*\.ya?ml$
         language: system
+      - id: bash-syntax
+        name: Check deployment shell syntax
+        entry: bash -n
+        files: ^deploy/.*\.sh$
+        language: system
       - id: hadolint
         name: Lint Dockerfiles
         entry: mise exec -- hadolint

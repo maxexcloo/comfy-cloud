@@ -4,28 +4,20 @@ import asyncio
 import base64
 import hmac
 import json
-import time
 import uuid
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
-from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
 
-from .control_config import (
-    ControlFile,
-    ControlSettings,
-    LifecycleAction,
-    Provider,
-    RoutedModel,
-    Target,
-)
-from .control_store import ControlStore, Job
+from .control_config import ControlSettings
+from .controller import Controller, exception_message, rewrite_json_model
 
-RETRYABLE_STATUS = {502, 503, 504}
+
+class RequestBodyTooLarge(ValueError):
+    pass
 
 
 def error(message: str, status: int, code: str) -> JSONResponse:
@@ -39,14 +31,6 @@ def error(message: str, status: int, code: str) -> JSONResponse:
             }
         },
     )
-
-
-def exception_message(exc: Exception) -> str:
-    if isinstance(exc, httpx.HTTPStatusError):
-        return f"lifecycle request returned HTTP {exc.response.status_code}"
-    if isinstance(exc, httpx.RequestError):
-        return f"provider connection failed ({type(exc).__name__})"
-    return str(exc)
 
 
 def bearer_authorised(request: Request, settings: ControlSettings) -> bool:
@@ -70,311 +54,20 @@ def ui_authorised(request: Request, settings: ControlSettings) -> bool:
     )
 
 
-@dataclass
-class ProviderRuntime:
-    config: Provider
-    client: httpx.AsyncClient
-    active_requests: int = 0
-    last_used: float = field(default_factory=time.monotonic)
-    ready: bool = False
-    state: str = "unknown"
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-
-
-class Controller:
-    def __init__(self, settings: ControlSettings):
-        self.settings = settings
-        self.config = ControlFile.load(settings.config_file)
-        self.models = {model.id: model for model in self.config.models}
-        self.providers = {
-            provider.id: ProviderRuntime(
-                config=provider,
-                client=httpx.AsyncClient(
-                    base_url=provider.base_url,
-                    follow_redirects=False,
-                    timeout=provider.request_timeout,
-                ),
-            )
-            for provider in self.config.providers
-        }
-        self.lifecycle_client = httpx.AsyncClient(timeout=60)
-        self.store = ControlStore(settings.database_path)
-        self.uploads_path = settings.database_path.parent / "uploads"
-        self.video_tasks: set[asyncio.Task[None]] = set()
-
-    async def close(self) -> None:
-        for task in self.video_tasks:
-            task.cancel()
-        await asyncio.gather(*self.video_tasks, return_exceptions=True)
-        await asyncio.gather(
-            *(runtime.client.aclose() for runtime in self.providers.values())
-        )
-        await self.lifecycle_client.aclose()
-        self.store.close()
-
-    def start_video(self, job: Job) -> None:
-        task = asyncio.create_task(self.run_video(job))
-        self.video_tasks.add(task)
-        task.add_done_callback(self.video_tasks.discard)
-
-    async def run_video(self, job: Job) -> None:
-        request_id = job.id.removeprefix("video_")[:16]
-        try:
-            model = self.model(job.model, "video_generation")
-            failures: list[str] = []
-            targets = sorted(
-                model.targets,
-                key=lambda target: (
-                    target.provider != job.provider if job.provider else False
-                ),
-            )
-            for target in targets:
-                self.store.update_job(job.id, "in_progress", provider=target.provider)
-                try:
-                    response = await self.forward(
-                        target,
-                        "POST",
-                        "/v1/videos?wait=true",
-                        *self.video_request(job, target.model),
-                        request_id,
-                    )
-                    data = response.json()
-                except (httpx.HTTPError, RuntimeError, TimeoutError, ValueError) as exc:
-                    message = exception_message(exc)
-                    failures.append(f"{target.provider}: {message}")
-                    self.store.event(
-                        "error",
-                        message,
-                        provider=target.provider,
-                        request_id=request_id,
-                    )
-                    continue
-                if response.is_success and data.get("status") == "completed":
-                    upstream_id = str(data.get("id", ""))
-                    data["id"] = job.id
-                    data["model"] = job.model
-                    self.store.update_job(
-                        job.id,
-                        "completed",
-                        provider=target.provider,
-                        upstream_id=upstream_id,
-                        response_json=json.dumps(data, separators=(",", ":")),
-                    )
-                    self.store.event(
-                        "info",
-                        "video completed",
-                        provider=target.provider,
-                        request_id=request_id,
-                    )
-                    self.remove_uploads(job.id)
-                    return
-                message = data.get("error") or f"HTTP {response.status_code}"
-                failures.append(f"{target.provider}: {message}")
-            failure = "; ".join(failures) or "all providers failed"
-            self.store.update_job(job.id, "failed", error=failure)
-            self.remove_uploads(job.id)
-        except Exception as exc:  # noqa: BLE001 - durable task boundary
-            message = exception_message(exc)
-            self.store.update_job(job.id, "failed", error=message)
-            self.store.event("error", message, request_id=request_id)
-            self.remove_uploads(job.id)
-
-    def video_request(self, job: Job, model: str) -> tuple[bytes, dict[str, str]]:
-        value = json.loads(job.request_json)
-        multipart = value.get("_control_multipart")
-        if multipart is None:
-            return rewrite_json_model(job.request_json.encode(), model), {
-                "content-type": "application/json",
-                "x-comfy-job-id": job.id,
-            }
-        fields = [
-            (key, model if key == "model" else item)
-            for key, item in multipart["fields"]
-        ]
-        if not any(key == "model" for key, _ in fields):
-            fields.append(("model", model))
-        files = [
-            (
-                item["field"],
-                (
-                    item["filename"],
-                    Path(item["path"]).read_bytes(),
-                    item["content_type"],
-                ),
-            )
-            for item in multipart["files"]
-        ]
-        encoded = httpx.Request(
-            "POST", "http://multipart.invalid", data=dict(fields), files=files
-        )
-        return encoded.read(), {
-            "content-type": encoded.headers["content-type"],
-            "x-comfy-job-id": job.id,
-        }
-
-    def remove_uploads(self, job_id: str) -> None:
-        directory = self.uploads_path / job_id
-        if not directory.is_dir():
-            return
-        for path in directory.iterdir():
-            if path.is_file():
-                path.unlink()
-        directory.rmdir()
-
-    async def action(self, action: LifecycleAction, provider: str) -> None:
-        response = await self.lifecycle_client.request(
-            action.method,
-            action.url,
-            headers=action.headers,
-            json=action.json_body,
-        )
-        response.raise_for_status()
-        self.store.event(
-            "info", f"lifecycle {action.method} succeeded", provider=provider
-        )
-
-    async def check_ready(self, runtime: ProviderRuntime) -> bool:
-        try:
-            response = await runtime.client.get(
-                runtime.config.health_path,
-                headers={"Authorization": f"Bearer {runtime.config.api_key}"},
-                timeout=10,
-            )
-            runtime.ready = response.is_success
-        except httpx.HTTPError:
-            runtime.ready = False
-        runtime.state = "ready" if runtime.ready else "stopped"
-        return runtime.ready
-
-    async def ensure_ready(self, runtime: ProviderRuntime, request_id: str) -> None:
-        if await self.check_ready(runtime):
-            return
-        action = runtime.config.lifecycle.start
-        if action is None:
-            runtime.state = "starting"
-            return
-        async with runtime.lock:
-            if await self.check_ready(runtime):
-                return
-            runtime.state = "starting"
-            self.store.event(
-                "info",
-                "starting provider",
-                provider=runtime.config.id,
-                request_id=request_id,
-            )
-            await self.action(action, runtime.config.id)
-            deadline = time.monotonic() + runtime.config.startup_timeout
-            while time.monotonic() < deadline:
-                if await self.check_ready(runtime):
-                    self.store.event(
-                        "info",
-                        "provider ready",
-                        provider=runtime.config.id,
-                        request_id=request_id,
-                    )
-                    return
-                await asyncio.sleep(2)
-            runtime.state = "failed"
-            raise TimeoutError(f"provider {runtime.config.id} did not become ready")
-
-    async def idle_reaper(self) -> None:
-        while True:
-            await asyncio.sleep(15)
-            for runtime in self.providers.values():
-                action = runtime.config.lifecycle.stop
-                if (
-                    action is None
-                    or runtime.config.idle_seconds == 0
-                    or runtime.active_requests
-                    or time.monotonic() - runtime.last_used
-                    < runtime.config.idle_seconds
-                ):
-                    continue
-                async with runtime.lock:
-                    if (
-                        runtime.active_requests
-                        or time.monotonic() - runtime.last_used
-                        < runtime.config.idle_seconds
-                        or not await self.check_ready(runtime)
-                    ):
-                        continue
-                    runtime.state = "stopping"
-                    try:
-                        await self.action(action, runtime.config.id)
-                        runtime.ready = False
-                        runtime.state = "stopped"
-                    except httpx.HTTPError as exc:
-                        runtime.state = "failed"
-                        self.store.event(
-                            "error",
-                            f"provider stop failed: {exc}",
-                            provider=runtime.config.id,
-                        )
-
-    def model(self, model_id: str, operation: str) -> RoutedModel:
-        try:
-            model = self.models[model_id]
-        except KeyError as exc:
-            raise KeyError(f"unknown model: {model_id}") from exc
-        if model.operation != operation:
-            raise ValueError(f"model {model_id} does not support {operation}")
-        return model
-
-    async def forward(
-        self,
-        target: Target,
-        method: str,
-        path: str,
-        body: bytes,
-        headers: dict[str, str],
-        request_id: str,
-    ) -> httpx.Response:
-        runtime = self.providers[target.provider]
-        await self.ensure_ready(runtime, request_id)
-        deadline = time.monotonic() + runtime.config.startup_timeout
-        runtime.active_requests += 1
-        runtime.state = "busy"
-        try:
-            while True:
-                try:
-                    response = await runtime.client.request(
-                        method,
-                        path,
-                        content=body,
-                        headers=headers
-                        | {
-                            "Authorization": f"Bearer {runtime.config.api_key}",
-                            "x-request-id": request_id,
-                        },
-                    )
-                except httpx.HTTPError:
-                    if time.monotonic() >= deadline:
-                        raise
-                    await asyncio.sleep(2)
-                    continue
-                if response.status_code not in RETRYABLE_STATUS:
-                    runtime.ready = True
-                    return response
-                await response.aclose()
-                if time.monotonic() >= deadline:
-                    raise RuntimeError(
-                        f"provider {runtime.config.id} remained unavailable"
-                    )
-                runtime.state = "starting"
-                await asyncio.sleep(2)
-        finally:
-            runtime.active_requests -= 1
-            runtime.last_used = time.monotonic()
-            runtime.state = "ready" if runtime.ready else "unknown"
-
-
-def rewrite_json_model(body: bytes, model: str) -> bytes:
-    value = json.loads(body)
-    if not isinstance(value, dict):
-        raise TypeError("request body must be an object")
-    value["model"] = model
-    return json.dumps(value, separators=(",", ":")).encode()
+async def limited_body(request: Request, maximum_bytes: int) -> bytes:
+    try:
+        content_length = int(request.headers.get("content-length", "0"))
+    except ValueError:
+        content_length = 0
+    if content_length > maximum_bytes:
+        raise RequestBodyTooLarge
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > maximum_bytes:
+            raise RequestBodyTooLarge
+    request._body = bytes(body)  # Starlette form parsing reuses the bounded body.
+    return request._body
 
 
 def html() -> str:
@@ -384,17 +77,22 @@ def html() -> str:
 :root{color-scheme:dark;font:15px system-ui;background:#101418;color:#e8edf2}body{max-width:1100px;margin:0 auto;padding:2rem}
 h1{font-size:1.5rem}section{background:#181e24;border:1px solid #2c3640;border-radius:10px;margin:1rem 0;padding:1rem}
 table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.55rem;border-bottom:1px solid #2c3640}th{color:#9fb0bf}
+button{background:#263442;border:1px solid #42576b;border-radius:5px;color:#e8edf2;margin:.15rem;padding:.35rem .55rem;cursor:pointer}
+pre{overflow:auto;white-space:pre-wrap}
 .ready,.completed{color:#67d391}.busy,.starting,.queued,.in_progress{color:#f2c166}.failed,.error{color:#ff7b72}
 small{color:#9fb0bf}</style></head><body><h1>Comfy Control</h1><small id="updated">Loading…</small>
-<section><h2>Providers</h2><table><thead><tr><th>Provider</th><th>State</th><th>Active</th><th>Idle</th></tr></thead><tbody id="providers"></tbody></table></section>
+<section><h2>Providers</h2><table><thead><tr><th>Provider</th><th>State</th><th>Active</th><th>Idle</th><th>Actions</th></tr></thead><tbody id="providers"></tbody></table></section>
+<section><h2>Action Result</h2><pre id="actionResult">No action run.</pre></section>
 <section><h2>Jobs</h2><table><thead><tr><th>Job</th><th>Model</th><th>Provider</th><th>Status</th></tr></thead><tbody id="jobs"></tbody></table></section>
 <section><h2>Events</h2><table><thead><tr><th>Time</th><th>Level</th><th>Provider</th><th>Message</th></tr></thead><tbody id="events"></tbody></table></section>
 <script>const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function refresh(){const r=await fetch('/api/status');if(!r.ok)return;const d=await r.json();
-providers.innerHTML=d.providers.map(p=>`<tr><td>${esc(p.id)}</td><td class="${esc(p.state)}">${esc(p.state)}</td><td>${p.active_requests}</td><td>${p.idle_seconds}s</td></tr>`).join('');
+providers.innerHTML=d.providers.map(p=>`<tr><td>${esc(p.id)}</td><td class="${esc(p.state)}">${esc(p.state)}</td><td>${p.active_requests}</td><td>${p.idle_seconds}s</td><td>${p.actions.map(a=>`<button data-provider="${esc(p.id)}" data-action="${esc(a.name)}" data-confirmation="${esc(a.confirmation)}">${esc(a.name)}</button>`).join('')}</td></tr>`).join('');
+providers.querySelectorAll('button').forEach(b=>b.onclick=()=>act(b.dataset.provider,b.dataset.action,b.dataset.confirmation));
 jobs.innerHTML=d.jobs.map(j=>`<tr><td>${esc(j.id)}</td><td>${esc(j.model)}</td><td>${esc(j.provider)}</td><td class="${esc(j.status)}">${esc(j.status)}</td></tr>`).join('');
 events.innerHTML=d.events.map(e=>`<tr><td>${new Date(e.created_at*1000).toLocaleString()}</td><td class="${esc(e.level)}">${esc(e.level)}</td><td>${esc(e.provider)}</td><td>${esc(e.message)}</td></tr>`).join('');
-updated.textContent='Updated '+new Date().toLocaleTimeString()}refresh();setInterval(refresh,5000)</script></body></html>"""
+updated.textContent='Updated '+new Date().toLocaleTimeString()}
+async function act(provider,action,confirmation){if(confirmation&&confirmation!=='null'&&!confirm(confirmation))return;const key=provider+'/'+action;const r=await fetch('/api/providers/'+encodeURIComponent(provider)+'/actions/'+encodeURIComponent(action),{method:'POST',headers:{'x-comfy-control-action':key}});const d=await r.json().catch(()=>({}));actionResult.textContent=JSON.stringify(d,null,2);if(!r.ok)alert(d.error?.message??'Provider action failed');await refresh()}refresh();setInterval(refresh,5000)</script></body></html>"""
 
 
 def create_app(settings: ControlSettings | None = None) -> FastAPI:
@@ -442,6 +140,15 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                         "id": runtime.config.id,
                         "state": runtime.state,
                         "active_requests": runtime.active_requests,
+                        "actions": [
+                            {
+                                "name": name,
+                                "confirmation": action.confirmation,
+                            }
+                            for name, action in controller.available_actions(
+                                runtime.config.id
+                            ).items()
+                        ],
                         "idle_seconds": runtime.config.idle_seconds,
                     }
                     for runtime in controller.providers.values()
@@ -450,6 +157,29 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 "events": controller.store.events(100),
             }
         )
+
+    @app.post("/api/providers/{provider_id}/actions/{action_name}")
+    async def provider_action(
+        provider_id: str, action_name: str, request: Request
+    ) -> Response:
+        if not ui_authorised(request, settings):
+            return Response(status_code=401)
+        expected = f"{provider_id}/{action_name}"
+        if not hmac.compare_digest(
+            request.headers.get("x-comfy-control-action", ""), expected
+        ):
+            return error(
+                "provider action confirmation is missing", 400, "invalid_action"
+            )
+        try:
+            result = await controller.run_provider_action(
+                provider_id, action_name, uuid.uuid4().hex[:16]
+            )
+        except KeyError as exc:
+            return error(str(exc), 404, "action_not_found")
+        except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
+            return error(exception_message(exc), 502, "action_failed")
+        return JSONResponse(result)
 
     @app.get("/v1/models")
     async def models(request: Request) -> Response:
@@ -473,8 +203,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def generation(request: Request, operation: str, path: str) -> Response:
         if not bearer_authorised(request, settings):
             return error("invalid API key", 401, "invalid_api_key")
-        body = await request.body()
-        if len(body) > settings.maximum_request_bytes:
+        try:
+            body = await limited_body(request, settings.maximum_request_bytes)
+        except RequestBodyTooLarge:
             return error("request body is too large", 413, "request_too_large")
         try:
             original = json.loads(body)
@@ -545,8 +276,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def image_edits(request: Request) -> Response:
         if not bearer_authorised(request, settings):
             return error("invalid API key", 401, "invalid_api_key")
-        body = await request.body()
-        if len(body) > settings.maximum_request_bytes:
+        try:
+            await limited_body(request, settings.maximum_request_bytes)
+        except RequestBodyTooLarge:
             return error("request body is too large", 413, "request_too_large")
         try:
             form = await request.form()
@@ -618,8 +350,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def create_video(request: Request) -> Response:
         if not bearer_authorised(request, settings):
             return error("invalid API key", 401, "invalid_api_key")
-        body = await request.body()
-        if len(body) > settings.maximum_request_bytes:
+        try:
+            body = await limited_body(request, settings.maximum_request_bytes)
+        except RequestBodyTooLarge:
             return error("request body is too large", 413, "request_too_large")
         try:
             if request.headers.get("content-type", "").startswith(

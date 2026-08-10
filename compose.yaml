@@ -2,7 +2,7 @@ name: ai-router
 
 services:
   bifrost:
-    image: maximhq/bifrost:latest
+    image: maximhq/bifrost:v1.6.6
     depends_on:
       cliproxy:
         condition: service_healthy
@@ -37,10 +37,10 @@ services:
     restart: unless-stopped
     volumes:
       - bifrost:/app/data
-      - ./standalone/bifrost.json:/app/data/config.json:ro
+      - ./config/bifrost.bootstrap.json:/app/data/config.json:ro
 
   cliproxy:
-    image: eceasy/cli-proxy-api:latest
+    image: eceasy/cli-proxy-api:v7.2.104
     command:
       - /bin/sh
       - -ec
@@ -81,6 +81,16 @@ services:
     environment:
       CONTROL_API_KEY: ${COMFY_CONTROL_API_KEY:?set COMFY_CONTROL_API_KEY in .env}
       CONTROL_UI_PASSWORD: ${COMFY_CONTROL_UI_PASSWORD:?set COMFY_CONTROL_UI_PASSWORD in .env}
+      FALLBACK_COMFY_API_KEY: ${FALLBACK_COMFY_API_KEY:-}
+      FALLBACK_COMFY_URL: ${FALLBACK_COMFY_URL:-}
+      PRIMARY_COMFY_API_KEY: ${PRIMARY_COMFY_API_KEY:-}
+      PRIMARY_COMFY_URL: ${PRIMARY_COMFY_URL:-}
+      PRIMARY_CONTROL_TOKEN: ${PRIMARY_CONTROL_TOKEN:-}
+      PRIMARY_DEPLOY_URL: ${PRIMARY_DEPLOY_URL:-}
+      PRIMARY_DESTROY_URL: ${PRIMARY_DESTROY_URL:-}
+      PRIMARY_START_URL: ${PRIMARY_START_URL:-}
+      PRIMARY_STATUS_URL: ${PRIMARY_STATUS_URL:-}
+      PRIMARY_STOP_URL: ${PRIMARY_STOP_URL:-}
     healthcheck:
       test:
         - CMD
@@ -96,7 +106,7 @@ services:
     restart: unless-stopped
     volumes:
       - comfy-control:/data
-      - ./standalone/control.yaml:/config/control.yaml:ro
+      - ./config/control.yaml:/config/control.yaml:ro
 
 volumes:
   bifrost:

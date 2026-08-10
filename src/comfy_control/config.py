@@ -7,9 +7,14 @@ from pathlib import Path
 PLACEHOLDER_SECRETS = {"change-me", "change_me", "replace-me", "replace_me"}
 
 
-def _required_secret(name: str) -> str:
+def required_secret(name: str) -> str:
     value = os.getenv(name, "").strip()
-    if not value or value.lower() in PLACEHOLDER_SECRETS:
+    normalised = value.lower()
+    if (
+        not value
+        or normalised in PLACEHOLDER_SECRETS
+        or normalised.startswith("replace-with-")
+    ):
         raise ValueError(f"{name} must be set to a non-placeholder value")
     return value
 
@@ -47,9 +52,9 @@ class Settings:
         if custom:
             roots.append(Path(custom))
         jobs_dir = os.getenv("JOBS_DIR")
-        api_key = _required_secret("API_KEY")
+        api_key = required_secret("API_KEY")
         ui_password = (
-            _required_secret("COMFY_UI_PASSWORD")
+            required_secret("COMFY_UI_PASSWORD")
             if deployment_type == "pod"
             else os.getenv("COMFY_UI_PASSWORD", "")
         )

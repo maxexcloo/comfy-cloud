@@ -1,8 +1,13 @@
 [env]
-# Image
-IMAGE_NAME = "ghcr.io/maxexcloo/inference-control:latest"
+# Bifrost smoke check
+BIFROST_API_KEY = "REPLACE_ME"
+BIFROST_URL = "http://localhost:28080"
+GATEWAY_CHECK_MODEL = "REPLACE_ME"
 
-# Gateway
+# Image
+IMAGE_NAME = "ghcr.io/maxexcloo/ai-router:latest"
+
+# Worker gateway
 API_KEY = "REPLACE_ME"
 CATALOGUE_DIR = ""
 COMFY_UI_PASSWORD = "REPLACE_ME"
@@ -28,7 +33,7 @@ S3_SECRET_ACCESS_KEY = "REPLACE_ME"
 S3_URL_EXPIRES = "3600"
 
 # Modal
-COMFY_CONTROL_IMAGE = "ghcr.io/maxexcloo/inference-control:latest"
+COMFY_CONTROL_IMAGE = "ghcr.io/maxexcloo/ai-router:latest"
 MODAL_GPU = "L40S"
 MODAL_MIN_CONTAINERS = "0"
 MODAL_MODEL_VOLUME = "comfy-control-models"
@@ -49,7 +54,7 @@ RUNPOD_VOLUME_GB = "100"
 SALAD_API_KEY = "REPLACE_ME"
 SALAD_CONTAINER_GROUP = "comfy-control"
 SALAD_GPU_CLASSES = '["REPLACE_ME"]'
-SALAD_IMAGE_NAME = "ghcr.io/maxexcloo/inference-control:latest"
+SALAD_IMAGE_NAME = "ghcr.io/maxexcloo/ai-router:latest"
 SALAD_ORGANISATION = "REPLACE_ME"
 SALAD_PRIORITY = "low"
 SALAD_PROJECT = "REPLACE_ME"
