@@ -90,7 +90,7 @@ def controller(args: argparse.Namespace) -> None:
 
 
 def gateway_check(args: argparse.Namespace) -> None:
-    run_gateway_check(args.model, args.url)
+    run_gateway_check(args.model, args.url, args.operation)
 
 
 def worker(args: argparse.Namespace) -> None:
@@ -112,6 +112,11 @@ def create_parser() -> argparse.ArgumentParser:
     control.set_defaults(func=controller)
     gateway = sub.add_parser("gateway-check", help="probe the configured Bifrost")
     gateway.add_argument("model")
+    gateway.add_argument(
+        "--operation",
+        choices=["chat_completion", "image_generation"],
+        default="chat_completion",
+    )
     gateway.add_argument("--url", default="http://localhost:28080")
     gateway.set_defaults(func=gateway_check)
     fetch = sub.add_parser(

@@ -35,8 +35,8 @@ ruff format .
 """
 
 [tasks."gateway:check"]
-description = "Verify Bifrost model discovery and completion routing"
-run = "comfy-control gateway-check"
+description = "Verify Bifrost model discovery and inference routing"
+run = "uv run --isolated comfy-control gateway-check"
 
 [tasks.setup]
 description = "Create local configuration if missing, then install Git hooks"

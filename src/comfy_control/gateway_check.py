@@ -36,13 +36,34 @@ class Gateway:
             return json.load(response)
 
 
-def check_gateway(gateway: Gateway, model: str) -> None:
+def check_gateway(gateway: Gateway, model: str, operation: str) -> None:
     response = gateway.request("GET", "/v1/models")
     models = response.get("data")
     if not isinstance(models, list) or model not in {
         item.get("id") for item in models if isinstance(item, dict)
     }:
         raise SystemExit(f"model is not advertised: {model}")
+
+    if operation == "image_generation":
+        response = gateway.request(
+            "POST",
+            "/v1/images/generations",
+            {
+                "model": model,
+                "n": 1,
+                "prompt": "A small red circle on a white background.",
+                "response_format": "b64_json",
+            },
+        )
+        images = response.get("data")
+        if (
+            not isinstance(images, list)
+            or not images
+            or not isinstance(images[0], dict)
+            or not images[0].get("b64_json")
+        ):
+            raise SystemExit("gateway returned no image data")
+        return
 
     response = gateway.request(
         "POST",
@@ -59,10 +80,10 @@ def check_gateway(gateway: Gateway, model: str) -> None:
         raise SystemExit("gateway returned no completion choices")
 
 
-def run(model: str, base_url: str) -> None:
+def run(model: str, base_url: str, operation: str) -> None:
     gateway = Gateway(base_url)
     try:
-        check_gateway(gateway, model)
+        check_gateway(gateway, model, operation)
     except HTTPError as exc:
         detail = exc.read().decode(errors="replace")
         message = f"Bifrost returned HTTP {exc.code}"
@@ -71,5 +92,5 @@ def run(model: str, base_url: str) -> None:
         raise SystemExit(message) from exc
     except URLError as exc:
         raise SystemExit(f"could not reach Bifrost: {exc.reason}") from exc
-    print(f"healthy: {model}")
+    print(f"healthy: {model} ({operation})")
     print(f"Bifrost: {gateway.base_url}")
