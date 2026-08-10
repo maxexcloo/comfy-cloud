@@ -120,6 +120,24 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def ready() -> dict[str, str]:
         return {"status": "ready"}
 
+    @app.get("/health")
+    async def health() -> JSONResponse:
+        readiness = await asyncio.gather(
+            *(
+                controller.check_ready(runtime)
+                for runtime in controller.providers.values()
+            )
+        )
+        ready_providers = sum(1 for provider_ready in readiness if provider_ready)
+        return JSONResponse(
+            {
+                "status": "ready",
+                "models": len(controller.config.models),
+                "providers": len(controller.providers),
+                "ready_providers": ready_providers,
+            }
+        )
+
     @app.get("/")
     async def dashboard(request: Request) -> Response:
         if not ui_authorised(request, settings):

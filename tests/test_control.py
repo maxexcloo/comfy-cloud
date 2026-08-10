@@ -117,6 +117,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://control"
     ) as client:
+        health = await client.get("/health")
         denied = await client.get("/v1/models")
         dashboard = await client.get("/", auth=("comfy", "control-key"))
         models = await client.get(
@@ -128,6 +129,12 @@ async def test_controller_lists_and_routes_models(tmp_path):
             json={"model": "public/image", "prompt": "test"},
         )
 
+    assert health.json() == {
+        "status": "ready",
+        "models": 3,
+        "providers": 1,
+        "ready_providers": 1,
+    }
     assert denied.status_code == 401
     assert dashboard.status_code == 200
     assert "Action Result" in dashboard.text
