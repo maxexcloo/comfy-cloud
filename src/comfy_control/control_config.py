@@ -13,23 +13,24 @@ from .catalogue import Operation
 from .config import required_secret
 
 
-class LifecycleAction(BaseModel):
+class ProviderAction(BaseModel):
     method: Literal["DELETE", "GET", "PATCH", "POST", "PUT"] = "POST"
     url: str
     confirmation: str | None = None
     headers: dict[str, str] = Field(default_factory=dict)
     json_body: dict[str, Any] | None = Field(default=None, alias="json")
+    resource_id_path: str | None = None
 
     @model_validator(mode="after")
-    def validate_action(self) -> LifecycleAction:
+    def validate_action(self) -> ProviderAction:
         if not self.url.startswith(("http://", "https://")):
             raise ValueError("action url must use HTTP or HTTPS")
         return self
 
 
 class ProviderLifecycle(BaseModel):
-    start: LifecycleAction | None = None
-    stop: LifecycleAction | None = None
+    start: ProviderAction | None = None
+    stop: ProviderAction | None = None
 
 
 class Provider(BaseModel):
@@ -39,8 +40,9 @@ class Provider(BaseModel):
     health_path: str = "/health/ready"
     idle_seconds: int = 600
     request_timeout: float = 1200
+    resource_id: str | None = None
     startup_timeout: float = 900
-    actions: dict[str, LifecycleAction] = Field(default_factory=dict)
+    actions: dict[str, ProviderAction] = Field(default_factory=dict)
     lifecycle: ProviderLifecycle = Field(default_factory=ProviderLifecycle)
 
     @model_validator(mode="after")

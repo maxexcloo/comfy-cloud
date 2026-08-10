@@ -5,7 +5,7 @@ import modal
 
 app = modal.App("comfy-control")
 image = modal.Image.from_registry(
-    os.environ["COMFY_CONTROL_IMAGE"],
+    os.getenv("WORKER_IMAGE", "ghcr.io/maxexcloo/ai-router:worker"),
     add_python="3.11",
 ).entrypoint([])
 models = modal.Volume.from_name(
@@ -36,4 +36,4 @@ for name in (
 )
 @modal.web_server(8000, startup_timeout=900)
 def serve():
-    subprocess.Popen(["python", "-m", "comfy_control.supervisor"])
+    subprocess.Popen(["comfy-control", "worker"])

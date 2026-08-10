@@ -1,7 +1,7 @@
 {
   "containerDiskInGb": 30,
   "endpointType": "load-balancer",
-  "imageName": "ghcr.io/OWNER/ai-router:TAG",
+  "imageName": "ghcr.io/maxexcloo/ai-router:worker",
   "ports": "8000/http",
   "env": [
     { "key": "API_KEY", "value": "CHANGE_ME" },

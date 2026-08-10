@@ -3,47 +3,60 @@ models:
     operation: image_generation
     targets:
       - model: flux-2-klein-4b/text-to-image
-        provider: primary
-      - model: flux-2-klein-4b/text-to-image
-        provider: fallback
+        provider: worker
   - id: minimax/text-to-video
     operation: video_generation
     targets:
       - model: minimax-h3/text-to-video
-        provider: primary
+        provider: worker
 
 providers:
-  - id: fallback
-    api_key: env.FALLBACK_COMFY_API_KEY
-    base_url: env.FALLBACK_COMFY_URL
-    idle_seconds: 0
-  - id: primary
-    api_key: env.PRIMARY_COMFY_API_KEY
-    base_url: env.PRIMARY_COMFY_URL
+  - id: worker
+    api_key: env.WORKER_API_KEY
+    base_url: https://{resource_id}-8000.proxy.runpod.net
     idle_seconds: 600
     actions:
       deploy:
-        confirmation: Deploy the primary provider?
+        confirmation: Deploy the worker?
+        resource_id_path: id
+        url: https://rest.runpod.io/v1/pods
         headers:
-          authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
-        url: env.PRIMARY_DEPLOY_URL
+          authorization: Bearer ${RUNPOD_API_KEY}
+        json:
+          containerDiskInGb: 30
+          gpuCount: 1
+          imageName: ghcr.io/maxexcloo/ai-router:worker
+          name: comfy-control
+          volumeInGb: 100
+          volumeMountPath: /workspace
+          env:
+            API_KEY: ${WORKER_API_KEY}
+            JOBS_DIR: /workspace/jobs
+            MODE: serverless
+            MODEL_PROFILES: flux-2-klein-4b
+            MODELS_DIR: /workspace/models
+          gpuTypeIds:
+            - NVIDIA GeForce RTX 4090
+          ports:
+            - 8000/http
       destroy:
-        confirmation: Destroy the primary provider and its local data?
+        confirmation: Destroy the worker and its local data?
+        method: DELETE
+        url: https://rest.runpod.io/v1/pods/{resource_id}
         headers:
-          authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
-        url: env.PRIMARY_DESTROY_URL
+          authorization: Bearer ${RUNPOD_API_KEY}
       status:
         method: GET
+        url: https://rest.runpod.io/v1/pods/{resource_id}
         headers:
-          authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
-        url: env.PRIMARY_STATUS_URL
+          authorization: Bearer ${RUNPOD_API_KEY}
     lifecycle:
       start:
+        url: https://rest.runpod.io/v1/pods/{resource_id}/start
         headers:
-          authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
-        url: env.PRIMARY_START_URL
+          authorization: Bearer ${RUNPOD_API_KEY}
       stop:
-        confirmation: Stop the primary provider?
+        confirmation: Stop the worker?
+        url: https://rest.runpod.io/v1/pods/{resource_id}/stop
         headers:
-          authorization: Bearer ${PRIMARY_CONTROL_TOKEN}
-        url: env.PRIMARY_STOP_URL
+          authorization: Bearer ${RUNPOD_API_KEY}

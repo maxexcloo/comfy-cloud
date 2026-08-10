@@ -42,7 +42,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> Settings:
-        deployment_type = os.getenv("MODE", os.getenv("DEPLOYMENT_TYPE", "pod")).lower()
+        deployment_type = os.getenv("MODE", "pod").lower()
         if deployment_type not in {"pod", "serverless"}:
             raise ValueError("MODE must be pod or serverless")
         roots = [

@@ -5,26 +5,61 @@ import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 
 from .control_config import (
     ControlFile,
     ControlSettings,
-    LifecycleAction,
     Provider,
+    ProviderAction,
     RoutedModel,
     Target,
 )
 from .control_store import ControlStore, Job
 
+SENSITIVE_FIELD_PARTS = (
+    "accesskey",
+    "apikey",
+    "authorization",
+    "credential",
+    "password",
+    "secret",
+    "token",
+)
+
 
 def exception_message(exc: Exception) -> str:
     if isinstance(exc, httpx.HTTPStatusError):
-        return f"lifecycle request returned HTTP {exc.response.status_code}"
+        return f"provider API returned HTTP {exc.response.status_code}"
     if isinstance(exc, httpx.RequestError):
         return f"provider connection failed ({type(exc).__name__})"
     return str(exc)
+
+
+def sensitive_field(name: str) -> bool:
+    normalised = "".join(character for character in name.lower() if character.isalnum())
+    return any(part in normalised for part in SENSITIVE_FIELD_PARTS)
+
+
+def redacted(value: object) -> object:
+    if isinstance(value, dict):
+        environment_name = value.get("key")
+        redact_environment_value = isinstance(
+            environment_name, str
+        ) and sensitive_field(environment_name)
+        return {
+            key: (
+                "***"
+                if (key == "value" and redact_environment_value) or sensitive_field(key)
+                else redacted(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redacted(item) for item in value]
+    return value
 
 
 @dataclass
@@ -47,9 +82,7 @@ class Controller:
             provider.id: ProviderRuntime(
                 config=provider,
                 client=httpx.AsyncClient(
-                    base_url=provider.base_url,
-                    follow_redirects=False,
-                    timeout=provider.request_timeout,
+                    follow_redirects=False, timeout=provider.request_timeout
                 ),
             )
             for provider in self.config.providers
@@ -179,21 +212,57 @@ class Controller:
         directory.rmdir()
 
     async def action(
-        self, action: LifecycleAction, provider: str, action_name: str = "lifecycle"
+        self, action: ProviderAction, provider: str, action_name: str = "lifecycle"
     ) -> httpx.Response:
+        if action_name == "deploy" and self.resource_id(provider) is not None:
+            raise RuntimeError(f"provider {provider} is already deployed")
         response = await self.lifecycle_client.request(
             action.method,
-            action.url,
+            self.resolve_resource(action.url, provider),
             headers=action.headers,
             json=action.json_body,
         )
         response.raise_for_status()
+        if action.resource_id_path is not None:
+            try:
+                resource_id: object = response.json()
+            except ValueError as exc:
+                raise RuntimeError("provider returned a non-JSON deployment") from exc
+            for key in action.resource_id_path.split("."):
+                if not isinstance(resource_id, dict) or key not in resource_id:
+                    raise RuntimeError(
+                        f"provider response has no {action.resource_id_path}"
+                    )
+                resource_id = resource_id[key]
+            if not isinstance(resource_id, (int, str)) or not str(resource_id):
+                raise RuntimeError("provider returned an invalid resource id")
+            self.store.save_provider_resource(provider, str(resource_id))
+        if action_name in {"delete", "destroy"}:
+            self.store.clear_provider_resource(provider)
         self.store.event(
             "info", f"provider action {action_name} succeeded", provider=provider
         )
         return response
 
-    def available_actions(self, provider: str) -> dict[str, LifecycleAction]:
+    def resource_id(self, provider: str) -> str | None:
+        return (
+            self.store.provider_resource(provider)
+            or self.providers[provider].config.resource_id
+        )
+
+    def resolve_resource(self, value: str, provider: str) -> str:
+        if "{resource_id}" not in value:
+            return value
+        resource_id = self.resource_id(provider)
+        if resource_id is None:
+            raise RuntimeError(f"provider {provider} is not deployed")
+        return value.replace("{resource_id}", quote(resource_id, safe=""))
+
+    def worker_url(self, runtime: ProviderRuntime, path: str) -> str:
+        base_url = self.resolve_resource(runtime.config.base_url, runtime.config.id)
+        return f"{base_url}{path}"
+
+    def available_actions(self, provider: str) -> dict[str, ProviderAction]:
         runtime = self.providers[provider]
         actions = dict(runtime.config.actions)
         if runtime.config.lifecycle.start is not None:
@@ -221,6 +290,11 @@ class Controller:
             if action_name == "stop":
                 runtime.state = "stopping"
             response = await self.action(action, provider, action_name)
+            if action_name == "deploy":
+                runtime.state = "starting"
+            elif action_name in {"delete", "destroy"}:
+                runtime.ready = False
+                runtime.state = "stopped"
             if action_name == "stop":
                 runtime.ready = False
                 runtime.state = "stopped"
@@ -229,7 +303,7 @@ class Controller:
         if response.content and len(response.content) <= 64 * 1024:
             if "application/json" in content_type:
                 try:
-                    body = response.json()
+                    body = redacted(response.json())
                 except ValueError:
                     body = response.text
             elif content_type.startswith("text/"):
@@ -245,12 +319,12 @@ class Controller:
     async def check_ready(self, runtime: ProviderRuntime) -> bool:
         try:
             response = await runtime.client.get(
-                runtime.config.health_path,
+                self.worker_url(runtime, runtime.config.health_path),
                 headers={"Authorization": f"Bearer {runtime.config.api_key}"},
                 timeout=10,
             )
             runtime.ready = response.is_success
-        except httpx.HTTPError:
+        except (httpx.HTTPError, RuntimeError):
             runtime.ready = False
         runtime.state = "ready" if runtime.ready else "stopped"
         return runtime.ready
@@ -347,7 +421,7 @@ class Controller:
             runtime.state = "busy"
             response = await runtime.client.request(
                 method,
-                path,
+                self.worker_url(runtime, path),
                 content=body,
                 headers=headers
                 | {

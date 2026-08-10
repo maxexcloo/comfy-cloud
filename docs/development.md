@@ -7,14 +7,14 @@ mise run setup
 mise run check
 ```
 
-Setup creates `.mise.local.toml` from its template when missing and installs Prek
-hooks. Local secrets and provider identifiers remain gitignored. Checks use an
-isolated Python environment; a repository-local `.venv` is not required.
+Setup creates `.env` from its template when missing and installs Prek hooks. The
+same gitignored file configures Compose and live checks.
+Checks use an isolated Python environment; a repository-local `.venv` is not
+required.
 
 Use `mise run fmt` for supported formatting and `mise run cleanup` to remove test,
-lint and bytecode caches. Run `mise tasks` for the full provider control surface.
-Use `mise run gateway:check` for an opt-in live Bifrost discovery and completion
-probe.
+lint and bytecode caches. Use `mise run gateway:check` for an opt-in live Bifrost
+discovery and completion probe.
 
 ## Checks
 
@@ -34,13 +34,14 @@ requests.
   prose and identifiers.
 - Keep pinned weight sources in `profiles/`.
 - Keep portable API behaviour in `src/comfy_control/`.
-- Keep provider-specific assets grouped under `deploy/`.
+- Keep provider-specific worker assets in `deploy/`.
 
 ## Command-Line Interface
 
 The `comfy-control` command supports:
 
-- `catalogue-list` and `repository-check`;
+- `catalogue-list`, `gateway-check` and `repository-check`;
+- `controller` and `worker` runtime services;
 - `models-fetch`;
 - `pack` and `unpack`;
 - `workflow-add`.

@@ -367,7 +367,7 @@ providers:
 
     @management.post("/deploy")
     async def deploy() -> dict[str, str]:
-        return {"status": "deployed"}
+        return {"api_key": "must-not-reach-the-browser", "status": "deployed"}
 
     await app.state.controller.lifecycle_client.aclose()
     app.state.controller.lifecycle_client = httpx.AsyncClient(
@@ -390,7 +390,66 @@ providers:
         {"name": "deploy", "confirmation": "Deploy the worker?"}
     ]
     assert rejected.status_code == 400
-    assert deployed.json()["body"] == {"status": "deployed"}
+    assert deployed.json()["body"] == {"api_key": "***", "status": "deployed"}
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_controller_tracks_provider_api_resource(tmp_path):
+    configured = settings(tmp_path)
+    configured.config_file.write_text(
+        """
+models: []
+providers:
+  - id: worker
+    api_key: worker-key
+    base_url: https://{resource_id}-8000.example.test
+    actions:
+      deploy:
+        resource_id_path: resource.id
+        url: http://management/deploy
+      destroy:
+        method: DELETE
+        url: http://management/resources/{resource_id}
+""".lstrip()
+    )
+    app = create_app(configured)
+    management = FastAPI()
+    destroyed: list[str] = []
+
+    @management.post("/deploy")
+    async def deploy() -> dict[str, object]:
+        return {"resource": {"id": "pod-123"}}
+
+    @management.delete("/resources/{resource_id}")
+    async def destroy(resource_id: str) -> dict[str, bool]:
+        destroyed.append(resource_id)
+        return {"deleted": True}
+
+    await app.state.controller.lifecycle_client.aclose()
+    app.state.controller.lifecycle_client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=management), base_url="http://management"
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        deployed = await client.post(
+            "/api/providers/worker/actions/deploy",
+            auth=("comfy", "control-key"),
+            headers={"x-comfy-control-action": "worker/deploy"},
+        )
+        status = await client.get("/api/status", auth=("comfy", "control-key"))
+        destroyed_response = await client.post(
+            "/api/providers/worker/actions/destroy",
+            auth=("comfy", "control-key"),
+            headers={"x-comfy-control-action": "worker/destroy"},
+        )
+
+    assert deployed.status_code == 200
+    assert status.json()["providers"][0]["resource_id"] == "pod-123"
+    assert destroyed_response.status_code == 200
+    assert destroyed == ["pod-123"]
+    assert app.state.controller.store.provider_resource("worker") is None
     await app.state.controller.close()
 
 
@@ -442,7 +501,7 @@ def test_control_settings_reject_non_positive_request_limit(monkeypatch):
         ControlSettings.from_env()
 
 
-def test_standalone_forwards_example_provider_environment():
+def test_compose_forwards_example_provider_environment():
     example = (ROOT / "config/control.example.yaml").read_text()
     required = set(re.findall(r"(?:env\.|\$\{)([A-Z][A-Z0-9_]*)", example))
     compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
@@ -455,3 +514,14 @@ def test_standalone_forwards_example_provider_environment():
 
     assert required <= forwarded
     assert required <= env_example
+
+
+def test_control_example_is_loadable(monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "provider-key")
+    monkeypatch.setenv("WORKER_API_KEY", "worker-key")
+
+    loaded = ControlFile.load(ROOT / "config/control.example.yaml")
+
+    provider = loaded.providers[0]
+    assert provider.base_url == "https://{resource_id}-8000.proxy.runpod.net"
+    assert provider.actions["deploy"].resource_id_path == "id"

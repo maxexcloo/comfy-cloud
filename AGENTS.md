@@ -8,11 +8,8 @@
 - Keep only `AGENTS.md` and `README.md` as root Markdown files; put other project
   documentation in `docs/`.
 - Keep pinned model sources in `profiles/`.
-- Keep provider deployment files grouped by provider in `deploy/`.
-- Keep runtime configuration in `config/` and standalone orchestration in root
-  `compose.yaml`.
-- Keep small operational entry points in `scripts/`; keep provider-specific
-  deployment implementations in `deploy/`.
+- Keep provider deployment assets grouped by provider in `deploy/`.
+- Keep runtime configuration in `config/` and orchestration in root `compose.yaml`.
 - Keep workflow manifests beside their API-format workflow JSON in `catalogue/`.
 - Treat `config/control.yaml` as authoritative runtime configuration. Treat
   `config/bifrost.bootstrap.json` only as first-start input because Bifrost owns

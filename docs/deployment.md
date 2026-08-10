@@ -1,117 +1,74 @@
 # Deployment & Operations
 
-## Standalone Stack
+## Stack
 
-Copy `.env.example` to `.env`, replace every placeholder, then start the stack:
+Copy `.env.example` to `.env`, replace the required placeholders, then start the
+stack:
 
 ```bash
 docker compose up --build --detach
 docker compose ps
 ```
 
-The stack uses version-pinned Bifrost and CLIProxyAPI images plus a locally built
-Comfy Control image. `BIND_ADDRESS` defaults to `0.0.0.0`; use `127.0.0.1` when a
-local reverse proxy is the only intended ingress.
+Compose runs Bifrost, CLIProxyAPI and Comfy Control. Bifrost loads
+`config/bifrost.bootstrap.json` only into a fresh data volume; later provider and
+access changes belong in its UI/API. Comfy Control reads `config/control.yaml` on
+every start.
 
-Bifrost loads `config/bifrost.bootstrap.json` only into a fresh data volume. Later
-provider and access changes live in Bifrost SQLite and must be managed through its
-UI/API. Comfy Control reloads mounted `config/control.yaml` on restart.
+Authenticate desired CLI providers through CLIProxyAPI management. Bifrost routes
+language models through CLIProxyAPI and media models through Comfy Control.
 
-Copy the provider variables from `.env.example` into `.env` before enabling the
-matching example routes. Compose forwards only those declared provider values to
-Comfy Control; it does not expose Bifrost or CLIProxy management secrets to the
-controller.
+## Worker
 
-Open CLIProxyAPI management and authenticate each desired CLI provider. Bifrost
-routes its models through the `cliproxy` custom provider and media through
-`comfy-control`.
+GitHub Actions publishes two images from `main`:
 
-## Container Images
+- `ghcr.io/OWNER/ai-router:control` for Comfy Control;
+- `ghcr.io/OWNER/ai-router:worker` for the GPU worker and ComfyUI.
 
-GitHub Actions publishes:
+Pull requests build and smoke-test both images. Configure and deploy the worker in
+your chosen GPU platform, then add its URL and API key to `config/control.yaml`.
+The example uses the `WORKER_URL` and `WORKER_API_KEY` variables from `.env`.
 
-- `ghcr.io/OWNER/ai-router:control` for the controller;
-- generic worker branch, version and `latest` tags;
-- `ghcr.io/OWNER/ai-router:flux-2-klein-4b` on `main`.
+Provider-specific worker definitions are retained under `deploy/` for Modal,
+RunPod, SaladCloud and Vast.ai. They consume the same `worker` image; they are not
+separate application stacks.
 
-Pull requests build both services and smoke-test the worker. Git tags publish full,
-minor and major version tags. The first GHCR package may need to be made public in
-the repository owner’s package settings.
+Provider management is deliberately API-only. Declare deploy, destroy, status,
+start and stop requests in `config/control.yaml`; Comfy Control sends them from its
+backend and exposes the actions in its authenticated UI. A deploy action may set
+`resource_id_path` to capture the provider's returned identifier. Use
+`{resource_id}` in later action URLs and the worker `base_url`; the identifier is
+persisted in Comfy Control's SQLite volume.
 
-## Provider Deployments
+[`config/control.example.yaml`](../config/control.example.yaml) is a complete
+RunPod example using the official REST API. SaladCloud and Vast.ai use the same
+declarative action mechanism. Modal is the small exception: its retained
+`deploy/modal/app.py` definition uses Modal's programmatic Python deployment API,
+and Modal handles scaling its web function to zero.
 
-Run `mise run setup`, fill `.mise.local.toml`, then inspect `mise tasks`. Provider
-assets are grouped under `deploy/`:
-
-| Provider   | Assets               | Idle Approach            |
-| ---------- | -------------------- | ------------------------ |
-| Modal      | `deploy/modal/`      | Automatic scale-down     |
-| RunPod     | `deploy/runpod/`     | Stop pod or zero workers |
-| SaladCloud | `deploy/saladcloud/` | Stop container group     |
-| Vast.ai    | `deploy/vast/`       | Stop instance            |
-
-Common first deployments use one 24-GB GPU, one worker and only
-`flux-2-klein-4b`.
-
-### Manager Actions
-
-Each provider may declare HTTP `actions` such as `deploy`, `destroy` and `status`,
-alongside its `lifecycle.start` and `lifecycle.stop` actions. They appear as buttons
-in the authenticated Comfy Control UI. Use provider APIs directly where practical,
-or a narrowly scoped provider-control webhook when a platform requires its own
-CLI. Add a `confirmation` to destructive or expensive operations.
-
-The scripts under each `deploy/<provider>/` directory remain bootstrap and
-emergency entry points for creating the first worker or recovering when the
-manager is unavailable. Mise tasks are intentionally thin wrappers around those
-provider-owned implementations.
-
-### Modal
-
-Create the secret named by `MODAL_SECRET`, then run `mise run modal:deploy`.
-`MODAL_MIN_CONTAINERS=0` and a 60-second scale-down window are the low-idle
-defaults.
-
-### RunPod
-
-Run `mise run runpod:deploy`, or import `deploy/runpod/pod.json`. The persistent
-volume downloads selected profiles once. For serverless, import
-`deploy/runpod/serverless.json` as a load-balancer endpoint, attach a pre-populated
-network volume and mount models under `/runpod-volume/models`.
-
-### SaladCloud
-
-Run `mise run salad:gpu-classes`, choose suitable GPU class IDs, set
-`SALAD_IMAGE_NAME` and `MODEL_PROFILES`, then run `mise run salad:deploy`. Storage
-is ephemeral, so use a weight-bearing profile image to avoid downloading weights
-after every reallocation.
-
-### Vast.ai
-
-Run `mise run vast:offers`, set `VAST_OFFER_ID`, then run `mise run vast:deploy`.
-Stopping preserves instance data; destroying does not. Vast Serverless requires
-the PyWorker at `deploy/vast/worker.py` in the same image as the worker gateway.
+Provider API keys and the worker API key stay in `.env` and are expanded only in
+the controller process. Provider responses are redacted before the UI displays
+fields named like keys, passwords, secrets or tokens. Add confirmations to
+destructive or expensive actions.
 
 ## Open WebUI
 
-Point Open WebUI’s common OpenAI-compatible connection at Bifrost `/v1`. Direct
+Point Open WebUI's common OpenAI-compatible connection at Bifrost `/v1`. Direct
 Comfy Control integration examples remain under `examples/` for installations that
-specifically need Open WebUI’s native ComfyUI or image-generation integration.
+need Open WebUI's native ComfyUI or image-generation integration.
 
-Anyone using a curated Open WebUI model must also have access to its selected base
-model. After gateway changes, verify both a base-model completion and the curated
-model rather than relying on `/v1/models` discovery alone. Set `BIFROST_URL`,
-`BIFROST_API_KEY` and `GATEWAY_CHECK_MODEL` in `.mise.local.toml`, then run:
+After gateway changes, verify both model discovery and a completion. Set
+`BIFROST_API_KEY` in `.env`, then pass the model name to the check:
 
 ```bash
-mise run gateway:check
+mise run gateway:check -- provider/model
 ```
 
 ## Important Limits
 
 - Controller multipart uploads occupy its data volume until the job completes or
   fails.
-- Destroy operations intentionally remove provider-local data; stop operations are
-  the non-destructive idle path.
+- Destroy operations may remove provider data; stop is the non-destructive idle
+  path.
 - The project does not grant model redistribution rights.
 - Without object storage, outputs remain tied to the worker that produced them.

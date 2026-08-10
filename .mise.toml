@@ -1,10 +1,9 @@
+[env]
+_.file = { path = ".env", redact = true }
+
 [tools]
 actionlint = "1.7.12"
-"github:runpod/runpodctl" = "2.9.0"
 hadolint = "2.15.1"
-jq = "1.8.1"
-"pipx:modal" = "1.5.3"
-"pipx:vastai" = "1.5.2"
 prek = "0.4.12"
 prettier = "3.9.6"
 python = "3.14.7"
@@ -37,115 +36,14 @@ ruff format .
 
 [tasks."gateway:check"]
 description = "Verify Bifrost model discovery and completion routing"
-run = "python scripts/check_gateway.py"
+run = "comfy-control gateway-check"
 
 [tasks.setup]
-description = "Copy local env template if missing, then install Git hooks"
+description = "Create local configuration if missing, then install Git hooks"
 run = """
-if [[ ! -f .mise.local.toml ]]; then
-  cp .mise.local.toml.default .mise.local.toml
-  echo "Created .mise.local.toml - please add your secrets"
-  exit 1
+if [[ ! -f .env ]]; then
+  cp .env.example .env
+  echo "Created .env - please replace the required placeholders"
 fi
 prek install
 """
-
-[tasks."modal:deploy"]
-description = "Deploy or update the Modal app"
-run = "modal deploy deploy/modal/app.py"
-
-[tasks."modal:logs"]
-description = "Show recent Modal app logs"
-run = "modal app logs comfy-control"
-
-[tasks."modal:status"]
-description = "Show Modal apps"
-run = "modal app list"
-
-[tasks."modal:stop"]
-description = "Stop the Modal app"
-run = "modal app stop comfy-control"
-
-[tasks."runpod:deploy"]
-description = "Create a RunPod pod"
-run = "deploy/runpod/deploy.sh"
-
-[tasks."runpod:destroy"]
-description = "Delete a RunPod pod and its container disk"
-run = "runpodctl pod delete \"${RUNPOD_POD_ID:?set RUNPOD_POD_ID}\""
-
-[tasks."runpod:list"]
-description = "List RunPod pods"
-run = "runpodctl pod list"
-
-[tasks."runpod:start"]
-description = "Start a RunPod pod"
-run = "runpodctl pod start \"${RUNPOD_POD_ID:?set RUNPOD_POD_ID}\""
-
-[tasks."runpod:status"]
-description = "Show a RunPod pod"
-run = "runpodctl pod get --include-machine --include-network-volume \"${RUNPOD_POD_ID:?set RUNPOD_POD_ID}\""
-
-[tasks."runpod:stop"]
-description = "Stop a RunPod pod while preserving its volume"
-run = "runpodctl pod stop \"${RUNPOD_POD_ID:?set RUNPOD_POD_ID}\""
-
-[tasks."salad:deploy"]
-description = "Create and start the SaladCloud container group"
-run = "deploy/saladcloud/manage.sh deploy"
-
-[tasks."salad:destroy"]
-description = "Delete the SaladCloud container group"
-run = "deploy/saladcloud/manage.sh destroy"
-
-[tasks."salad:gpu-classes"]
-description = "List SaladCloud GPU classes and prices"
-run = "deploy/saladcloud/manage.sh gpu-classes"
-
-[tasks."salad:logs"]
-description = "Show recent SaladCloud container logs"
-run = "deploy/saladcloud/manage.sh logs"
-
-[tasks."salad:start"]
-description = "Start the SaladCloud container group"
-run = "deploy/saladcloud/manage.sh start"
-
-[tasks."salad:status"]
-description = "Show the SaladCloud container group"
-run = "deploy/saladcloud/manage.sh status"
-
-[tasks."salad:stop"]
-description = "Stop the SaladCloud container group"
-run = "deploy/saladcloud/manage.sh stop"
-
-[tasks."vast:deploy"]
-description = "Create a Vast.ai instance"
-run = "deploy/vast/deploy.sh"
-
-[tasks."vast:destroy"]
-description = "Destroy a Vast.ai instance and its local data"
-run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" destroy instance \"${VAST_INSTANCE_ID:?set VAST_INSTANCE_ID}\""
-
-[tasks."vast:list"]
-description = "List Vast.ai instances"
-run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" show instances"
-
-[tasks."vast:logs"]
-description = "Show Vast.ai instance logs"
-run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" logs \"${VAST_INSTANCE_ID:?set VAST_INSTANCE_ID}\""
-
-[tasks."vast:offers"]
-description = "Find suitable Vast.ai offers"
-run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" search offers 'gpu_ram >= 16 disk_space >= 100 num_gpus = 1 reliability > 0.98 rentable = true' --order dph --storage \"${VAST_DISK_GB:-100}\""
-
-[tasks."vast:start"]
-description = "Start a Vast.ai instance"
-run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" start instance \"${VAST_INSTANCE_ID:?set VAST_INSTANCE_ID}\""
-
-[tasks."vast:status"]
-description = "Show a Vast.ai instance"
-run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" show instance \"${VAST_INSTANCE_ID:?set VAST_INSTANCE_ID}\""
-
-[tasks."vast:stop"]
-description = "Stop a Vast.ai instance while preserving its disk"
-run = "vastai --api-key \"${VAST_API_KEY:?set VAST_API_KEY}\" stop instance \"${VAST_INSTANCE_ID:?set VAST_INSTANCE_ID}\""

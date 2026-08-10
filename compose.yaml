@@ -11,7 +11,7 @@ services:
     environment:
       APP_HOST: 0.0.0.0
       BIFROST_ADMIN_PASSWORD: ${BIFROST_ADMIN_PASSWORD:?set BIFROST_ADMIN_PASSWORD in .env}
-      BIFROST_ADMIN_USERNAME: ${BIFROST_ADMIN_USERNAME:-admin}
+      BIFROST_ADMIN_USERNAME: admin
       BIFROST_API_KEY: ${BIFROST_API_KEY:?set BIFROST_API_KEY in .env}
       BIFROST_ENCRYPTION_KEY: ${BIFROST_ENCRYPTION_KEY:?set BIFROST_ENCRYPTION_KEY in .env}
       CLIPROXY_API_KEY: ${CLIPROXY_API_KEY:?set CLIPROXY_API_KEY in .env}
@@ -33,7 +33,7 @@ services:
       start_period: 20s
       timeout: 10s
     ports:
-      - ${BIND_ADDRESS:-0.0.0.0}:${BIFROST_PORT:-28080}:8080
+      - 28080:8080
     restart: unless-stopped
     volumes:
       - bifrost:/app/data
@@ -69,7 +69,7 @@ services:
       start_period: 10s
       timeout: 10s
     ports:
-      - ${BIND_ADDRESS:-0.0.0.0}:${CLIPROXY_PORT:-28317}:8317
+      - 28317:8317
     restart: unless-stopped
     volumes:
       - cliproxy:/root/.cli-proxy-api
@@ -81,16 +81,10 @@ services:
     environment:
       CONTROL_API_KEY: ${COMFY_CONTROL_API_KEY:?set COMFY_CONTROL_API_KEY in .env}
       CONTROL_UI_PASSWORD: ${COMFY_CONTROL_UI_PASSWORD:?set COMFY_CONTROL_UI_PASSWORD in .env}
-      FALLBACK_COMFY_API_KEY: ${FALLBACK_COMFY_API_KEY:-}
-      FALLBACK_COMFY_URL: ${FALLBACK_COMFY_URL:-}
-      PRIMARY_COMFY_API_KEY: ${PRIMARY_COMFY_API_KEY:-}
-      PRIMARY_COMFY_URL: ${PRIMARY_COMFY_URL:-}
-      PRIMARY_CONTROL_TOKEN: ${PRIMARY_CONTROL_TOKEN:-}
-      PRIMARY_DEPLOY_URL: ${PRIMARY_DEPLOY_URL:-}
-      PRIMARY_DESTROY_URL: ${PRIMARY_DESTROY_URL:-}
-      PRIMARY_START_URL: ${PRIMARY_START_URL:-}
-      PRIMARY_STATUS_URL: ${PRIMARY_STATUS_URL:-}
-      PRIMARY_STOP_URL: ${PRIMARY_STOP_URL:-}
+      RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
+      SALAD_API_KEY: ${SALAD_API_KEY:-}
+      VAST_API_KEY: ${VAST_API_KEY:-}
+      WORKER_API_KEY: ${WORKER_API_KEY:-}
     healthcheck:
       test:
         - CMD
@@ -102,7 +96,7 @@ services:
       start_period: 10s
       timeout: 10s
     ports:
-      - ${BIND_ADDRESS:-0.0.0.0}:${COMFY_CONTROL_PORT:-28081}:8000
+      - 28081:8000
     restart: unless-stopped
     volumes:
       - comfy-control:/data

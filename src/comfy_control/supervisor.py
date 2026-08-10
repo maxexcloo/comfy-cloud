@@ -72,7 +72,7 @@ def _stop_processes(processes: tuple[subprocess.Popen, ...]) -> None:
         process.wait()
 
 
-def main() -> None:
+def run(host: str = "0.0.0.0", port: int = 8000) -> None:
     comfy_dir = Path(os.getenv("COMFYUI_DIR", "/opt/ComfyUI"))
     _prepare_models()
     comfy = subprocess.Popen(
@@ -86,9 +86,9 @@ def main() -> None:
             "comfy_control.worker:create_app",
             "--factory",
             "--host",
-            "0.0.0.0",
+            host,
             "--port",
-            os.getenv("PORT", "8000"),
+            str(port),
         ]
     )
 
@@ -112,7 +112,3 @@ def main() -> None:
             time.sleep(0.5)
     finally:
         stop()
-
-
-if __name__ == "__main__":
-    main()

@@ -10,13 +10,13 @@ from urllib.request import Request, urlopen
 def required_environment(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value or value == "REPLACE_ME":
-        raise SystemExit(f"set {name} in .mise.local.toml")
+        raise SystemExit(f"set {name} in .env")
     return value
 
 
 class Gateway:
-    def __init__(self) -> None:
-        self.base_url = required_environment("BIFROST_URL").rstrip("/")
+    def __init__(self, base_url: str = "http://localhost:28080") -> None:
+        self.base_url = base_url.rstrip("/")
         self.api_key = required_environment("BIFROST_API_KEY")
 
     def request(
@@ -59,9 +59,8 @@ def check_gateway(gateway: Gateway, model: str) -> None:
         raise SystemExit("gateway returned no completion choices")
 
 
-def main() -> None:
-    gateway = Gateway()
-    model = required_environment("GATEWAY_CHECK_MODEL")
+def run(model: str, base_url: str) -> None:
+    gateway = Gateway(base_url)
     try:
         check_gateway(gateway, model)
     except HTTPError as exc:
@@ -74,7 +73,3 @@ def main() -> None:
         raise SystemExit(f"could not reach Bifrost: {exc.reason}") from exc
     print(f"healthy: {model}")
     print(f"Bifrost: {gateway.base_url}")
-
-
-if __name__ == "__main__":
-    main()

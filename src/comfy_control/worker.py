@@ -198,7 +198,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/ping", include_in_schema=False)
     async def ping() -> Response:
-        """RunPod load-balancing readiness contract: 204 loading, 200 ready."""
+        """Serverless readiness contract: 204 while loading, 200 when ready."""
         if await runtime.comfy.ready():
             return Response(status_code=200)
         return Response(status_code=204)

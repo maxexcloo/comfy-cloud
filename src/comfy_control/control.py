@@ -81,13 +81,13 @@ button{background:#263442;border:1px solid #42576b;border-radius:5px;color:#e8ed
 pre{overflow:auto;white-space:pre-wrap}
 .ready,.completed{color:#67d391}.busy,.starting,.queued,.in_progress{color:#f2c166}.failed,.error{color:#ff7b72}
 small{color:#9fb0bf}</style></head><body><h1>Comfy Control</h1><small id="updated">Loading…</small>
-<section><h2>Providers</h2><table><thead><tr><th>Provider</th><th>State</th><th>Active</th><th>Idle</th><th>Actions</th></tr></thead><tbody id="providers"></tbody></table></section>
+<section><h2>Providers</h2><table><thead><tr><th>Provider</th><th>Resource</th><th>State</th><th>Active</th><th>Idle</th><th>Actions</th></tr></thead><tbody id="providers"></tbody></table></section>
 <section><h2>Action Result</h2><pre id="actionResult">No action run.</pre></section>
 <section><h2>Jobs</h2><table><thead><tr><th>Job</th><th>Model</th><th>Provider</th><th>Status</th></tr></thead><tbody id="jobs"></tbody></table></section>
 <section><h2>Events</h2><table><thead><tr><th>Time</th><th>Level</th><th>Provider</th><th>Message</th></tr></thead><tbody id="events"></tbody></table></section>
 <script>const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function refresh(){const r=await fetch('/api/status');if(!r.ok)return;const d=await r.json();
-providers.innerHTML=d.providers.map(p=>`<tr><td>${esc(p.id)}</td><td class="${esc(p.state)}">${esc(p.state)}</td><td>${p.active_requests}</td><td>${p.idle_seconds}s</td><td>${p.actions.map(a=>`<button data-provider="${esc(p.id)}" data-action="${esc(a.name)}" data-confirmation="${esc(a.confirmation)}">${esc(a.name)}</button>`).join('')}</td></tr>`).join('');
+providers.innerHTML=d.providers.map(p=>`<tr><td>${esc(p.id)}</td><td>${esc(p.resource_id??'—')}</td><td class="${esc(p.state)}">${esc(p.state)}</td><td>${p.active_requests}</td><td>${p.idle_seconds}s</td><td>${p.actions.map(a=>`<button data-provider="${esc(p.id)}" data-action="${esc(a.name)}" data-confirmation="${esc(a.confirmation)}">${esc(a.name)}</button>`).join('')}</td></tr>`).join('');
 providers.querySelectorAll('button').forEach(b=>b.onclick=()=>act(b.dataset.provider,b.dataset.action,b.dataset.confirmation));
 jobs.innerHTML=d.jobs.map(j=>`<tr><td>${esc(j.id)}</td><td>${esc(j.model)}</td><td>${esc(j.provider)}</td><td class="${esc(j.status)}">${esc(j.status)}</td></tr>`).join('');
 events.innerHTML=d.events.map(e=>`<tr><td>${new Date(e.created_at*1000).toLocaleString()}</td><td class="${esc(e.level)}">${esc(e.level)}</td><td>${esc(e.provider)}</td><td>${esc(e.message)}</td></tr>`).join('');
@@ -138,6 +138,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 "providers": [
                     {
                         "id": runtime.config.id,
+                        "resource_id": controller.resource_id(runtime.config.id),
                         "state": runtime.state,
                         "active_requests": runtime.active_requests,
                         "actions": [

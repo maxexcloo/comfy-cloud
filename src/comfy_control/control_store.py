@@ -51,6 +51,11 @@ class ControlStore:
                     response_json TEXT,
                     error TEXT
                 );
+                CREATE TABLE IF NOT EXISTS provider_resources (
+                    provider TEXT PRIMARY KEY,
+                    resource_id TEXT NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
                 """
             )
 
@@ -90,6 +95,33 @@ class ControlStore:
                 (limit,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def provider_resource(self, provider: str) -> str | None:
+        with self.lock:
+            row = self.connection.execute(
+                "SELECT resource_id FROM provider_resources WHERE provider = ?",
+                (provider,),
+            ).fetchone()
+        return str(row["resource_id"]) if row else None
+
+    def save_provider_resource(self, provider: str, resource_id: str) -> None:
+        with self.lock, self.connection:
+            self.connection.execute(
+                """
+                INSERT INTO provider_resources (provider, resource_id, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(provider) DO UPDATE SET
+                    resource_id = excluded.resource_id,
+                    updated_at = excluded.updated_at
+                """,
+                (provider, resource_id, int(time.time())),
+            )
+
+    def clear_provider_resource(self, provider: str) -> None:
+        with self.lock, self.connection:
+            self.connection.execute(
+                "DELETE FROM provider_resources WHERE provider = ?", (provider,)
+            )
 
     def job(self, job_id: str) -> Job | None:
         with self.lock:

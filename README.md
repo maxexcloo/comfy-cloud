@@ -18,12 +18,12 @@ lifecycle, durable video jobs and the worker-side OpenAI/ComfyUI gateway.
 
 ```bash
 cp .env.example .env
-# Replace the core placeholders; configure provider values when enabling media.
+# Replace the placeholders; leave worker values empty until enabling media.
 docker compose up --build --detach
 docker compose ps
 ```
 
-The standalone endpoints default to:
+The endpoints are:
 
 | Service                | URL                      |
 | ---------------------- | ------------------------ |
@@ -37,21 +37,22 @@ Bifrost data volume once; Bifrost owns later changes in SQLite. The mounted
 Control start. Copy routes from
 [`config/control.example.yaml`](config/control.example.yaml) before expecting media
 models to appear. Configured provider deploy, status, start, stop and destroy
-actions appear in the authenticated Comfy Control UI.
+actions call provider APIs from the backend and appear in the authenticated Comfy
+Control UI.
 
 ## Repository Layout
 
 - `catalogue/`: checksum-pinned API-format ComfyUI workflows and manifests.
-- `config/`: standalone runtime configuration and examples.
-- `deploy/`: provider-specific deployment assets.
+- `config/`: runtime configuration and examples.
+- `deploy/`: provider-specific worker deployment assets.
 - `docs/`: architecture, catalogue, development and deployment guidance.
 - `profiles/`: pinned model sources.
-- `scripts/`: small operational checks.
 - `src/comfy_control/`: controller and worker implementation.
 - `tests/`: behavioural and repository tests.
 
 The overall product is AI Router. `comfy-control` remains the narrower Python
-package, command and service name.
+package, command and service name. All project-owned runtime and maintenance
+operations use that one command.
 
 ## Develop
 
@@ -60,8 +61,7 @@ mise run setup
 mise run check
 ```
 
-Use `mise run fmt` to format supported files and `mise tasks` to list deployment
-operations. See:
+Use `mise run fmt` to format supported files. See:
 
 - [Architecture](docs/architecture.md)
 - [Catalogue & Models](docs/catalogue.md)

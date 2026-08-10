@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
-
-from check_gateway import Gateway, check_gateway
+from comfy_control.gateway_check import Gateway, check_gateway
 
 
 class FakeGateway:
@@ -27,7 +23,6 @@ class FakeGateway:
 
 def test_environment_rejects_placeholders(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BIFROST_API_KEY", "REPLACE_ME")
-    monkeypatch.setenv("BIFROST_URL", "http://bifrost.example.test")
 
     with pytest.raises(SystemExit, match="BIFROST_API_KEY"):
         Gateway()

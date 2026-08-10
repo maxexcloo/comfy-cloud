@@ -1,6 +1,6 @@
 {
   "disk_space": 100,
-  "image": "ghcr.io/OWNER/ai-router:TAG",
+  "image": "ghcr.io/maxexcloo/ai-router:worker",
   "name": "comfy-control",
   "env": {
     "API_KEY": "CHANGE_ME",

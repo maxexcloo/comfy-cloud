@@ -50,4 +50,4 @@ RUN --mount=type=secret,id=HF_TOKEN,env=HF_TOKEN \
     fi
 
 EXPOSE 8000
-CMD ["/opt/venv/bin/python", "-m", "comfy_control.supervisor"]
+CMD ["comfy-control", "worker"]

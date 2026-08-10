@@ -30,9 +30,10 @@ container.
    URL. Video jobs remain queryable through Comfy Control.
 
 Provider deployment and lifecycle controls are explicit HTTP actions in
-`config/control.yaml`. The authenticated UI invokes only declared actions and
-requires a same-origin confirmation header, so it does not provide a general
-command-execution surface.
+`config/control.yaml`. Comfy Control calls provider APIs itself, records returned
+resource IDs in SQLite and substitutes them into lifecycle and worker URLs. The
+authenticated UI invokes only declared actions and requires a same-origin
+confirmation header, so it does not provide a general command-execution surface.
 
 Native ComfyUI requests bypass workflow translation but share authentication and
 the upstream ComfyUI process.
@@ -47,8 +48,13 @@ the upstream ComfyUI process.
 | Controller routes/providers  | `config/control.yaml`           |
 | Model source pins            | `profiles/`                     |
 | OAuth records                | CLIProxyAPI volume              |
+| Provider resource IDs        | Comfy Control SQLite/data       |
 | Video job history            | Comfy Control SQLite/data       |
 | Worker model weights         | Provider volume or image        |
+
+Local secrets and connection variables live in the single gitignored `.env` file.
+The files under `config/` have distinct runtime owners: Bifrost consumes its JSON
+only on first start, while Comfy Control reads its YAML on every start.
 
 Changing the Bifrost bootstrap file does not update an existing Bifrost database.
 Use the Bifrost UI/API for live changes, or deliberately recreate only the Bifrost

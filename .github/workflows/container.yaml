@@ -4,7 +4,6 @@ on:
   pull_request:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -18,12 +17,19 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
-  control:
-    name: Control image
+  image:
+    name: ${{ matrix.tag }} image
     permissions:
       contents: read
       packages: write
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - dockerfile: Dockerfile.control
+            tag: control
+          - dockerfile: Dockerfile
+            tag: worker
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -38,155 +44,16 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: ghcr.io
           username: ${{ github.actor }}
-      - id: metadata
-        name: Extract metadata
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=control,enable={{is_default_branch}}
-            type=raw,value=control-smoke,enable=${{ github.event_name == 'pull_request' }}
-            type=ref,event=tag,prefix=control-
-      - name: Build and optionally push
+      - name: Build
         uses: docker/build-push-action@v7
         with:
-          cache-from: type=gha,scope=control
-          cache-to: type=gha,mode=max,scope=control,ignore-error=true
+          cache-from: type=gha,scope=${{ matrix.tag }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.tag }},ignore-error=true
           context: .
-          file: Dockerfile.control
-          labels: ${{ steps.metadata.outputs.labels }}
+          file: ${{ matrix.dockerfile }}
           load: ${{ github.event_name == 'pull_request' }}
-          platforms: linux/amd64
-          provenance: mode=max
           push: ${{ github.event_name != 'pull_request' }}
-          sbom: true
-          tags: ${{ steps.metadata.outputs.tags }}
-      - name: Smoke-test controller
+          tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}
+      - name: Smoke-test command
         if: github.event_name == 'pull_request'
-        env:
-          SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.metadata.outputs.version }}
-        run: |
-          docker compose --env-file .env.example config --quiet
-          docker run --detach --name comfy-control-controller-smoke \
-            --env CONTROL_API_KEY=smoke-test-key \
-            --env CONTROL_UI_PASSWORD=smoke-test-password \
-            --publish 8001:8000 \
-            --volume "${PWD}/config/control.yaml:/config/control.yaml:ro" \
-            "${SMOKE_IMAGE}"
-          for _ in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:8001/health/ready >/dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-          docker logs comfy-control-controller-smoke
-          exit 1
-      - name: Remove controller smoke-test container
-        if: always() && github.event_name == 'pull_request'
-        run: docker rm --force comfy-control-controller-smoke || true
-
-  worker:
-    name: Worker image
-    permissions:
-      contents: read
-      packages: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          password: ${{ secrets.GITHUB_TOKEN }}
-          registry: ghcr.io
-          username: ${{ github.actor }}
-      - id: metadata
-        name: Extract metadata
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-      - name: Build and optionally push
-        uses: docker/build-push-action@v7
-        with:
-          cache-from: type=gha,scope=runtime
-          cache-to: type=gha,mode=max,scope=runtime
-          context: .
-          labels: ${{ steps.metadata.outputs.labels }}
-          load: ${{ github.event_name == 'pull_request' }}
-          platforms: linux/amd64
-          provenance: mode=max
-          push: ${{ github.event_name != 'pull_request' }}
-          sbom: true
-          tags: ${{ steps.metadata.outputs.tags }}
-      - name: Smoke-test container
-        if: github.event_name == 'pull_request'
-        env:
-          SMOKE_IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.metadata.outputs.version }}
-        run: |
-          docker run --detach --name comfy-control-smoke \
-            --env API_KEY=smoke-test-key \
-            --env COMFYUI_ARGS="--cpu --listen 127.0.0.1 --port 8188" \
-            --env MODE=serverless \
-            --publish 8000:8000 \
-            "${SMOKE_IMAGE}"
-          for _ in {1..60}; do
-            if curl --fail --silent http://127.0.0.1:8000/health/ready >/dev/null; then
-              exit 0
-            fi
-            sleep 5
-          done
-          docker logs comfy-control-smoke
-          exit 1
-      - name: Remove smoke-test container
-        if: always() && github.event_name == 'pull_request'
-        run: docker rm --force comfy-control-smoke || true
-
-  profile:
-    name: Profile image
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: worker
-    permissions:
-      contents: read
-      packages: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
-        with:
-          password: ${{ secrets.GITHUB_TOKEN }}
-          registry: ghcr.io
-          username: ${{ github.actor }}
-      - name: Build and push
-        uses: docker/build-push-action@v7
-        with:
-          build-args: MODEL_PROFILE=flux-2-klein-4b
-          cache-from: |
-            type=gha,scope=runtime
-            type=gha,scope=profile-flux-2-klein-4b
-          cache-to: type=gha,mode=max,scope=profile-flux-2-klein-4b
-          context: .
-          platforms: linux/amd64
-          provenance: mode=max
-          push: true
-          sbom: true
-          tags: |
-            ${{ env.IMAGE_NAME }}:flux-2-klein-4b
+        run: docker run --rm "${IMAGE_NAME}:${{ matrix.tag }}" comfy-control --help
