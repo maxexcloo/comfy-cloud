@@ -133,7 +133,6 @@ async def test_controller_lists_and_routes_models(tmp_path):
         "status": "ready",
         "models": 3,
         "providers": 1,
-        "ready_providers": 1,
     }
     assert denied.status_code == 401
     assert dashboard.status_code == 200

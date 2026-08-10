@@ -121,22 +121,12 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         return {"status": "ready"}
 
     @app.get("/health")
-    async def health() -> JSONResponse:
-        readiness = await asyncio.gather(
-            *(
-                controller.check_ready(runtime)
-                for runtime in controller.providers.values()
-            )
-        )
-        ready_providers = sum(1 for provider_ready in readiness if provider_ready)
-        return JSONResponse(
-            {
-                "status": "ready",
-                "models": len(controller.config.models),
-                "providers": len(controller.providers),
-                "ready_providers": ready_providers,
-            }
-        )
+    async def health() -> dict[str, int | str]:
+        return {
+            "status": "ready",
+            "models": len(controller.config.models),
+            "providers": len(controller.providers),
+        }
 
     @app.get("/")
     async def dashboard(request: Request) -> Response:
