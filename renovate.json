@@ -11,6 +11,12 @@
       "description": "Group patch and pin updates",
       "groupName": "Patch and pin updates",
       "matchUpdateTypes": ["patch", "pin"]
+    },
+    {
+      "description": "Use Bifrost HTTP container tags",
+      "allowedVersions": "/^v\\d+\\.\\d+\\.\\d+$/",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["maximhq/bifrost"]
     }
   ]
 }
