@@ -2,7 +2,7 @@ name: ai-router
 
 services:
   bifrost:
-    image: maximhq/bifrost:v1.6.6
+    image: maximhq/bifrost:2.1.29
     depends_on:
       cliproxy:
         condition: service_healthy
@@ -40,7 +40,7 @@ services:
       - ./config/bifrost.bootstrap.json:/app/data/config.json:ro
 
   cliproxy:
-    image: eceasy/cli-proxy-api:v7.2.104
+    image: eceasy/cli-proxy-api:v7.2.127
     command:
       - /bin/sh
       - -ec
