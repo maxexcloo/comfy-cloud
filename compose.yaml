@@ -79,6 +79,7 @@ services:
       context: .
       dockerfile: Dockerfile.control
     environment:
+      CLIPROXY_API_KEY: ${CLIPROXY_API_KEY:?set CLIPROXY_API_KEY in .env}
       CONTROL_API_KEY: ${COMFY_CONTROL_API_KEY:?set COMFY_CONTROL_API_KEY in .env}
       CONTROL_UI_PASSWORD: ${COMFY_CONTROL_UI_PASSWORD:?set COMFY_CONTROL_UI_PASSWORD in .env}
       RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}

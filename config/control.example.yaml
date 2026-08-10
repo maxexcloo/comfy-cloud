@@ -3,15 +3,32 @@ models:
     operation: image_generation
     targets:
       - model: flux-2-klein-4b/text-to-image
-        provider: worker
+        provider: runpod
+      - model: grok-imagine-image
+        provider: cliproxy
+  - id: grok/quality-text-to-image
+    operation: image_generation
+    targets:
+      - model: grok-imagine-image-quality
+        provider: cliproxy
+  - id: grok/text-to-image
+    operation: image_generation
+    targets:
+      - model: grok-imagine-image
+        provider: cliproxy
   - id: minimax/text-to-video
     operation: video_generation
     targets:
       - model: minimax-h3/text-to-video
-        provider: worker
+        provider: runpod
 
 providers:
-  - id: worker
+  - id: cliproxy
+    api_key: env.CLIPROXY_API_KEY
+    base_url: http://cliproxy:8317
+    health_path: /v1/models
+    idle_seconds: 0
+  - id: runpod
     api_key: env.WORKER_API_KEY
     base_url: https://{resource_id}-8000.proxy.runpod.net
     idle_seconds: 600

@@ -517,11 +517,12 @@ def test_compose_forwards_example_provider_environment():
 
 
 def test_control_example_is_loadable(monkeypatch):
+    monkeypatch.setenv("CLIPROXY_API_KEY", "cliproxy-key")
     monkeypatch.setenv("RUNPOD_API_KEY", "provider-key")
     monkeypatch.setenv("WORKER_API_KEY", "worker-key")
 
     loaded = ControlFile.load(ROOT / "config/control.example.yaml")
 
-    provider = loaded.providers[0]
+    provider = loaded.providers[1]
     assert provider.base_url == "https://{resource_id}-8000.proxy.runpod.net"
     assert provider.actions["deploy"].resource_id_path == "id"
