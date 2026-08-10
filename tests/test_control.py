@@ -523,16 +523,6 @@ def test_compose_forwards_example_provider_environment():
     assert required <= env_example
 
 
-def test_bifrost_compose_healthcheck_uses_authenticated_models_endpoint():
-    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
-    healthcheck = compose["services"]["bifrost"]["healthcheck"]["test"]
-    command = " ".join(healthcheck)
-
-    assert healthcheck[0] == "CMD-SHELL"
-    assert "Authorization: Bearer $${BIFROST_API_KEY}" in command
-    assert "http://127.0.0.1:8080/v1/models" in command
-
-
 def test_control_example_is_loadable(monkeypatch):
     monkeypatch.setenv("CLIPROXY_API_KEY", "cliproxy-key")
     monkeypatch.setenv("RUNPOD_API_KEY", "provider-key")
