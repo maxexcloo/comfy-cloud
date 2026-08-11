@@ -40,8 +40,11 @@ docker compose ps
 Pull requests build both images and smoke-test their packaged commands.
 
 Compose starts `comfy-control control` and a local `comfy-control pod` worker.
-Providers in `config/control.yaml` are enabled when their URL environment variable
-is set. Add `CLIPROXY_MANAGEMENT_KEY` to display CLIProxyAPI usage.
+The local Pod is enabled when `LOCAL_POD_URL` is set. Managed providers are enabled
+by their Modal, RunPod, SaladCloud or Vast.ai management credential. The controller
+discovers resources by their configured stable name and refreshes provider-assigned
+worker URLs at runtime; do not store those URLs in deployment configuration. Add
+`CLIPROXY_MANAGEMENT_KEY` to display CLIProxyAPI usage.
 
 Keep the controller's `/data` directory on persistent storage. It contains the
 SQLite job history and controller-owned copies of generated media used by the
@@ -51,6 +54,12 @@ dashboard viewer. There is no automatic retention deletion.
 
 Definitions under `deploy/` run the worker image on Modal, RunPod, SaladCloud and
 Vast.ai. RunPod and Vast.ai contain separate Pod and Serverless definitions.
+
+Existing managed resources must use the names in `config/control.yaml`. SaladCloud
+also requires `SALAD_ORGANISATION` and `SALAD_PROJECT` because its API paths are
+scoped by both names. Provider API credentials and the shared `WORKER_API_KEY` are
+still injected through the secret store; discovered resource IDs and serving URLs
+remain controller runtime state.
 
 Use persistent storage for model weights and `JOBS_DIR` where the provider supports
 it. The worker image defaults to `comfy-control pod`; override the container

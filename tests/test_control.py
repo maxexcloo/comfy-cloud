@@ -11,7 +11,11 @@ from fastapi.responses import JSONResponse, Response
 
 from comfy_control.control import create_app
 from comfy_control.control_config import ControlFile, ControlSettings
-from comfy_control.controller import history_parameters, normalise_usage
+from comfy_control.controller import (
+    history_parameters,
+    normalise_usage,
+    normalise_xai_quota,
+)
 
 ROOT = Path(__file__).parents[1]
 
@@ -153,7 +157,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
         image = await client.post(
             "/v1/images/generations",
             headers={"Authorization": "Bearer control-key"},
-            json={"model": "public/image", "prompt": "test", "provider": "worker"},
+            json={"model": "worker/worker/image", "prompt": "test"},
         )
         status = await client.get("/api/status")
         history = status.json()["history"][0]
@@ -183,15 +187,17 @@ async def test_controller_lists_and_routes_models(tmp_path):
         "public/image",
         "public/image-edit",
         "public/video",
+        "worker/worker/image",
+        "worker/worker/image-edit",
+        "worker/worker/video",
     ]
     assert image.status_code == 200
     assert image.headers["x-comfy-provider"] == "worker"
     assert image.headers["x-comfy-history-id"] == history["id"]
     assert history["operation"] == "image_generation"
     assert history["parameters"] == {
-        "model": "public/image",
+        "model": "worker/worker/image",
         "prompt": "test",
-        "provider": "worker",
     }
     assert history["status"] == "completed"
     assert media.content == b"image"
@@ -220,7 +226,7 @@ async def test_controller_rejects_provider_outside_selected_model(tmp_path):
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_request"
-    assert "provider 'missing' is unavailable" in response.json()["error"]["message"]
+    assert "unknown provider: missing" in response.json()["error"]["message"]
     await app.state.controller.close()
 
 
@@ -235,9 +241,8 @@ async def test_controller_preserves_repeated_image_fields_in_order(tmp_path):
             "/v1/images/edits",
             headers={"Authorization": "Bearer control-key"},
             data={
-                "model": "public/image-edit",
+                "model": "worker/worker/image-edit",
                 "prompt": "Mara and Elise",
-                "provider": "worker",
             },
             files=[
                 ("image", ("mara.png", b"mara", "image/png")),
@@ -260,7 +265,7 @@ async def test_controller_owns_video_job_and_output_url(tmp_path):
         submitted = await client.post(
             "/v1/videos",
             headers={"Authorization": "Bearer control-key"},
-            json={"model": "public/video", "prompt": "test", "provider": "worker"},
+            json={"model": "worker/worker/video", "prompt": "test"},
         )
         job_id = submitted.json()["id"]
         for _ in range(20):
@@ -517,12 +522,17 @@ providers:
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://control"
     ) as client:
-        await sign_in(client)
-        status = await client.get("/api/status")
-        rejected = await client.post("/api/providers/worker/actions/deploy")
+        bearer = {"Authorization": "Bearer control-key"}
+        status = await client.get("/api/status", headers=bearer)
+        rejected = await client.post(
+            "/api/providers/worker/actions/deploy", headers=bearer
+        )
         deployed = await client.post(
             "/api/providers/worker/actions/deploy",
-            headers={"x-comfy-control-action": "worker/deploy"},
+            headers={
+                **bearer,
+                "x-comfy-control-action": "worker/deploy",
+            },
         )
 
     assert status.json()["providers"][0]["actions"] == [
@@ -668,9 +678,79 @@ def test_control_file_enables_configured_providers(monkeypatch):
     assert [provider.id for provider in loaded.providers] == [
         "cliproxyapi",
         "runpod-pod",
+        "runpod-serverless",
     ]
     assert loaded.models[0].targets[-1].provider == "cliproxyapi"
     assert loaded.providers[1].type == "pod"
+
+
+def test_control_file_enables_managed_providers_from_credentials(monkeypatch):
+    monkeypatch.setenv("CLIPROXY_API_KEY", "cliproxy-key")
+    monkeypatch.setenv("CLIPROXY_MANAGEMENT_KEY", "management-key")
+    monkeypatch.setenv("CLIPROXY_URL", "http://cliproxy")
+    monkeypatch.setenv("MODAL_TOKEN_ID", "modal-id")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "modal-secret")
+    monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
+    monkeypatch.setenv("SALAD_API_KEY", "salad-key")
+    monkeypatch.setenv("VAST_API_KEY", "vast-key")
+    monkeypatch.setenv("WORKER_API_KEY", "worker-key")
+
+    loaded = ControlFile.load(ROOT / "config/control.yaml")
+
+    assert [provider.id for provider in loaded.providers] == [
+        "cliproxyapi",
+        "modal-serverless",
+        "runpod-pod",
+        "runpod-serverless",
+        "salad-serverless",
+        "vast-pod",
+        "vast-serverless",
+    ]
+    assert all(
+        provider.base_url is None
+        for provider in loaded.providers
+        if provider.management
+    )
+
+
+@pytest.mark.asyncio
+async def test_controller_discovers_managed_runpod_endpoint(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "provider-key")
+    configured = settings(tmp_path)
+    configured.config_file.write_text(
+        """
+models: []
+providers:
+  - id: runpod-pod
+    api_key: worker-key
+    management:
+      kind: runpod-pod
+      name: comfy-control
+""".lstrip()
+    )
+    app = create_app(configured)
+    management = FastAPI()
+
+    @management.get("/v1/pods")
+    async def pods(request: Request) -> list[dict[str, str]]:
+        assert request.headers["authorization"] == "Bearer provider-key"
+        return [{"id": "pod-123", "name": "comfy-control"}]
+
+    await app.state.controller.lifecycle_client.aclose()
+    app.state.controller.lifecycle_client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=management), base_url="https://rest.runpod.io"
+    )
+    runtime = app.state.controller.providers["runpod-pod"]
+
+    await app.state.controller.refresh_endpoint(runtime)
+
+    assert runtime.base_url == "https://pod-123-8000.proxy.runpod.net"
+    assert app.state.controller.resource_id("runpod-pod") == "pod-123"
+    assert sorted(app.state.controller.available_actions("runpod-pod")) == [
+        "start",
+        "stop",
+    ]
+    await app.state.controller.close()
 
 
 def test_usage_normalisers():
@@ -693,6 +773,36 @@ def test_usage_normalisers():
     ) == [
         {"label": "Replicas used", "value": 2},
         {"label": "Replica quota", "value": 10},
+    ]
+    assert normalise_xai_quota(
+        {
+            "config": {
+                "creditUsagePercent": 25,
+                "monthlyLimit": {"val": 5000},
+                "onDemandCap": {"val": 2000},
+                "onDemandUsed": {"val": 500},
+                "productUsage": [{"product": "Grok Imagine", "usagePercent": 40}],
+                "used": {"val": 1250},
+            }
+        },
+        1,
+    ) == [
+        {"label": "Grok account 1 weekly remaining", "unit": "%", "value": 75},
+        {
+            "label": "Grok account 1 Grok Imagine remaining",
+            "unit": "%",
+            "value": 60,
+        },
+        {
+            "label": "Grok account 1 monthly included remaining",
+            "unit": "USD",
+            "value": 37.5,
+        },
+        {
+            "label": "Grok account 1 on-demand remaining",
+            "unit": "USD",
+            "value": 15.0,
+        },
     ]
 
 

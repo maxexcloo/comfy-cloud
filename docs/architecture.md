@@ -12,12 +12,16 @@ Comfy Control runs two supervised processes in one container:
 The `control` command fronts independently deployed workers and owns public model
 IDs, ordered fallback, provider lifecycle, durable video jobs, account telemetry
 and the operations dashboard. Workers remain self-contained ComfyUI gateways.
+Managed providers are selected by stable configured names. Their resource IDs and
+serving URLs are discovered through provider APIs and kept in controller runtime
+state, so provider-assigned addresses can change across starts without changing
+deployment configuration.
 
 ## Request Flow
 
 1. The control plane authenticates the request and selects configured targets.
-   Clients may include a `provider` field to pin one provider configured for the
-   selected public model; omitting it retains ordered fallback.
+   Public model IDs use ordered fallback. A qualified `provider/model` ID pins one
+   provider and disables fallback for that request; provider aliases are accepted.
 2. It starts a stopped provider when lifecycle controls are configured.
 3. The worker checks the requested catalogue model against installed files and registered
    ComfyUI node types.
@@ -78,6 +82,7 @@ in front of the normal Serverless worker.
 ## Provider Telemetry
 
 Account telemetry is cached for one minute and cannot take inference offline.
-CLIProxyAPI reports request and token usage, RunPod reports Pod or Endpoint billing
-history, Vast.ai reports account credit, Modal reports billing-cycle spend and
-credits used, and SaladCloud reports public replica usage and quota.
+CLIProxyAPI reports request and token usage and obtains sanitised remaining Grok
+allowances through its per-credential Management API proxy. RunPod reports Pod or
+Endpoint billing history, Vast.ai reports account credit, Modal reports billing-cycle
+spend and credits used, and SaladCloud reports public replica usage and quota.

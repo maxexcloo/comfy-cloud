@@ -53,15 +53,6 @@ def error(message: str, status: int, code: str) -> JSONResponse:
     )
 
 
-def selected_targets(model, provider: str | None):
-    if not provider:
-        return model.targets
-    targets = [target for target in model.targets if target.provider == provider]
-    if not targets:
-        raise ValueError(f"provider '{provider}' is unavailable for model '{model.id}'")
-    return targets
-
-
 def bearer_authorised(request: Request, settings: ControlSettings) -> bool:
     scheme, _, value = request.headers.get("authorization", "").partition(" ")
     return scheme.lower() == "bearer" and hmac.compare_digest(value, settings.api_key)
@@ -254,7 +245,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
 
     @app.get("/api/status")
     async def status(request: Request) -> Response:
-        if not ui_authorised(request, settings):
+        if not (
+            ui_authorised(request, settings) or bearer_authorised(request, settings)
+        ):
             return Response(status_code=401)
         usage = await controller.usage()
         return JSONResponse(
@@ -319,7 +312,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def provider_action(
         provider_id: str, action_name: str, request: Request
     ) -> Response:
-        if not ui_authorised(request, settings):
+        if not (
+            ui_authorised(request, settings) or bearer_authorised(request, settings)
+        ):
             return Response(status_code=401)
         expected = f"{provider_id}/{action_name}"
         if not hmac.compare_digest(
@@ -342,17 +337,23 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def models(request: Request) -> Response:
         if not bearer_authorised(request, settings):
             return error("invalid API key", 401, "invalid_api_key")
+        model_ids = {model.id for model in controller.config.models}
+        for model in controller.config.models:
+            for target in model.targets:
+                provider = controller.providers[target.provider].config
+                for provider_name in (provider.id, *provider.aliases):
+                    model_ids.add(f"{provider_name}/{target.model}")
         return JSONResponse(
             {
                 "object": "list",
                 "data": [
                     {
-                        "id": model.id,
+                        "id": model_id,
                         "object": "model",
                         "created": 0,
                         "owned_by": "comfy-control",
                     }
-                    for model in controller.config.models
+                    for model_id in sorted(model_ids)
                 ],
             }
         )
@@ -366,9 +367,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             return error("request body is too large", 413, "request_too_large")
         try:
             original = json.loads(body)
-            model = controller.model(original.get("model", ""), operation)
+            requested_model = str(original.get("model", ""))
             provider = str(original.get("provider", "")).strip() or None
-            targets = selected_targets(model, provider)
+            model, targets = controller.resolve_model(
+                requested_model, operation, provider
+            )
         except (AttributeError, json.JSONDecodeError, ValueError) as exc:
             return error(str(exc), 400, "invalid_request")
         except KeyError as exc:
@@ -466,9 +469,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         try:
             form = await request.form()
             model_id = str(form.get("model", ""))
-            model = controller.model(model_id, "image_edit")
             provider = str(form.get("provider", "")).strip() or None
-            targets = selected_targets(model, provider)
+            model, targets = controller.resolve_model(model_id, "image_edit", provider)
         except ValueError as exc:
             return error(str(exc), 400, "invalid_request")
         except KeyError as exc:
@@ -585,8 +587,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     raise TypeError("request body must be an object")
                 model_id = values.get("model", "")
                 provider = str(values.get("provider", "")).strip() or None
-            model = controller.model(model_id, "video_generation")
-            selected_targets(model, provider)
+            model, targets = controller.resolve_model(
+                str(model_id), "video_generation", provider
+            )
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
             return error(str(exc), 400, "invalid_request")
         except KeyError as exc:
@@ -632,7 +635,10 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             forwarded.pop("provider", None)
             request_json = json.dumps(forwarded, separators=(",", ":"))
             parameters = values
-        controller.store.save_job(public_id, model_id, request_json, provider=provider)
+        selected_provider = targets[0].provider if provider else None
+        controller.store.save_job(
+            public_id, model.id, request_json, provider=selected_provider
+        )
         controller.store.save_history(
             public_id,
             "video_generation",

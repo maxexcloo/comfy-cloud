@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from .control_config import (
     ProviderAction,
     RoutedModel,
     Target,
+    UsageProbe,
 )
 from .control_store import ControlStore, Job
 
@@ -64,6 +66,43 @@ def redacted(value: object) -> object:
     return value
 
 
+def required_environment(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"{name} is required to manage this provider")
+    return value
+
+
+def required_mapping_value(value: object, key: str) -> object:
+    if not isinstance(value, dict) or key not in value or value[key] in (None, ""):
+        raise RuntimeError(f"provider response has no {key}")
+    return value[key]
+
+
+def named_resource(
+    value: object, name: str, name_key: str, resource_id: str | None
+) -> dict[str, object]:
+    if not isinstance(value, list):
+        raise RuntimeError(  # noqa: TRY004 - provider boundary failure
+            "provider returned an invalid resource list"
+        )
+    resources = [item for item in value if isinstance(item, dict)]
+    if resource_id is not None:
+        matches = [
+            item
+            for item in resources
+            if str(item.get("id")) == resource_id and item.get(name_key) == name
+        ]
+        if len(matches) == 1:
+            return matches[0]
+    matches = [item for item in resources if item.get(name_key) == name]
+    if not matches:
+        raise RuntimeError(f"provider resource not found: {name}")
+    if len(matches) > 1:
+        raise RuntimeError(f"provider resource name is ambiguous: {name}")
+    return matches[0]
+
+
 def history_parameters(value: object, key: str = "") -> object:
     if sensitive_field(key):
         return "***"
@@ -90,6 +129,7 @@ class ProviderRuntime:
     config: Provider
     client: httpx.AsyncClient
     active_requests: int = 0
+    base_url: str | None = None
     last_used: float = field(default_factory=time.monotonic)
     ready: bool = False
     state: str = "unknown"
@@ -107,11 +147,17 @@ class Controller:
         self.providers = {
             provider.id: ProviderRuntime(
                 config=provider,
+                base_url=provider.base_url,
                 client=httpx.AsyncClient(
                     follow_redirects=False, timeout=provider.request_timeout
                 ),
             )
             for provider in self.config.providers
+        }
+        self.provider_ids = {
+            name: provider.id
+            for provider in self.config.providers
+            for name in (provider.id, *provider.aliases)
         }
         self.lifecycle_client = httpx.AsyncClient(timeout=60)
         self.media_client = httpx.AsyncClient(follow_redirects=True, timeout=120)
@@ -140,11 +186,27 @@ class Controller:
                 if probe.kind == "modal":
                     metrics = await asyncio.to_thread(modal_usage)
                 else:
-                    response = await self.lifecycle_client.get(
-                        probe.url, headers=probe.headers
-                    )
+                    url = probe.url
+                    headers = probe.headers
+                    if probe.kind == "salad" and url is None:
+                        organisation = required_environment("SALAD_ORGANISATION")
+                        url = (
+                            "https://api.salad.com/api/public/organizations/"
+                            f"{quote(organisation, safe='')}/quotas"
+                        )
+                        headers = {
+                            "Salad-Api-Key": required_environment("SALAD_API_KEY")
+                        }
+                    response = await self.lifecycle_client.get(url, headers=headers)
                     response.raise_for_status()
                     metrics = normalise_usage(probe.kind, response.json())
+                    if probe.kind == "cliproxyapi":
+                        try:
+                            metrics.extend(await self.cliproxy_xai_quotas(probe))
+                        except Exception:  # noqa: BLE001 - optional quota telemetry
+                            metrics.append(
+                                {"label": "Grok allowances", "value": "unavailable"}
+                            )
                 runtime.usage = {"metrics": metrics, "status": "ok"}
             except Exception as exc:  # noqa: BLE001 - optional account telemetry
                 runtime.usage = {
@@ -153,6 +215,94 @@ class Controller:
                 }
             runtime.usage_checked_at = time.monotonic()
             return runtime.usage
+
+    async def cliproxy_xai_quotas(self, probe: UsageProbe) -> list[dict[str, object]]:
+        management_url = str(probe.url).rsplit("/", 1)[0]
+        response = await self.lifecycle_client.get(
+            f"{management_url}/auth-files", headers=probe.headers
+        )
+        response.raise_for_status()
+        payload = response.json()
+        files = payload.get("files", []) if isinstance(payload, dict) else []
+        accounts = [
+            item
+            for item in files
+            if isinstance(item, dict)
+            and str(item.get("type", "")).casefold() == "xai"
+            and item.get("disabled") is not True
+            and (item.get("auth_index") or item.get("authIndex"))
+        ]
+        results = await asyncio.gather(
+            *(
+                self.cliproxy_xai_quota_account(
+                    management_url, probe.headers, account, index
+                )
+                for index, account in enumerate(accounts, 1)
+            ),
+            return_exceptions=True,
+        )
+        return [
+            metric
+            for result in results
+            if isinstance(result, list)
+            for metric in result
+        ]
+
+    async def cliproxy_xai_quota_account(
+        self,
+        management_url: str,
+        headers: dict[str, str],
+        account: dict[str, object],
+        index: int,
+    ) -> list[dict[str, object]]:
+        auth_index = str(account.get("auth_index") or account.get("authIndex"))
+        request_headers = {
+            "Authorization": "Bearer $TOKEN$",
+            "accept": "*/*",
+            "user-agent": "grok-pager/0.2.91 grok-shell/0.2.91 (macos; aarch64)",
+            "x-grok-client-version": "0.2.91",
+            "x-xai-token-auth": "xai-grok-cli",
+        }
+        user_id = xai_user_id(account)
+        if user_id:
+            request_headers["x-userid"] = user_id
+        calls = await asyncio.gather(
+            *(
+                self.lifecycle_client.post(
+                    f"{management_url}/api-call",
+                    headers=headers,
+                    json={
+                        "authIndex": auth_index,
+                        "method": "GET",
+                        "url": url,
+                        "header": request_headers,
+                    },
+                )
+                for url in (
+                    "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
+                    "https://cli-chat-proxy.grok.com/v1/billing",
+                )
+            ),
+            return_exceptions=True,
+        )
+        metrics: list[dict[str, object]] = []
+        for response in calls:
+            if not isinstance(response, httpx.Response) or not response.is_success:
+                continue
+            result = response.json()
+            if (
+                not isinstance(result, dict)
+                or not 200 <= int(result.get("status_code", 0)) < 300
+            ):
+                continue
+            body = result.get("body")
+            if isinstance(body, str):
+                try:
+                    body = json.loads(body)
+                except json.JSONDecodeError:
+                    continue
+            metrics.extend(normalise_xai_quota(body, index))
+        return deduplicate_metrics(metrics)
 
     async def usage(self) -> dict[str, dict[str, object]]:
         values = await asyncio.gather(
@@ -170,6 +320,124 @@ class Controller:
         await self.lifecycle_client.aclose()
         await self.media_client.aclose()
         self.store.close()
+
+    async def refresh_endpoint(self, runtime: ProviderRuntime) -> None:
+        management = runtime.config.management
+        if management is None:
+            return
+        if management.kind == "modal":
+            runtime.base_url = await asyncio.to_thread(
+                modal_web_url, management.name, management.function or ""
+            )
+            self.store.save_provider_resource(runtime.config.id, management.name)
+            return
+
+        if management.kind.startswith("runpod-"):
+            api_key = required_environment("RUNPOD_API_KEY")
+            collection = "pods" if management.kind == "runpod-pod" else "endpoints"
+            response = await self.lifecycle_client.get(
+                f"https://rest.runpod.io/v1/{collection}",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+            response.raise_for_status()
+            resource = named_resource(
+                response.json(),
+                management.name,
+                "name",
+                self.resource_id(runtime.config.id),
+            )
+            resource_id = required_mapping_value(resource, "id")
+            self.store.save_provider_resource(runtime.config.id, str(resource_id))
+            if management.kind == "runpod-serverless":
+                runtime.base_url = f"https://{resource_id}.api.runpod.ai"
+            else:
+                runtime.base_url = (
+                    f"https://{resource_id}-{management.port}.proxy.runpod.net"
+                )
+            return
+
+        if management.kind == "salad":
+            api_key = required_environment("SALAD_API_KEY")
+            organisation = management.organisation or required_environment(
+                "SALAD_ORGANISATION"
+            )
+            project = management.project or required_environment("SALAD_PROJECT")
+            response = await self.lifecycle_client.get(
+                "https://api.salad.com/api/public/organizations/"
+                f"{quote(organisation, safe='')}/projects/{quote(project, safe='')}"
+                f"/containers/{quote(management.name, safe='')}",
+                headers={"Salad-Api-Key": api_key},
+            )
+            response.raise_for_status()
+            resource = response.json()
+            self.store.save_provider_resource(
+                runtime.config.id, str(required_mapping_value(resource, "id"))
+            )
+            networking = required_mapping_value(resource, "networking")
+            if not isinstance(networking, dict):
+                raise RuntimeError("SaladCloud provider has invalid networking data")
+            dns = str(required_mapping_value(networking, "dns"))
+            runtime.base_url = dns if "://" in dns else f"https://{dns}"
+            return
+
+        api_key = required_environment("VAST_API_KEY")
+        headers = {"Authorization": f"Bearer {api_key}"}
+        if management.kind == "vast-serverless":
+            response = await self.lifecycle_client.get(
+                "https://console.vast.ai/api/v0/endptjobs/", headers=headers
+            )
+            response.raise_for_status()
+            payload = response.json()
+            resources = required_mapping_value(payload, "results")
+            resource = named_resource(
+                resources,
+                management.name,
+                "endpoint_name",
+                self.resource_id(runtime.config.id),
+            )
+            self.store.save_provider_resource(
+                runtime.config.id, str(required_mapping_value(resource, "id"))
+            )
+            route = await self.lifecycle_client.post(
+                "https://run.vast.ai/route/",
+                headers=headers,
+                json={"cost": 100, "endpoint": management.name},
+            )
+            route.raise_for_status()
+            runtime.base_url = str(required_mapping_value(route.json(), "url")).rstrip(
+                "/"
+            )
+            return
+
+        response = await self.lifecycle_client.get(
+            "https://console.vast.ai/api/v1/instances/", headers=headers
+        )
+        response.raise_for_status()
+        payload = response.json()
+        resources = required_mapping_value(payload, "instances")
+        resource = named_resource(
+            resources,
+            management.name,
+            "label",
+            self.resource_id(runtime.config.id),
+        )
+        resource_id = required_mapping_value(resource, "id")
+        self.store.save_provider_resource(runtime.config.id, str(resource_id))
+        address = required_mapping_value(resource, "public_ipaddr")
+        ports = required_mapping_value(resource, "ports")
+        mapping = (
+            ports.get(f"{management.port}/tcp") if isinstance(ports, dict) else None
+        )
+        if (
+            not isinstance(mapping, list)
+            or not mapping
+            or not isinstance(mapping[0], dict)
+        ):
+            raise RuntimeError(
+                f"Vast.ai provider has no public mapping for port {management.port}"
+            )
+        port = required_mapping_value(mapping[0], "HostPort")
+        runtime.base_url = f"http://{address}:{port}"
 
     def save_media(
         self,
@@ -449,7 +717,9 @@ class Controller:
         return value.replace("{resource_id}", quote(resource_id, safe=""))
 
     def worker_url(self, runtime: ProviderRuntime, path: str) -> str:
-        base_url = self.resolve_resource(runtime.config.base_url, runtime.config.id)
+        if runtime.base_url is None:
+            raise RuntimeError(f"provider {runtime.config.id} has no discovered URL")
+        base_url = self.resolve_resource(runtime.base_url, runtime.config.id)
         return f"{base_url}{path}"
 
     def available_actions(self, provider: str) -> dict[str, ProviderAction]:
@@ -459,6 +729,71 @@ class Controller:
             actions["start"] = runtime.config.lifecycle.start
         if runtime.config.lifecycle.stop is not None:
             actions["stop"] = runtime.config.lifecycle.stop
+        management = runtime.config.management
+        if management is not None and management.kind == "runpod-pod":
+            headers = {
+                "authorization": f"Bearer {required_environment('RUNPOD_API_KEY')}"
+            }
+            actions.setdefault(
+                "start",
+                ProviderAction(
+                    headers=headers,
+                    url="https://rest.runpod.io/v1/pods/{resource_id}/start",
+                ),
+            )
+            actions.setdefault(
+                "stop",
+                ProviderAction(
+                    confirmation="Stop the RunPod Pod?",
+                    headers=headers,
+                    url="https://rest.runpod.io/v1/pods/{resource_id}/stop",
+                ),
+            )
+        if management is not None and management.kind == "salad":
+            organisation = management.organisation or os.getenv("SALAD_ORGANISATION")
+            project = management.project or os.getenv("SALAD_PROJECT")
+            if organisation and project:
+                base_url = (
+                    "https://api.salad.com/api/public/organizations/"
+                    f"{quote(organisation, safe='')}/projects/{quote(project, safe='')}"
+                    f"/containers/{quote(management.name, safe='')}"
+                )
+                headers = {"Salad-Api-Key": required_environment("SALAD_API_KEY")}
+                actions.setdefault(
+                    "start", ProviderAction(headers=headers, url=f"{base_url}/start")
+                )
+                actions.setdefault(
+                    "stop",
+                    ProviderAction(
+                        confirmation="Stop the SaladCloud container group?",
+                        headers=headers,
+                        url=f"{base_url}/stop",
+                    ),
+                )
+        if management is not None and management.kind == "vast-pod":
+            headers = {
+                "authorization": f"Bearer {required_environment('VAST_API_KEY')}"
+            }
+            url = "https://console.vast.ai/api/v0/instances/{resource_id}/"
+            actions.setdefault(
+                "start",
+                ProviderAction(
+                    headers=headers,
+                    json={"state": "running"},
+                    method="PUT",
+                    url=url,
+                ),
+            )
+            actions.setdefault(
+                "stop",
+                ProviderAction(
+                    confirmation="Stop the Vast.ai Pod?",
+                    headers=headers,
+                    json={"state": "stopped"},
+                    method="PUT",
+                    url=url,
+                ),
+            )
         return dict(sorted(actions.items()))
 
     async def run_provider_action(
@@ -508,13 +843,14 @@ class Controller:
 
     async def check_ready(self, runtime: ProviderRuntime) -> bool:
         try:
+            await self.refresh_endpoint(runtime)
             response = await runtime.client.get(
                 self.worker_url(runtime, runtime.config.health_path),
                 headers={"Authorization": f"Bearer {runtime.config.api_key}"},
                 timeout=10,
             )
             runtime.ready = response.is_success
-        except (httpx.HTTPError, RuntimeError):
+        except Exception:  # noqa: BLE001 - provider discovery and health boundary
             runtime.ready = False
         runtime.state = "ready" if runtime.ready else "stopped"
         return runtime.ready
@@ -522,7 +858,7 @@ class Controller:
     async def ensure_ready(self, runtime: ProviderRuntime, request_id: str) -> None:
         if await self.check_ready(runtime):
             return
-        action = runtime.config.lifecycle.start
+        action = self.available_actions(runtime.config.id).get("start")
         if action is None:
             runtime.state = "starting"
             return
@@ -555,7 +891,7 @@ class Controller:
         while True:
             await asyncio.sleep(15)
             for runtime in self.providers.values():
-                action = runtime.config.lifecycle.stop
+                action = self.available_actions(runtime.config.id).get("stop")
                 if (
                     action is None
                     or runtime.config.idle_seconds == 0
@@ -594,6 +930,48 @@ class Controller:
             raise ValueError(f"model {model_id} does not support {operation}")
         return model
 
+    def resolve_model(
+        self, model_id: str, operation: str, provider: str | None = None
+    ) -> tuple[RoutedModel, list[Target]]:
+        provider_id = None
+        if provider:
+            try:
+                provider_id = self.provider_ids[provider]
+            except KeyError as exc:
+                raise ValueError(f"unknown provider: {provider}") from exc
+        try:
+            model = self.model(model_id, operation)
+        except KeyError:
+            if not provider_id and "/" in model_id:
+                provider_name, qualified_model = model_id.split("/", 1)
+                provider_id = self.provider_ids.get(provider_name)
+                if provider_id:
+                    provider = provider_name
+                    model_id = qualified_model
+            if not provider_id:
+                raise
+            matches = [
+                (candidate, target)
+                for candidate in self.config.models
+                if candidate.operation == operation
+                for target in candidate.targets
+                if target.provider == provider_id and target.model == model_id
+            ]
+            if len(matches) != 1:
+                raise KeyError(f"unknown {provider}/{model_id} route for {operation}")
+            model, target = matches[0]
+            return model, [target]
+        targets = (
+            [target for target in model.targets if target.provider == provider_id]
+            if provider_id
+            else model.targets
+        )
+        if not targets:
+            raise ValueError(
+                f"provider '{provider}' is unavailable for model '{model_id}'"
+            )
+        return model, targets
+
     async def forward(
         self,
         target: Target,
@@ -608,6 +986,12 @@ class Controller:
             runtime.active_requests += 1
         try:
             await self.ensure_ready(runtime, request_id)
+            try:
+                await self.refresh_endpoint(runtime)
+            except (httpx.HTTPError, RuntimeError):
+                raise
+            except Exception as exc:
+                raise RuntimeError(exception_message(exc)) from exc
             runtime.state = "busy"
             response = await runtime.client.request(
                 method,
@@ -734,6 +1118,105 @@ def normalise_usage(kind: str, value: object) -> list[dict[str, object]]:
                 metrics.append({"label": label, "value": found})
         return metrics
     raise ValueError(f"unsupported usage kind: {kind}")
+
+
+def xai_user_id(account: dict[str, object]) -> str | None:
+    records = [account]
+    for key in ("attributes", "metadata", "oauth", "user"):
+        value = account.get(key)
+        if isinstance(value, dict):
+            records.append(value)
+    for record in records:
+        for key in ("sub", "subject", "user_id", "userId", "id"):
+            value = record.get(key)
+            if isinstance(value, (int, str)) and str(value).strip():
+                return str(value).strip()
+    return None
+
+
+def cent_value(value: object) -> float | None:
+    if isinstance(value, dict):
+        value = value.get("val")
+    if isinstance(value, (float, int)) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def normalise_xai_quota(value: object, account: int) -> list[dict[str, object]]:
+    if not isinstance(value, dict):
+        return []
+    config = value.get("config")
+    if not isinstance(config, dict):
+        return []
+    prefix = f"Grok account {account}"
+    metrics: list[dict[str, object]] = []
+    usage_percent = first_number(config, "creditUsagePercent", "credit_usage_percent")
+    if usage_percent is not None:
+        metrics.append(
+            {
+                "label": f"{prefix} weekly remaining",
+                "unit": "%",
+                "value": max(0, round(100 - usage_percent, 2)),
+            }
+        )
+    products = config.get("productUsage") or config.get("product_usage")
+    if isinstance(products, list):
+        for product in products:
+            if not isinstance(product, dict):
+                continue
+            name = str(product.get("product") or "product").strip()
+            used = first_number(product, "usagePercent", "usage_percent")
+            if used is not None:
+                metrics.append(
+                    {
+                        "label": f"{prefix} {name} remaining",
+                        "unit": "%",
+                        "value": max(0, round(100 - used, 2)),
+                    }
+                )
+    monthly_limit = cent_value(config.get("monthlyLimit", config.get("monthly_limit")))
+    used = cent_value(config.get("used"))
+    if monthly_limit is not None and used is not None:
+        metrics.append(
+            {
+                "label": f"{prefix} monthly included remaining",
+                "unit": "USD",
+                "value": max(0, round((monthly_limit - used) / 100, 2)),
+            }
+        )
+    on_demand_cap = cent_value(config.get("onDemandCap", config.get("on_demand_cap")))
+    on_demand_used = cent_value(
+        config.get("onDemandUsed", config.get("on_demand_used"))
+    )
+    if on_demand_cap is not None and on_demand_used is not None:
+        metrics.append(
+            {
+                "label": f"{prefix} on-demand remaining",
+                "unit": "USD",
+                "value": max(0, round((on_demand_cap - on_demand_used) / 100, 2)),
+            }
+        )
+    return metrics
+
+
+def deduplicate_metrics(
+    metrics: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    return list({str(metric.get("label")): metric for metric in metrics}.values())
+
+
+def modal_web_url(app_name: str, function_name: str) -> str:
+    import modal
+
+    url = modal.Function.from_name(app_name, function_name).get_web_url()
+    if not url:
+        raise RuntimeError(f"Modal web function has no URL: {app_name}/{function_name}")
+    return url.rstrip("/")
 
 
 def modal_usage() -> list[dict[str, object]]:

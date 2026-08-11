@@ -40,17 +40,44 @@ class UsageProbe(BaseModel):
 
     @model_validator(mode="after")
     def validate_probe(self) -> UsageProbe:
-        if self.kind != "modal" and not self.url:
+        if self.kind not in {"modal", "salad"} and not self.url:
             raise ValueError(f"{self.kind} usage requires a URL")
         if self.url and not self.url.startswith(("http://", "https://")):
             raise ValueError("usage URL must use HTTP or HTTPS")
         return self
 
 
+class ProviderManagement(BaseModel):
+    kind: Literal[
+        "modal",
+        "runpod-pod",
+        "runpod-serverless",
+        "salad",
+        "vast-pod",
+        "vast-serverless",
+    ]
+    name: str
+    function: str | None = None
+    organisation: str | None = None
+    port: int = 8000
+    project: str | None = None
+
+    @model_validator(mode="after")
+    def validate_management(self) -> ProviderManagement:
+        if not self.name:
+            raise ValueError("managed provider name must not be empty")
+        if self.port < 1 or self.port > 65535:
+            raise ValueError("managed provider port must be between 1 and 65535")
+        if self.kind == "modal" and not self.function:
+            raise ValueError("modal management requires a function")
+        return self
+
+
 class Provider(BaseModel):
     id: str
-    base_url: str
     api_key: str
+    aliases: list[str] = Field(default_factory=list)
+    base_url: str | None = None
     health_path: str = "/health/ready"
     idle_seconds: int = 600
     request_timeout: float = 1200
@@ -58,6 +85,7 @@ class Provider(BaseModel):
     startup_timeout: float = 900
     actions: dict[str, ProviderAction] = Field(default_factory=dict)
     lifecycle: ProviderLifecycle = Field(default_factory=ProviderLifecycle)
+    management: ProviderManagement | None = None
     platform: str | None = None
     type: Literal["pod", "proxy", "serverless"] = "pod"
     usage: UsageProbe | None = None
@@ -66,7 +94,15 @@ class Provider(BaseModel):
     def validate_provider(self) -> Provider:
         if not re.fullmatch(r"[a-z][a-z0-9-]*", self.id):
             raise ValueError("provider id must be a lowercase slug")
-        if not self.base_url.startswith(("http://", "https://")):
+        if any(not re.fullmatch(r"[a-z][a-z0-9-]*", alias) for alias in self.aliases):
+            raise ValueError("provider aliases must be lowercase slugs")
+        if len(self.aliases) != len(set(self.aliases)) or self.id in self.aliases:
+            raise ValueError("provider aliases must be unique and differ from the id")
+        if self.base_url is None and self.management is None:
+            raise ValueError("provider requires base_url or management")
+        if self.base_url is not None and not self.base_url.startswith(
+            ("http://", "https://")
+        ):
             raise ValueError("provider base_url must use HTTP or HTTPS")
         if not self.api_key:
             raise ValueError("provider api_key must not be empty")
@@ -84,7 +120,8 @@ class Provider(BaseModel):
                 "provider action names must be lowercase slugs other than start/stop: "
                 + ", ".join(invalid_actions)
             )
-        self.base_url = self.base_url.rstrip("/")
+        if self.base_url is not None:
+            self.base_url = self.base_url.rstrip("/")
         return self
 
 
@@ -114,9 +151,16 @@ class ControlFile(BaseModel):
     @model_validator(mode="after")
     def validate_relationships(self) -> ControlFile:
         provider_ids = [provider.id for provider in self.providers]
+        provider_names = [
+            name
+            for provider in self.providers
+            for name in (provider.id, *provider.aliases)
+        ]
         model_ids = [model.id for model in self.models]
         if len(provider_ids) != len(set(provider_ids)):
             raise ValueError("provider ids must be unique")
+        if len(provider_names) != len(set(provider_names)):
+            raise ValueError("provider ids and aliases must be unique")
         if len(model_ids) != len(set(model_ids)):
             raise ValueError("model ids must be unique")
         unknown = sorted(

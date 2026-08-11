@@ -14,7 +14,7 @@ uv = "0.12.3"
 description = "Run all repository checks"
 run = """
 prek run --all-files
-uv run --isolated --no-editable --extra test pytest -q
+uv run --isolated --no-editable --refresh-package comfy-control --extra test pytest -q
 """
 
 [tasks.cleanup]
