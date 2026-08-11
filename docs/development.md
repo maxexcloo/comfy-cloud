@@ -30,17 +30,19 @@ The container workflow separately builds and smoke-tests the Comfy Control image
 - Keep pinned weight sources in `profiles/`.
 - Keep portable API behaviour directly in `src/`.
 - Keep provider-specific deployment assets in `deploy/`.
-- Keep deployment selection and lifecycle orchestration outside this repository.
-- Keep ComfyUI primary and the fixed CLIProxyAPI media fallback explicit.
+- Keep lifecycle and telemetry configuration in `config/control.yaml`.
+- Keep ComfyUI workers primary and the fixed CLIProxyAPI fallback last.
 
 ## Command-Line Interface
 
 The `comfy-control` command supports:
 
 - `catalogue-list` and `repository-check`;
+- `control`;
 - `models-fetch`;
 - `pack` and `unpack`;
 - `pod` and `serverless` runtime services;
+- `vast-serverless`;
 - `workflow-add`.
 
 Use `workflow-add` only with an API-format ComfyUI export and restart Comfy Control

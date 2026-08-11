@@ -5,11 +5,14 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import yaml
 
 from .catalogue import Catalogue, WorkflowModel, workflow_operation_names
+from .control import create_app as create_control_app
+from .control_config import ControlSettings
 from .fetch import fetch_profile
 from .model_pack import pack_file, unpack_file
 from .supervisor import run
@@ -93,6 +96,25 @@ def serverless(args: argparse.Namespace) -> None:
     run("serverless", args.host, args.port)
 
 
+def vast_serverless(_: argparse.Namespace) -> None:
+    from . import vast_worker
+
+    gateway = subprocess.Popen(["comfy-control", "serverless"])
+    try:
+        vast_worker.main()
+    finally:
+        gateway.terminate()
+        gateway.wait(timeout=30)
+
+
+def control(args: argparse.Namespace) -> None:
+    import uvicorn
+
+    uvicorn.run(
+        create_control_app(ControlSettings.from_env()), host=args.host, port=args.port
+    )
+
+
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="comfy-control")
     sub = parser.add_subparsers(required=True)
@@ -119,6 +141,12 @@ def create_parser() -> argparse.ArgumentParser:
     check.add_argument("--catalogue-dir", default="catalogue")
     check.add_argument("--profiles-dir", default="profiles")
     check.set_defaults(func=repository_check)
+    control_service = sub.add_parser("control", help="run the routing control plane")
+    control_service.add_argument("--host", default=os.getenv("HOST", "0.0.0.0"))
+    control_service.add_argument(
+        "--port", default=int(os.getenv("PORT", "8000")), type=int
+    )
+    control_service.set_defaults(func=control)
     unpack = sub.add_parser("unpack", help="verify and reconstruct a model pack")
     unpack.add_argument("manifest")
     unpack.add_argument("destination")
@@ -135,6 +163,10 @@ def create_parser() -> argparse.ArgumentParser:
         "--port", default=int(os.getenv("PORT", "8000")), type=int
     )
     serverless_service.set_defaults(func=serverless)
+    vast_service = sub.add_parser(
+        "vast-serverless", help="run the gateway with Vast.ai serverless ingress"
+    )
+    vast_service.set_defaults(func=vast_serverless)
     add = sub.add_parser("workflow-add", help="register an API-format workflow")
     add.add_argument("--id", required=True)
     add.add_argument("--profile")

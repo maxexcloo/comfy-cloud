@@ -1,0 +1,14 @@
+{
+  "command": ["comfy-control", "vast-serverless"],
+  "disk_space": 100,
+  "env": {
+    "API_KEY": "CHANGE_ME",
+    "JOBS_DIR": "/opt/ComfyUI/models/.comfy-control/jobs",
+    "MAXIMUM_PENDING_GENERATIONS": "8",
+    "MAXIMUM_REQUEST_BYTES": "104857600",
+    "VAST_WORKER_PORT": "9000"
+  },
+  "image": "ghcr.io/maxexcloo/comfy-control:main",
+  "name": "comfy-control-serverless",
+  "ports": [9000]
+}

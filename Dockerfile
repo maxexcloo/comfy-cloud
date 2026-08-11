@@ -33,9 +33,10 @@ WORKDIR /opt/comfy-control
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY catalogue ./catalogue
+COPY config ./config
 COPY deploy ./deploy
 COPY profiles ./profiles
-RUN uv export --frozen --no-dev --extra build --extra s3 --extra vast --no-emit-project \
+RUN uv export --frozen --no-dev --extra build --extra modal --extra s3 --extra vast --no-emit-project \
       --no-hashes --output-file /tmp/requirements.txt \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /tmp/requirements.txt \
     && uv build --wheel --out-dir /tmp/dist \

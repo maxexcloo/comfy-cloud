@@ -1,0 +1,178 @@
+models:
+  - id: flux-2-klein-9b/image-edit
+    operation: image_edit
+    targets:
+      - { model: flux-2-klein-9b/image-edit, provider: local-pod }
+      - { model: flux-2-klein-9b/image-edit, provider: modal-serverless }
+      - { model: flux-2-klein-9b/image-edit, provider: runpod-pod }
+      - { model: flux-2-klein-9b/image-edit, provider: runpod-serverless }
+      - { model: flux-2-klein-9b/image-edit, provider: saladcloud-serverless }
+      - { model: flux-2-klein-9b/image-edit, provider: vast-pod }
+      - { model: flux-2-klein-9b/image-edit, provider: vast-serverless }
+      - { model: grok-imagine-image-quality, provider: cliproxyapi }
+  - id: flux-2-klein-9b/text-to-image
+    operation: image_generation
+    targets:
+      - { model: flux-2-klein-9b/text-to-image, provider: local-pod }
+      - { model: flux-2-klein-9b/text-to-image, provider: modal-serverless }
+      - { model: flux-2-klein-9b/text-to-image, provider: runpod-pod }
+      - { model: flux-2-klein-9b/text-to-image, provider: runpod-serverless }
+      - {
+          model: flux-2-klein-9b/text-to-image,
+          provider: saladcloud-serverless,
+        }
+      - { model: flux-2-klein-9b/text-to-image, provider: vast-pod }
+      - { model: flux-2-klein-9b/text-to-image, provider: vast-serverless }
+      - { model: grok-imagine-image-quality, provider: cliproxyapi }
+  - id: minimax-h3/image-to-video
+    operation: video_generation
+    targets:
+      - { model: minimax-h3/image-to-video, provider: modal-serverless }
+      - { model: minimax-h3/image-to-video, provider: runpod-pod }
+      - { model: minimax-h3/image-to-video, provider: runpod-serverless }
+      - { model: minimax-h3/image-to-video, provider: saladcloud-serverless }
+      - { model: minimax-h3/image-to-video, provider: vast-pod }
+      - { model: minimax-h3/image-to-video, provider: vast-serverless }
+      - { model: grok-imagine-video-1.5, provider: cliproxyapi }
+  - id: minimax-h3/text-to-video
+    operation: video_generation
+    targets:
+      - { model: minimax-h3/text-to-video, provider: modal-serverless }
+      - { model: minimax-h3/text-to-video, provider: runpod-pod }
+      - { model: minimax-h3/text-to-video, provider: runpod-serverless }
+      - { model: minimax-h3/text-to-video, provider: saladcloud-serverless }
+      - { model: minimax-h3/text-to-video, provider: vast-pod }
+      - { model: minimax-h3/text-to-video, provider: vast-serverless }
+      - { model: grok-imagine-video-1.5, provider: cliproxyapi }
+
+providers:
+  - id: cliproxyapi
+    api_key: env.CLIPROXY_API_KEY
+    base_url: env.CLIPROXY_URL
+    enabled_if: CLIPROXY_API_KEY
+    health_path: /v1/models
+    idle_seconds: 0
+    platform: CLIProxyAPI
+    type: proxy
+    usage:
+      kind: cliproxyapi
+      url: ${CLIPROXY_URL}/v0/management/usage
+      headers:
+        authorization: Bearer ${CLIPROXY_MANAGEMENT_KEY}
+  - id: local-pod
+    api_key: env.WORKER_API_KEY
+    base_url: env.LOCAL_POD_URL
+    enabled_if: LOCAL_POD_URL
+    idle_seconds: 0
+    platform: Local
+    type: pod
+  - id: modal-serverless
+    api_key: env.WORKER_API_KEY
+    base_url: env.MODAL_SERVERLESS_URL
+    enabled_if: MODAL_SERVERLESS_URL
+    idle_seconds: 0
+    platform: Modal
+    type: serverless
+    usage:
+      kind: modal
+  - id: runpod-pod
+    api_key: env.WORKER_API_KEY
+    base_url: env.RUNPOD_POD_URL
+    enabled_if: RUNPOD_POD_URL
+    idle_seconds: 600
+    platform: RunPod
+    resource_id: env.RUNPOD_POD_ID
+    type: pod
+    usage:
+      kind: runpod
+      url: https://rest.runpod.io/v1/billing/pods
+      headers:
+        authorization: Bearer ${RUNPOD_API_KEY}
+    lifecycle:
+      start:
+        url: https://rest.runpod.io/v1/pods/{resource_id}/start
+        headers:
+          authorization: Bearer ${RUNPOD_API_KEY}
+      stop:
+        confirmation: Stop the RunPod Pod?
+        url: https://rest.runpod.io/v1/pods/{resource_id}/stop
+        headers:
+          authorization: Bearer ${RUNPOD_API_KEY}
+  - id: runpod-serverless
+    api_key: env.WORKER_API_KEY
+    base_url: env.RUNPOD_SERVERLESS_URL
+    enabled_if: RUNPOD_SERVERLESS_URL
+    idle_seconds: 0
+    platform: RunPod
+    resource_id: env.RUNPOD_SERVERLESS_ID
+    type: serverless
+    usage:
+      kind: runpod
+      url: https://rest.runpod.io/v1/billing/endpoints
+      headers:
+        authorization: Bearer ${RUNPOD_API_KEY}
+  - id: saladcloud-serverless
+    api_key: env.WORKER_API_KEY
+    base_url: env.SALADCLOUD_SERVERLESS_URL
+    enabled_if: SALADCLOUD_SERVERLESS_URL
+    idle_seconds: 600
+    platform: SaladCloud
+    resource_id: env.SALADCLOUD_CONTAINER_GROUP
+    type: serverless
+    usage:
+      kind: saladcloud
+      url: https://api.salad.com/api/public/organizations/${SALADCLOUD_ORGANISATION}/quotas
+      headers:
+        Salad-Api-Key: ${SALADCLOUD_API_KEY}
+    lifecycle:
+      start:
+        url: https://api.salad.com/api/public/organizations/${SALADCLOUD_ORGANISATION}/projects/${SALADCLOUD_PROJECT}/containers/{resource_id}/start
+        headers:
+          Salad-Api-Key: ${SALADCLOUD_API_KEY}
+      stop:
+        confirmation: Stop the SaladCloud container group?
+        url: https://api.salad.com/api/public/organizations/${SALADCLOUD_ORGANISATION}/projects/${SALADCLOUD_PROJECT}/containers/{resource_id}/stop
+        headers:
+          Salad-Api-Key: ${SALADCLOUD_API_KEY}
+  - id: vast-pod
+    api_key: env.WORKER_API_KEY
+    base_url: env.VAST_POD_URL
+    enabled_if: VAST_POD_URL
+    idle_seconds: 600
+    platform: Vast.ai
+    resource_id: env.VAST_POD_ID
+    type: pod
+    usage:
+      kind: vast
+      url: https://console.vast.ai/api/v0/users/current/
+      headers:
+        authorization: Bearer ${VAST_API_KEY}
+    lifecycle:
+      start:
+        method: PUT
+        url: https://console.vast.ai/api/v0/instances/{resource_id}/
+        headers:
+          authorization: Bearer ${VAST_API_KEY}
+        json:
+          state: running
+      stop:
+        confirmation: Stop the Vast.ai Pod?
+        method: PUT
+        url: https://console.vast.ai/api/v0/instances/{resource_id}/
+        headers:
+          authorization: Bearer ${VAST_API_KEY}
+        json:
+          state: stopped
+  - id: vast-serverless
+    api_key: env.WORKER_API_KEY
+    base_url: env.VAST_SERVERLESS_URL
+    enabled_if: VAST_SERVERLESS_URL
+    idle_seconds: 0
+    platform: Vast.ai
+    resource_id: env.VAST_SERVERLESS_ID
+    type: serverless
+    usage:
+      kind: vast
+      url: https://console.vast.ai/api/v0/users/current/
+      headers:
+        authorization: Bearer ${VAST_API_KEY}

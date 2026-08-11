@@ -4,7 +4,7 @@ import pytest
 from aiohttp import FormData, web
 from aiohttp.test_utils import TestClient, TestServer
 
-from deploy.vast import worker as vast_worker
+from comfy_control import vast_worker
 
 
 @pytest.mark.asyncio

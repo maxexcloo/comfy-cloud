@@ -1,17 +1,17 @@
 # Comfy Control
 
-Comfy Control is an authenticated OpenAI-compatible media gateway. It translates
-portable image and video requests into checksum-pinned ComfyUI workflows, exposes
-health, metrics and native ComfyUI proxy routes, and can fail over to CLIProxyAPI.
+Comfy Control is an authenticated OpenAI-compatible control plane for ComfyUI. It
+routes image and video requests across Pod and Serverless deployments, controls
+provider lifecycles, reports usage and credit, and falls back to CLIProxyAPI.
 
 ```text
-OpenAI-compatible client -> Comfy Control -> ComfyUI (primary)
+OpenAI-compatible client -> Comfy Control -> ComfyUI workers
                                       `-> CLIProxyAPI (fallback)
 ```
 
-ComfyUI is always the primary media runtime. When configured, CLIProxyAPI provides
-fixed Grok fallbacks for image generation, image editing and video generation.
-Deployment selection and infrastructure lifecycle remain external concerns.
+The same image runs as the control plane, a Pod worker or a Serverless worker.
+RunPod and Vast.ai each have distinct Pod and Serverless targets; Modal and
+SaladCloud use Serverless targets.
 
 ## Quick Start
 
@@ -19,15 +19,14 @@ On a host with the NVIDIA Container Toolkit:
 
 ```bash
 cp .env.example .env
-# Replace API_KEY and COMFY_UI_PASSWORD. FLUX.2 klein 9B is selected by default.
+# Set the required control, worker and UI secrets. FLUX.2 klein 9B is the default.
 docker compose up --build --detach
 docker compose ps
 ```
 
-Comfy Control listens on `http://localhost:28081`. The image starts
-`comfy-control pod` by default, exposing the ComfyUI frontend with basic
-authentication. Start `comfy-control serverless` instead to expose APIs without
-the frontend.
+Comfy Control listens on `http://localhost:28081`. Compose starts the control
+plane and one local Pod worker. The image supports `control`, `pod`,
+`serverless` and `vast-serverless` commands.
 
 ## Repository Layout
 

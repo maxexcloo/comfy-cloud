@@ -3,11 +3,61 @@ name: comfy-control
 services:
   comfy-control:
     build: .
+    command: comfy-control control
+    depends_on:
+      comfy-worker:
+        condition: service_healthy
     environment:
-      API_KEY: ${API_KEY:?set API_KEY in .env}
-      CIVITAI_TOKEN: ${CIVITAI_TOKEN:-}
       CLIPROXY_API_KEY: ${CLIPROXY_API_KEY:-}
+      CLIPROXY_MANAGEMENT_KEY: ${CLIPROXY_MANAGEMENT_KEY:-}
       CLIPROXY_URL: ${CLIPROXY_URL:-}
+      CONTROL_API_KEY: ${CONTROL_API_KEY:?set CONTROL_API_KEY in .env}
+      CONTROL_CONFIG: /config/control.yaml
+      CONTROL_DATABASE: /data/comfy-control.db
+      CONTROL_UI_PASSWORD: ${CONTROL_UI_PASSWORD:?set CONTROL_UI_PASSWORD in .env}
+      CONTROL_UI_USERNAME: ${CONTROL_UI_USERNAME:-comfy}
+      LOCAL_POD_URL: http://comfy-worker:8000
+      MODAL_SERVERLESS_URL: ${MODAL_SERVERLESS_URL:-}
+      MODAL_TOKEN_ID: ${MODAL_TOKEN_ID:-}
+      MODAL_TOKEN_SECRET: ${MODAL_TOKEN_SECRET:-}
+      RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
+      RUNPOD_POD_ID: ${RUNPOD_POD_ID:-}
+      RUNPOD_POD_URL: ${RUNPOD_POD_URL:-}
+      RUNPOD_SERVERLESS_ID: ${RUNPOD_SERVERLESS_ID:-}
+      RUNPOD_SERVERLESS_URL: ${RUNPOD_SERVERLESS_URL:-}
+      SALADCLOUD_API_KEY: ${SALADCLOUD_API_KEY:-}
+      SALADCLOUD_CONTAINER_GROUP: ${SALADCLOUD_CONTAINER_GROUP:-}
+      SALADCLOUD_ORGANISATION: ${SALADCLOUD_ORGANISATION:-}
+      SALADCLOUD_PROJECT: ${SALADCLOUD_PROJECT:-}
+      SALADCLOUD_SERVERLESS_URL: ${SALADCLOUD_SERVERLESS_URL:-}
+      VAST_API_KEY: ${VAST_API_KEY:-}
+      VAST_POD_ID: ${VAST_POD_ID:-}
+      VAST_POD_URL: ${VAST_POD_URL:-}
+      VAST_SERVERLESS_ID: ${VAST_SERVERLESS_ID:-}
+      VAST_SERVERLESS_URL: ${VAST_SERVERLESS_URL:-}
+      WORKER_API_KEY: ${WORKER_API_KEY:?set WORKER_API_KEY in .env}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')
+      interval: 30s
+      retries: 5
+      start_period: 10s
+      timeout: 10s
+    ports:
+      - 28081:8000
+    restart: unless-stopped
+    volumes:
+      - ./config/control.yaml:/config/control.yaml:ro
+      - control-data:/data
+
+  comfy-worker:
+    build: .
+    environment:
+      API_KEY: ${WORKER_API_KEY:?set WORKER_API_KEY in .env}
+      CIVITAI_TOKEN: ${CIVITAI_TOKEN:-}
       COMFY_UI_PASSWORD: ${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD in .env}
       COMFY_UI_USERNAME: ${COMFY_UI_USERNAME:-comfy}
       HF_TOKEN: ${HF_TOKEN:-}
@@ -25,8 +75,6 @@ services:
       retries: 5
       start_period: 20s
       timeout: 10s
-    ports:
-      - 28081:8000
     restart: unless-stopped
     volumes:
       - jobs:/data/jobs
@@ -34,6 +82,7 @@ services:
       - output:/opt/ComfyUI/output
 
 volumes:
+  control-data:
   jobs:
   models:
   output:

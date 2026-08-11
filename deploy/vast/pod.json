@@ -1,7 +1,5 @@
 {
   "disk_space": 100,
-  "image": "ghcr.io/maxexcloo/comfy-control:main",
-  "name": "comfy-control",
   "env": {
     "API_KEY": "CHANGE_ME",
     "COMFY_UI_PASSWORD": "CHANGE_ME",
@@ -10,5 +8,7 @@
     "MAXIMUM_PENDING_GENERATIONS": "8",
     "MAXIMUM_REQUEST_BYTES": "104857600"
   },
+  "image": "ghcr.io/maxexcloo/comfy-control:main",
+  "name": "comfy-control-pod",
   "ports": [8000]
 }

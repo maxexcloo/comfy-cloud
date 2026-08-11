@@ -21,19 +21,23 @@ docker compose ps
 
 Pull requests build the image and smoke-test its packaged command.
 
-Set both `CLIPROXY_URL` and `CLIPROXY_API_KEY` to enable media fallback. Leave both
-empty to run ComfyUI only. Comfy Control reports ready when either ComfyUI or the
-configured CLIProxyAPI is reachable.
+Compose starts `comfy-control control` and a local `comfy-control pod` worker.
+Providers in `config/control.yaml` are enabled when their URL environment variable
+is set. Add `CLIPROXY_MANAGEMENT_KEY` to display CLIProxyAPI usage.
 
 ## Providers
 
-Definitions under `deploy/` show how to run the same image on Modal, RunPod,
-SaladCloud and Vast.ai. These assets configure a Comfy Control instance; provider
-selection and lifecycle orchestration remain external concerns.
+Definitions under `deploy/` run the same image on Modal, RunPod, SaladCloud and
+Vast.ai. RunPod and Vast.ai contain separate Pod and Serverless definitions.
 
 Use persistent storage for model weights and `JOBS_DIR` where the provider supports
 it. The image defaults to `comfy-control pod`; override the container command with
 `comfy-control serverless` when the ComfyUI frontend should not be exposed.
+Vast.ai Serverless uses `comfy-control vast-serverless` for its request envelope.
+
+The dashboard displays RunPod billing history, Vast.ai credit, Modal billing-cycle
+spend, SaladCloud replica quota and CLIProxyAPI usage. SaladCloud monetary credit is
+currently portal-only, so its public API contributes usage and quota instead.
 
 ## Model Preparation
 

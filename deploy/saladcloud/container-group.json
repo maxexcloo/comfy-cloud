@@ -5,6 +5,7 @@
   "replicas": 1,
   "restart_policy": "always",
   "container": {
+    "command": ["comfy-control", "serverless"],
     "image": "ghcr.io/maxexcloo/comfy-control:main",
     "image_caching": true,
     "priority": "low",
