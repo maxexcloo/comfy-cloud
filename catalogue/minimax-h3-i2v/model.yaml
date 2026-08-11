@@ -1,5 +1,5 @@
 id: minimax-h3/image-to-video
-profile: minimax-h3-fl2va
+profile: minimax-h3
 operation: video_generation
 workflow: workflow.json
 workflow_sha256: 8ec23bc308d70c0da5b94cf43568799dd4ad6c774e388a66432059a79d3eca79

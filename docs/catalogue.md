@@ -6,6 +6,10 @@ Each directory under `catalogue/` contains a manifest beside its checksum-pinned
 API-format ComfyUI workflow JSON. The manifest maps portable API fields to concrete
 node inputs:
 
+Directory names use `<profile>-<operation>`, where the operation is `t2i`, `edit`,
+`i2v` or `t2v`. Each manifest's `profile` must exactly match a
+`profiles/<profile>.yaml` file, and its ID uses `<profile>/<operation-name>`.
+
 ```yaml
 id: flux-2-klein-9b/text-to-image
 profile: flux-2-klein-9b

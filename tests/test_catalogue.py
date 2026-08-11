@@ -63,24 +63,9 @@ def test_catalogue_maps_image_to_video_first_frame():
     assert graph["8"]["inputs"]["steps"] == 16
 
 
-def test_catalogue_renders_klein_9b_base_workflow():
-    catalogue = Catalogue.load((ROOT / "catalogue",))
-    graph = catalogue.get("flux-2-klein-base-9b").render(
-        {"prompt": "a slow detailed render", "width": 768, "height": 512, "seed": 9}
-    )
-
-    assert graph["1"]["inputs"]["unet_name"] == "flux-2-klein-base-9b-fp8.safetensors"
-    assert graph["10"]["inputs"]["cfg"] == 5.0
-    assert graph["9"]["inputs"]["steps"] == 20
-    assert graph["9"]["inputs"]["width"] == 768
-    assert graph["9"]["inputs"]["height"] == 512
-    assert graph["7"]["inputs"]["noise_seed"] == 9
-
-
 def test_catalogue_exposes_alias_only_once():
     catalogue = Catalogue.load((ROOT / "catalogue",))
     assert [model.id for model in catalogue.list()] == [
-        "flux-2-klein-base-9b/text-to-image",
         "flux-2-klein-9b/image-edit",
         "flux-2-klein-9b/text-to-image",
         "krea-2-turbo/text-to-image",

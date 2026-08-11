@@ -1,4 +1,4 @@
-name: minimax-h3-fl2va
+name: minimax-h3
 minimum_vram_gb: 80
 sources:
   - type: huggingface
@@ -9,4 +9,4 @@ sources:
       - text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors
       - vae/minimax_h3_video_vae_fp16.safetensors
       - vae/minimax_h3_audio_vae_fp32.safetensors
-notes: Native 768p FL2VA workflow; proprietary 2K regeneration is not included.
+notes: Native 768p text-to-video and image-to-video workflows.

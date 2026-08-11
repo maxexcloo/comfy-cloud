@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 
-from .catalogue import Catalogue
+from .catalogue import Catalogue, workflow_operation_names
 
 
 def _source_patterns(source: dict[str, Any]) -> list[str]:
@@ -69,6 +69,18 @@ def validate_repository(catalogue_dir: Path, profiles_dir: Path) -> None:
     for model in catalogue.list():
         if not model.workflow_sha256:
             raise ValueError(f"workflow must declare workflow_sha256: {model.id}")
+        operation_name, operation_suffix = workflow_operation_names(
+            model.operation, "image" in model.input_map
+        )
+        expected_id = f"{model.profile}/{operation_name}"
+        if model.id != expected_id:
+            raise ValueError(f"workflow id must be {expected_id}: {model.id}")
+        expected_directory = f"{model.profile}-{operation_suffix}"
+        workflow_path = model._workflow_path
+        if workflow_path is None or workflow_path.parent.name != expected_directory:
+            raise ValueError(
+                f"workflow directory must be {expected_directory}: {model.id}"
+            )
         try:
             profile = profiles[model.profile]
         except KeyError as exc:

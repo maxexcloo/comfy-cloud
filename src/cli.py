@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from .catalogue import Catalogue, WorkflowModel
+from .catalogue import Catalogue, WorkflowModel, workflow_operation_names
 from .fetch import fetch_profile
 from .model_pack import pack_file, unpack_file
 from .supervisor import run
@@ -17,16 +17,23 @@ from .validation import validate_repository
 
 
 def workflow_add(args: argparse.Namespace) -> None:
-    destination = Path(args.catalogue_dir) / args.id.replace("/", "__")
-    destination.mkdir(parents=True, exist_ok=True)
     workflow = Path(args.workflow)
     mapping = yaml.safe_load(Path(args.mapping).read_text())
+    profile = args.profile or args.id.split("/", 1)[0]
+    operation_name, operation_suffix = workflow_operation_names(
+        args.operation, "image" in mapping.get("input_map", {})
+    )
+    expected_id = f"{profile}/{operation_name}"
+    if args.id != expected_id:
+        raise ValueError(f"workflow id must be {expected_id}")
+    destination = Path(args.catalogue_dir) / f"{profile}-{operation_suffix}"
+    destination.mkdir(parents=True, exist_ok=True)
     workflow_target = destination / "workflow.json"
     shutil.copy2(workflow, workflow_target)
     manifest = {
         **mapping,
         "id": args.id,
-        "profile": args.profile or args.id.split("/", 1)[0],
+        "profile": profile,
         "operation": args.operation,
         "workflow": "workflow.json",
         "workflow_sha256": hashlib.sha256(workflow_target.read_bytes()).hexdigest(),

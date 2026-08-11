@@ -12,6 +12,18 @@ from pydantic import BaseModel, Field, model_validator
 Operation = Literal["image_generation", "image_edit", "video_generation"]
 
 
+def workflow_operation_names(
+    operation: Operation, has_image_input: bool
+) -> tuple[str, str]:
+    if operation == "image_generation":
+        return "text-to-image", "t2i"
+    if operation == "image_edit":
+        return "image-edit", "edit"
+    if has_image_input:
+        return "image-to-video", "i2v"
+    return "text-to-video", "t2v"
+
+
 class NodeTarget(BaseModel):
     node: str
     input: str
