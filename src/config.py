@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 PLACEHOLDER_SECRETS = {"change-me", "change_me", "replace-me", "replace_me"}
+DeploymentType = Literal["pod", "serverless"]
 
 
 def required_secret(name: str) -> str:
@@ -24,7 +26,7 @@ class Settings:
     api_key: str
     catalogue_dirs: tuple[Path, ...]
     comfy_url: str
-    deployment_type: str
+    deployment_type: DeploymentType
     models_dir: Path
     public_base_url: str | None
     request_timeout: float
@@ -41,10 +43,7 @@ class Settings:
         return self.deployment_type == "pod"
 
     @classmethod
-    def from_env(cls) -> Settings:
-        deployment_type = os.getenv("MODE", "pod").lower()
-        if deployment_type not in {"pod", "serverless"}:
-            raise ValueError("MODE must be pod or serverless")
+    def from_env(cls, deployment_type: DeploymentType) -> Settings:
         roots = [
             Path(os.getenv("BUILTIN_CATALOGUE_DIR", "/opt/comfy-control/catalogue"))
         ]

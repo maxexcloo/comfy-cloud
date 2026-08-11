@@ -24,9 +24,10 @@ docker compose up --build --detach
 docker compose ps
 ```
 
-Comfy Control listens on `http://localhost:28081`. `MODE=pod` exposes the ComfyUI
-frontend with basic authentication; `MODE=serverless` exposes APIs without the
-frontend.
+Comfy Control listens on `http://localhost:28081`. The image starts
+`comfy-control pod` by default, exposing the ComfyUI frontend with basic
+authentication. Start `comfy-control serverless` instead to expose APIs without
+the frontend.
 
 ## Repository Layout
 

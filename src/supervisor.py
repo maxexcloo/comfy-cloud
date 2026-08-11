@@ -11,6 +11,7 @@ from pathlib import Path
 
 import yaml
 
+from .config import DeploymentType
 from .fetch import fetch_profile
 
 MODEL_DIRECTORY_KEYS = ("checkpoints", "diffusion_models", "text_encoders", "vae")
@@ -72,7 +73,9 @@ def _stop_processes(processes: tuple[subprocess.Popen, ...]) -> None:
         process.wait()
 
 
-def run(host: str = "0.0.0.0", port: int = 8000) -> None:
+def run(
+    deployment_type: DeploymentType, host: str = "0.0.0.0", port: int = 8000
+) -> None:
     comfy_dir = Path(os.getenv("COMFYUI_DIR", "/opt/ComfyUI"))
     _prepare_models()
     comfy = subprocess.Popen(
@@ -83,7 +86,7 @@ def run(host: str = "0.0.0.0", port: int = 8000) -> None:
             sys.executable,
             "-m",
             "uvicorn",
-            "comfy_control.worker:create_app",
+            f"comfy_control.worker:create_{deployment_type}_app",
             "--factory",
             "--host",
             host,

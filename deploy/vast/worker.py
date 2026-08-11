@@ -16,9 +16,9 @@ Deploy:
 
 1. Build and push the comfy-control image.
 2. In the Vast template, point the container at that image and set the same
-   environment variables as the pod deployment (``API_KEY``, ``MODE=serverless``,
-   ...). Run the gateway:
-       comfy-control worker
+   environment variables as the pod deployment (``API_KEY`` and storage settings).
+   Run the gateway:
+       comfy-control serverless
 3. Run this worker as a second process in the same container:
        python /opt/comfy-control/deploy/vast/worker.py
 4. Configure the serverless endpoint with ``PYWORKER_REPO`` pointing at a repo

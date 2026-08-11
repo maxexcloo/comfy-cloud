@@ -36,4 +36,4 @@ for name in (
 )
 @modal.web_server(8000, startup_timeout=900)
 def serve():
-    subprocess.Popen(["comfy-control", "worker"])
+    subprocess.Popen(["comfy-control", "serverless"])

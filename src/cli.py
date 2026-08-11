@@ -12,7 +12,7 @@ import yaml
 from .catalogue import Catalogue, WorkflowModel
 from .fetch import fetch_profile
 from .model_pack import pack_file, unpack_file
-from .supervisor import run as run_worker
+from .supervisor import run
 from .validation import validate_repository
 
 
@@ -78,8 +78,12 @@ def repository_check(args: argparse.Namespace) -> None:
     print("catalogue workflows and model profiles are consistent")
 
 
-def worker(args: argparse.Namespace) -> None:
-    run_worker(args.host, args.port)
+def pod(args: argparse.Namespace) -> None:
+    run("pod", args.host, args.port)
+
+
+def serverless(args: argparse.Namespace) -> None:
+    run("serverless", args.host, args.port)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -112,12 +116,18 @@ def create_parser() -> argparse.ArgumentParser:
     unpack.add_argument("manifest")
     unpack.add_argument("destination")
     unpack.set_defaults(func=unpack_model)
-    worker_service = sub.add_parser("worker", help="run ComfyUI and its gateway")
-    worker_service.add_argument("--host", default=os.getenv("HOST", "0.0.0.0"))
-    worker_service.add_argument(
+    pod_service = sub.add_parser("pod", help="run ComfyUI with its authenticated UI")
+    pod_service.add_argument("--host", default=os.getenv("HOST", "0.0.0.0"))
+    pod_service.add_argument("--port", default=int(os.getenv("PORT", "8000")), type=int)
+    pod_service.set_defaults(func=pod)
+    serverless_service = sub.add_parser(
+        "serverless", help="run ComfyUI without its frontend"
+    )
+    serverless_service.add_argument("--host", default=os.getenv("HOST", "0.0.0.0"))
+    serverless_service.add_argument(
         "--port", default=int(os.getenv("PORT", "8000")), type=int
     )
-    worker_service.set_defaults(func=worker)
+    serverless_service.set_defaults(func=serverless)
     add = sub.add_parser("workflow-add", help="register an API-format workflow")
     add.add_argument("--id", required=True)
     add.add_argument("--profile")

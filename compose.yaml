@@ -10,7 +10,6 @@ services:
       COMFY_UI_USERNAME: ${COMFY_UI_USERNAME:-comfy}
       HF_TOKEN: ${HF_TOKEN:-}
       JOBS_DIR: /data/jobs
-      MODE: ${MODE:-pod}
       MODEL_PROFILES: ${MODEL_PROFILES:-}
       MODELS_DIR: /opt/ComfyUI/models
     gpus: all

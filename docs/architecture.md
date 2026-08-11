@@ -38,8 +38,8 @@ lost when the worker and its volume are destroyed.
 
 ## Runtime Modes
 
-`MODE=pod` serves the ComfyUI frontend with basic authentication.
-`MODE=serverless` blocks the frontend. Both modes provide:
+`comfy-control pod` serves the ComfyUI frontend with basic authentication.
+`comfy-control serverless` blocks the frontend. Both commands provide:
 
 - native ComfyUI proxy routes and WebSockets;
 - `GET /health/live`, `/health/ready`, `/health` and `/metrics`;

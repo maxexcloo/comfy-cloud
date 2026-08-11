@@ -15,7 +15,6 @@
       "value": "/opt/ComfyUI/models/.comfy-control/jobs"
     },
     { "key": "MAXIMUM_PENDING_GENERATIONS", "value": "8" },
-    { "key": "MAXIMUM_REQUEST_BYTES", "value": "104857600" },
-    { "key": "MODE", "value": "pod" }
+    { "key": "MAXIMUM_REQUEST_BYTES", "value": "104857600" }
   ]
 }

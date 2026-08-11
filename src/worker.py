@@ -105,8 +105,7 @@ def openai_error(
     )
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    settings = settings or Settings.from_env()
+def create_app(settings: Settings) -> FastAPI:
     runtime = Runtime(settings)
 
     @asynccontextmanager
@@ -786,3 +785,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     return app
+
+
+def create_pod_app() -> FastAPI:
+    return create_app(Settings.from_env("pod"))
+
+
+def create_serverless_app() -> FastAPI:
+    return create_app(Settings.from_env("serverless"))

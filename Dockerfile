@@ -10,7 +10,6 @@ ENV BUILTIN_CATALOGUE_DIR=/opt/comfy-control/catalogue \
     COMFYUI_URL=http://127.0.0.1:8188 \
     DEBIAN_FRONTEND=noninteractive \
     HF_XET_HIGH_PERFORMANCE=1 \
-    MODE=pod \
     PATH=/opt/venv/bin:${PATH} \
     PIP_NO_CACHE_DIR=1 \
     PORT=8000 \
@@ -50,4 +49,4 @@ RUN --mount=type=secret,id=HF_TOKEN,env=HF_TOKEN \
     fi
 
 EXPOSE 8000
-CMD ["comfy-control", "worker"]
+CMD ["comfy-control", "pod"]

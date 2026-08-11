@@ -40,7 +40,7 @@ The `comfy-control` command supports:
 - `catalogue-list` and `repository-check`;
 - `models-fetch`;
 - `pack` and `unpack`;
-- `worker`;
+- `pod` and `serverless` runtime services;
 - `workflow-add`.
 
 Use `workflow-add` only with an API-format ComfyUI export and restart Comfy Control

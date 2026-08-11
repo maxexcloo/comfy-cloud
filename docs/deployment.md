@@ -28,7 +28,8 @@ SaladCloud and Vast.ai. These assets configure a Comfy Control instance; provide
 selection and lifecycle orchestration remain external concerns.
 
 Use persistent storage for model weights and `JOBS_DIR` where the provider supports
-it. Set `MODE=serverless` when the ComfyUI frontend should not be exposed.
+it. The image defaults to `comfy-control pod`; override the container command with
+`comfy-control serverless` when the ComfyUI frontend should not be exposed.
 
 ## Model Preparation
 
