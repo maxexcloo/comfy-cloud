@@ -34,7 +34,7 @@ class ProviderLifecycle(BaseModel):
 
 
 class UsageProbe(BaseModel):
-    kind: Literal["cliproxyapi", "modal", "runpod", "saladcloud", "vast"]
+    kind: Literal["cliproxyapi", "modal", "runpod", "salad", "vast"]
     url: str | None = None
     headers: dict[str, str] = Field(default_factory=dict)
 

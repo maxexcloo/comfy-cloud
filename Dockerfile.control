@@ -1,0 +1,24 @@
+FROM python:3.14.7-slim-bookworm@sha256:23c59390fc717bf09f9336908199a0ae75d9c4264bf296123f94ad772fea3b52
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.3@sha256:2d890623d310b57771ce840f0da5eed5fc6d657da05ffaa45d82797b53fa3abc /uv /usr/local/bin/uv
+
+ENV PATH=/opt/venv/bin:${PATH} \
+    PORT=8000 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/opt/venv
+
+RUN uv venv "${VIRTUAL_ENV}"
+
+WORKDIR /opt/comfy-control
+COPY pyproject.toml uv.lock README.md ./
+COPY src ./src
+COPY config ./config
+RUN uv export --frozen --no-dev --extra modal --no-emit-project \
+      --no-hashes --output-file /tmp/requirements.txt \
+    && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /tmp/requirements.txt \
+    && uv build --wheel --out-dir /tmp/dist \
+    && uv pip install --python "${VIRTUAL_ENV}/bin/python" --no-deps /tmp/dist/*.whl \
+    && rm -rf /tmp/dist /tmp/requirements.txt
+
+EXPOSE 8000
+CMD ["comfy-control", "control"]

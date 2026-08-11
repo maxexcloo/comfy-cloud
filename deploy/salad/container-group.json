@@ -6,7 +6,7 @@
   "restart_policy": "always",
   "container": {
     "command": ["comfy-control", "serverless"],
-    "image": "ghcr.io/maxexcloo/comfy-control:main",
+    "image": "ghcr.io/maxexcloo/comfy-control:worker",
     "image_caching": true,
     "priority": "low",
     "environment_variables": {

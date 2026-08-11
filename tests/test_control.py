@@ -626,7 +626,7 @@ def test_usage_normalisers():
         {"label": "Credit", "unit": "USD", "value": 25}
     ]
     assert normalise_usage(
-        "saladcloud",
+        "salad",
         {
             "container_groups_quotas": {
                 "container_replicas_quota": 10,

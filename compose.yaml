@@ -2,8 +2,9 @@ name: comfy-control
 
 services:
   comfy-control:
-    build: .
-    command: comfy-control control
+    build:
+      context: .
+      dockerfile: Dockerfile.control
     depends_on:
       comfy-worker:
         condition: service_healthy
@@ -26,11 +27,11 @@ services:
       RUNPOD_POD_URL: ${RUNPOD_POD_URL:-}
       RUNPOD_SERVERLESS_ID: ${RUNPOD_SERVERLESS_ID:-}
       RUNPOD_SERVERLESS_URL: ${RUNPOD_SERVERLESS_URL:-}
-      SALADCLOUD_API_KEY: ${SALADCLOUD_API_KEY:-}
-      SALADCLOUD_CONTAINER_GROUP: ${SALADCLOUD_CONTAINER_GROUP:-}
-      SALADCLOUD_ORGANISATION: ${SALADCLOUD_ORGANISATION:-}
-      SALADCLOUD_PROJECT: ${SALADCLOUD_PROJECT:-}
-      SALADCLOUD_SERVERLESS_URL: ${SALADCLOUD_SERVERLESS_URL:-}
+      SALAD_API_KEY: ${SALAD_API_KEY:-}
+      SALAD_CONTAINER_GROUP: ${SALAD_CONTAINER_GROUP:-}
+      SALAD_ORGANISATION: ${SALAD_ORGANISATION:-}
+      SALAD_PROJECT: ${SALAD_PROJECT:-}
+      SALAD_SERVERLESS_URL: ${SALAD_SERVERLESS_URL:-}
       VAST_API_KEY: ${VAST_API_KEY:-}
       VAST_POD_ID: ${VAST_POD_ID:-}
       VAST_POD_URL: ${VAST_POD_URL:-}
@@ -55,7 +56,9 @@ services:
       - control-data:/data
 
   comfy-worker:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
     environment:
       API_KEY: ${WORKER_API_KEY:?set WORKER_API_KEY in .env}
       CIVITAI_TOKEN: ${CIVITAI_TOKEN:-}

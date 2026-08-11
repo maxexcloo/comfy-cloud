@@ -9,10 +9,11 @@ OpenAI-compatible client -> Comfy Control -> ComfyUI workers
                                       `-> CLIProxyAPI (fallback)
 ```
 
-The same image runs as the control plane, a Pod worker or a Serverless worker.
-RunPod and Vast.ai each have distinct Pod and Serverless targets; Modal and
-SaladCloud use Serverless targets. The dashboard retains job parameters and
-controller-owned output media with an authenticated popup viewer.
+The lightweight `control` image runs the control plane. The CUDA-enabled `worker`
+image runs as a Pod or Serverless worker and contains pinned ComfyUI, workflows
+and model profiles. RunPod and Vast.ai each have distinct Pod and Serverless
+targets; Modal and SaladCloud use Serverless targets. The dashboard retains job
+parameters and controller-owned output media with an authenticated popup viewer.
 
 ## Quick Start
 
@@ -25,9 +26,9 @@ docker compose up --build --detach
 docker compose ps
 ```
 
-Comfy Control listens on `http://localhost:28081`. Compose starts the control
-plane and one local Pod worker. The image supports `control`, `pod`,
-`serverless` and `vast-serverless` commands.
+Comfy Control listens on `http://localhost:28081`. Compose builds the separate
+control and worker images, then starts the control plane and one local Pod worker.
+The worker supports `pod`, `serverless` and `vast-serverless` commands.
 
 ## Repository Layout
 

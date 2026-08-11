@@ -30,12 +30,11 @@ repos:
       - id: hadolint
         name: Lint Dockerfiles
         entry: mise exec -- hadolint
+        files: (^|/)Dockerfile(\.[^/]+)?$
         language: system
         args:
           - --failure-threshold
           - error
-        types:
-          - dockerfile
       - id: prettier
         name: Check formatting
         entry: mise exec -- prettier --check

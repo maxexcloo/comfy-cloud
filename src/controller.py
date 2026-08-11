@@ -715,7 +715,7 @@ def normalise_usage(kind: str, value: object) -> list[dict[str, object]]:
         if credit is not None:
             metrics.append({"label": "Credit", "unit": "USD", "value": credit})
         return metrics
-    if kind == "saladcloud":
+    if kind == "salad":
         used = first_number(value, "container_groups_quotas.container_replicas_used")
         quota = first_number(value, "container_groups_quotas.container_replicas_quota")
         if used is not None:

@@ -8,7 +8,7 @@
     "MAXIMUM_PENDING_GENERATIONS": "8",
     "MAXIMUM_REQUEST_BYTES": "104857600"
   },
-  "image": "ghcr.io/maxexcloo/comfy-control:main",
+  "image": "ghcr.io/maxexcloo/comfy-control:worker",
   "name": "comfy-control-pod",
   "ports": [8000]
 }

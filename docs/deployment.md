@@ -2,14 +2,32 @@
 
 ## Container
 
-GitHub Actions publishes one image from `main`:
+GitHub Actions publishes separate control-plane and worker images from `main`:
 
 ```text
-ghcr.io/OWNER/comfy-control:main
+ghcr.io/OWNER/comfy-control:control
+ghcr.io/OWNER/comfy-control:worker
 ```
 
-The image contains Comfy Control, pinned ComfyUI, the bundled catalogue and model
-profiles. Run it on a CUDA-capable host with persistent model and output storage.
+Pushing a semantic release tag such as `v0.1.0` also publishes immutable release
+tags and shortened minor-version tags:
+
+```text
+ghcr.io/OWNER/comfy-control:0.1.0-control
+ghcr.io/OWNER/comfy-control:0.1.0-worker
+ghcr.io/OWNER/comfy-control:0.1-control
+ghcr.io/OWNER/comfy-control:0.1-worker
+```
+
+Deployment assets follow the moving role tags by default. Pin a full release tag
+when reproducibility is more important than automatic updates. Every build also
+receives a role-specific `sha-<short-sha>-control` or
+`sha-<short-sha>-worker` tag.
+
+The lightweight control image contains the API, dashboard and provider control
+plane. The CUDA-enabled worker image contains Comfy Control, pinned ComfyUI, the
+bundled catalogue and model profiles. Run workers on CUDA-capable hosts with
+persistent model and output storage.
 
 For a local GPU host:
 
@@ -19,7 +37,7 @@ docker compose up --build --detach
 docker compose ps
 ```
 
-Pull requests build the image and smoke-test its packaged command.
+Pull requests build both images and smoke-test their packaged commands.
 
 Compose starts `comfy-control control` and a local `comfy-control pod` worker.
 Providers in `config/control.yaml` are enabled when their URL environment variable
@@ -31,13 +49,14 @@ dashboard viewer. There is no automatic retention deletion.
 
 ## Providers
 
-Definitions under `deploy/` run the same image on Modal, RunPod, SaladCloud and
+Definitions under `deploy/` run the worker image on Modal, RunPod, SaladCloud and
 Vast.ai. RunPod and Vast.ai contain separate Pod and Serverless definitions.
 
 Use persistent storage for model weights and `JOBS_DIR` where the provider supports
-it. The image defaults to `comfy-control pod`; override the container command with
-`comfy-control serverless` when the ComfyUI frontend should not be exposed.
-Vast.ai Serverless uses `comfy-control vast-serverless` for its request envelope.
+it. The worker image defaults to `comfy-control pod`; override the container
+command with `comfy-control serverless` when the ComfyUI frontend should not be
+exposed. Vast.ai Serverless uses `comfy-control vast-serverless` for its request
+envelope.
 
 The dashboard displays RunPod billing history, Vast.ai credit, Modal billing-cycle
 spend, SaladCloud replica quota and CLIProxyAPI usage. SaladCloud monetary credit is

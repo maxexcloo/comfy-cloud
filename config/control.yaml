@@ -6,7 +6,7 @@ models:
       - { model: flux-2-klein-9b/image-edit, provider: modal-serverless }
       - { model: flux-2-klein-9b/image-edit, provider: runpod-pod }
       - { model: flux-2-klein-9b/image-edit, provider: runpod-serverless }
-      - { model: flux-2-klein-9b/image-edit, provider: saladcloud-serverless }
+      - { model: flux-2-klein-9b/image-edit, provider: salad-serverless }
       - { model: flux-2-klein-9b/image-edit, provider: vast-pod }
       - { model: flux-2-klein-9b/image-edit, provider: vast-serverless }
       - { model: grok-imagine-image-quality, provider: cliproxyapi }
@@ -17,10 +17,7 @@ models:
       - { model: flux-2-klein-9b/text-to-image, provider: modal-serverless }
       - { model: flux-2-klein-9b/text-to-image, provider: runpod-pod }
       - { model: flux-2-klein-9b/text-to-image, provider: runpod-serverless }
-      - {
-          model: flux-2-klein-9b/text-to-image,
-          provider: saladcloud-serverless,
-        }
+      - { model: flux-2-klein-9b/text-to-image, provider: salad-serverless }
       - { model: flux-2-klein-9b/text-to-image, provider: vast-pod }
       - { model: flux-2-klein-9b/text-to-image, provider: vast-serverless }
       - { model: grok-imagine-image-quality, provider: cliproxyapi }
@@ -30,7 +27,7 @@ models:
       - { model: minimax-h3/image-to-video, provider: modal-serverless }
       - { model: minimax-h3/image-to-video, provider: runpod-pod }
       - { model: minimax-h3/image-to-video, provider: runpod-serverless }
-      - { model: minimax-h3/image-to-video, provider: saladcloud-serverless }
+      - { model: minimax-h3/image-to-video, provider: salad-serverless }
       - { model: minimax-h3/image-to-video, provider: vast-pod }
       - { model: minimax-h3/image-to-video, provider: vast-serverless }
       - { model: grok-imagine-video-1.5, provider: cliproxyapi }
@@ -40,7 +37,7 @@ models:
       - { model: minimax-h3/text-to-video, provider: modal-serverless }
       - { model: minimax-h3/text-to-video, provider: runpod-pod }
       - { model: minimax-h3/text-to-video, provider: runpod-serverless }
-      - { model: minimax-h3/text-to-video, provider: saladcloud-serverless }
+      - { model: minimax-h3/text-to-video, provider: salad-serverless }
       - { model: minimax-h3/text-to-video, provider: vast-pod }
       - { model: minimax-h3/text-to-video, provider: vast-serverless }
       - { model: grok-imagine-video-1.5, provider: cliproxyapi }
@@ -111,29 +108,29 @@ providers:
       url: https://rest.runpod.io/v1/billing/endpoints
       headers:
         authorization: Bearer ${RUNPOD_API_KEY}
-  - id: saladcloud-serverless
+  - id: salad-serverless
     api_key: env.WORKER_API_KEY
-    base_url: env.SALADCLOUD_SERVERLESS_URL
-    enabled_if: SALADCLOUD_SERVERLESS_URL
+    base_url: env.SALAD_SERVERLESS_URL
+    enabled_if: SALAD_SERVERLESS_URL
     idle_seconds: 600
     platform: SaladCloud
-    resource_id: env.SALADCLOUD_CONTAINER_GROUP
+    resource_id: env.SALAD_CONTAINER_GROUP
     type: serverless
     usage:
-      kind: saladcloud
-      url: https://api.salad.com/api/public/organizations/${SALADCLOUD_ORGANISATION}/quotas
+      kind: salad
+      url: https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION}/quotas
       headers:
-        Salad-Api-Key: ${SALADCLOUD_API_KEY}
+        Salad-Api-Key: ${SALAD_API_KEY}
     lifecycle:
       start:
-        url: https://api.salad.com/api/public/organizations/${SALADCLOUD_ORGANISATION}/projects/${SALADCLOUD_PROJECT}/containers/{resource_id}/start
+        url: https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION}/projects/${SALAD_PROJECT}/containers/{resource_id}/start
         headers:
-          Salad-Api-Key: ${SALADCLOUD_API_KEY}
+          Salad-Api-Key: ${SALAD_API_KEY}
       stop:
         confirmation: Stop the SaladCloud container group?
-        url: https://api.salad.com/api/public/organizations/${SALADCLOUD_ORGANISATION}/projects/${SALADCLOUD_PROJECT}/containers/{resource_id}/stop
+        url: https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION}/projects/${SALAD_PROJECT}/containers/{resource_id}/stop
         headers:
-          Salad-Api-Key: ${SALADCLOUD_API_KEY}
+          Salad-Api-Key: ${SALAD_API_KEY}
   - id: vast-pod
     api_key: env.WORKER_API_KEY
     base_url: env.VAST_POD_URL

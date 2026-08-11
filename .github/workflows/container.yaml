@@ -3,7 +3,10 @@ name: Container
 on:
   pull_request:
   push:
-    branches: [main]
+    branches:
+      - main
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -18,11 +21,16 @@ env:
 
 jobs:
   image:
-    name: Image
+    name: ${{ matrix.role }} image
     permissions:
       contents: read
       packages: write
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        role:
+          - control
+          - worker
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -37,17 +45,29 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: ghcr.io
           username: ${{ github.actor }}
+      - id: metadata
+        name: Extract metadata
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ matrix.role }}
+            type=semver,pattern={{version}},suffix=-${{ matrix.role }}
+            type=semver,pattern={{major}}.{{minor}},suffix=-${{ matrix.role }}
+            type=sha,prefix=sha-,suffix=-${{ matrix.role }}
       - name: Build
         uses: docker/build-push-action@v7
         with:
-          cache-from: type=gha
-          cache-to: type=gha,mode=max,ignore-error=true
+          cache-from: type=gha,scope=${{ matrix.role }}
+          cache-to: type=gha,scope=${{ matrix.role }},mode=max,ignore-error=true
           context: .
+          file: Dockerfile.${{ matrix.role }}
+          labels: ${{ steps.metadata.outputs.labels }}
           load: ${{ github.event_name == 'pull_request' }}
+          provenance: mode=max
           push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ env.IMAGE_NAME }}:main
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          sbom: true
+          tags: ${{ steps.metadata.outputs.tags }}
       - name: Smoke-test command
         if: github.event_name == 'pull_request'
-        run: docker run --rm "${IMAGE_NAME}:main" comfy-control --help
+        run: docker run --rm "${IMAGE_NAME}:${{ matrix.role }}" comfy-control --help

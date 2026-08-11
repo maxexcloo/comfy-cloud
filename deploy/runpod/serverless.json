@@ -2,7 +2,7 @@
   "containerDiskInGb": 30,
   "dockerArgs": "comfy-control serverless",
   "endpointType": "load-balancer",
-  "imageName": "ghcr.io/maxexcloo/comfy-control:main",
+  "imageName": "ghcr.io/maxexcloo/comfy-control:worker",
   "ports": "8000/http",
   "env": [
     { "key": "API_KEY", "value": "CHANGE_ME" },
