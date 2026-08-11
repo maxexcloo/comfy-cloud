@@ -182,6 +182,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert invalid_login.status_code == 401
     assert dashboard.status_code == 200
     assert "Action Result" in dashboard.text
+    assert ".join('\\n')" in dashboard.text
     assert "Send test request" in dashboard.text
     assert "Sign out" in dashboard.text
     assert [model["id"] for model in models.json()["data"]] == [
