@@ -15,15 +15,18 @@ from .config import required_secret
 
 class ProviderAction(BaseModel):
     method: Literal["DELETE", "GET", "PATCH", "POST", "PUT"] = "POST"
-    url: str
+    url: str | None = None
     confirmation: str | None = None
     headers: dict[str, str] = Field(default_factory=dict)
+    internal: Literal["modal-deploy", "modal-terminate"] | None = None
     json_body: dict[str, Any] | None = Field(default=None, alias="json")
     resource_id_path: str | None = None
 
     @model_validator(mode="after")
     def validate_action(self) -> ProviderAction:
-        if not self.url.startswith(("http://", "https://")):
+        if bool(self.url) == bool(self.internal):
+            raise ValueError("action requires exactly one of url or internal")
+        if self.url and not self.url.startswith(("http://", "https://")):
             raise ValueError("action url must use HTTP or HTTPS")
         return self
 

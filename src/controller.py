@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import importlib.util
 import json
 import os
 import time
@@ -800,12 +801,19 @@ class Controller:
     ) -> httpx.Response:
         if action_name == "deploy" and self.resource_id(provider) is not None:
             raise RuntimeError(f"provider {provider} is already deployed")
-        response = await self.lifecycle_client.request(
-            action.method,
-            self.resolve_resource(action.url, provider),
-            headers=action.headers,
-            json=action.json_body,
-        )
+        if action.internal:
+            response = await asyncio.to_thread(
+                modal_provider_action, action.internal, self.providers[provider]
+            )
+        else:
+            if action.url is None:
+                raise RuntimeError("provider action has no URL")
+            response = await self.lifecycle_client.request(
+                action.method,
+                self.resolve_resource(action.url, provider),
+                headers=action.headers,
+                json=action.json_body,
+            )
         response.raise_for_status()
         if action.resource_id_path is not None:
             try:
@@ -821,7 +829,7 @@ class Controller:
             if not isinstance(resource_id, (int, str)) or not str(resource_id):
                 raise RuntimeError("provider returned an invalid resource id")
             self.store.save_provider_resource(provider, str(resource_id))
-        if action_name in {"delete", "destroy"}:
+        if action_name in {"delete", "destroy", "terminate"}:
             self.store.clear_provider_resource(provider)
         self.store.event(
             "info", f"provider action {action_name} succeeded", provider=provider
@@ -920,7 +928,21 @@ class Controller:
                     url=url,
                 ),
             )
-        return dict(sorted(actions.items()))
+        resource_id = self.resource_id(provider)
+        return dict(
+            sorted(
+                (name, action)
+                for name, action in actions.items()
+                if not (name == "deploy" and resource_id)
+                and not (
+                    resource_id is None
+                    and name in {"delete", "destroy", "start", "stop", "terminate"}
+                )
+                and not (
+                    resource_id is None and action.url and "{resource_id}" in action.url
+                )
+            )
+        )
 
     async def run_provider_action(
         self, provider: str, action_name: str, request_id: str
@@ -936,14 +958,17 @@ class Controller:
             await self.ensure_ready(runtime, request_id)
             return {"action": action_name, "provider": provider, "state": runtime.state}
         async with runtime.lock:
-            if action_name in {"delete", "destroy", "stop"} and runtime.active_requests:
+            if (
+                action_name in {"delete", "destroy", "stop", "terminate"}
+                and runtime.active_requests
+            ):
                 raise RuntimeError("provider has active requests")
             if action_name == "stop":
                 runtime.state = "stopping"
             response = await self.action(action, provider, action_name)
             if action_name == "deploy":
                 runtime.state = "starting"
-            elif action_name in {"delete", "destroy"}:
+            elif action_name in {"delete", "destroy", "terminate"}:
                 runtime.ready = False
                 runtime.state = "stopped"
             if action_name == "stop":
@@ -1369,6 +1394,29 @@ def modal_web_url(app_name: str, function_name: str) -> str:
     if not url:
         raise RuntimeError(f"Modal web function has no URL: {app_name}/{function_name}")
     return url.rstrip("/")
+
+
+def modal_provider_action(action: str, runtime: ProviderRuntime) -> httpx.Response:
+    import modal
+
+    management = runtime.config.management
+    if management is None or management.kind != "modal":
+        raise RuntimeError("Modal action requires Modal provider management")
+    if action == "modal-terminate":
+        modal.App.lookup(management.name).stop()
+        return httpx.Response(200, json={"status": "terminated"})
+    path = Path(
+        os.getenv("CONTROL_MODAL_APP", "/opt/comfy-control/deploy/modal/app.py")
+    )
+    if not path.is_file():
+        raise RuntimeError(f"Modal deployment asset was not found: {path}")
+    specification = importlib.util.spec_from_file_location("comfy_control_modal", path)
+    if specification is None or specification.loader is None:
+        raise RuntimeError("Modal deployment asset could not be loaded")
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    module.app.deploy(name=management.name)
+    return httpx.Response(200, json={"status": "deployed"})
 
 
 def modal_status(app_name: str, function_name: str) -> dict[str, object]:

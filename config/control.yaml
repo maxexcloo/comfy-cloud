@@ -65,6 +65,12 @@ providers:
     platform: Local
     type: pod
   - id: modal-serverless
+    actions:
+      deploy:
+        internal: modal-deploy
+      terminate:
+        confirmation: Terminate the Modal deployment? Its volume will be preserved.
+        internal: modal-terminate
     api_key: env.WORKER_API_KEY
     enabled_if: MODAL_TOKEN_ID
     idle_seconds: 0
@@ -102,6 +108,27 @@ providers:
         headers:
           authorization: Bearer ${RUNPOD_API_KEY}
   - id: runpod-serverless
+    actions:
+      scale-down:
+        method: PATCH
+        url: https://rest.runpod.io/v1/endpoints/{resource_id}
+        headers:
+          authorization: Bearer ${RUNPOD_API_KEY}
+        json:
+          workersMin: 0
+      scale-up:
+        method: PATCH
+        url: https://rest.runpod.io/v1/endpoints/{resource_id}
+        headers:
+          authorization: Bearer ${RUNPOD_API_KEY}
+        json:
+          workersMin: 1
+      terminate:
+        confirmation: Terminate the RunPod Serverless endpoint? Its network volume will be preserved.
+        method: DELETE
+        url: https://rest.runpod.io/v1/endpoints/{resource_id}
+        headers:
+          authorization: Bearer ${RUNPOD_API_KEY}
     api_key: env.WORKER_API_KEY
     enabled_if: RUNPOD_API_KEY
     idle_seconds: 0
@@ -116,6 +143,13 @@ providers:
       headers:
         authorization: Bearer ${RUNPOD_API_KEY}
   - id: salad-serverless
+    actions:
+      terminate:
+        confirmation: Terminate the SaladCloud container group?
+        method: DELETE
+        url: https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION}/projects/${SALAD_PROJECT}/containers/comfy-control
+        headers:
+          Salad-Api-Key: ${SALAD_API_KEY}
     api_key: env.WORKER_API_KEY
     enabled_if: SALAD_API_KEY
     idle_seconds: 600
@@ -157,6 +191,13 @@ providers:
         json:
           state: stopped
   - id: vast-serverless
+    actions:
+      terminate:
+        confirmation: Terminate the Vast.ai Serverless endpoint?
+        method: DELETE
+        url: https://console.vast.ai/api/v0/endptjobs/{resource_id}/
+        headers:
+          authorization: Bearer ${VAST_API_KEY}
     api_key: env.WORKER_API_KEY
     enabled_if: VAST_API_KEY
     idle_seconds: 0

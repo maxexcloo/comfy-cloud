@@ -63,6 +63,12 @@ Provider API credentials and the shared `WORKER_API_KEY` are still injected thro
 the secret store; discovered resource IDs and serving URLs remain controller runtime
 state.
 
+The dashboard exposes controls that match each provider's lifecycle. Modal can be
+deployed and terminated, RunPod Serverless can scale its warm capacity up or down
+and be terminated, and SaladCloud groups can be started, stopped and terminated.
+Vast.ai Serverless endpoints can be terminated. Terminating compute does not delete
+the provider's persistent volume; storage remains a separately managed resource.
+
 Use persistent storage for model weights and `JOBS_DIR` where the provider supports
 it. The worker image defaults to `comfy-control pod`; override the container
 command with `comfy-control serverless` when the ComfyUI frontend should not be
@@ -72,6 +78,8 @@ envelope.
 The dashboard displays RunPod billing history, Vast.ai credit, Modal billing-cycle
 spend, SaladCloud replica quota and CLIProxyAPI usage. SaladCloud monetary credit is
 currently portal-only, so its public API contributes usage and quota instead.
+CLIProxyAPI must have `usage-statistics-enabled` set to `true`; otherwise its
+management usage route returns HTTP 404.
 
 ## Model Preparation
 

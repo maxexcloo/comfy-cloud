@@ -184,7 +184,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert "Action Result" in dashboard.text
     assert ".join('\\n')" in dashboard.text
     assert "Send test request" in dashboard.text
-    assert "Sign out" in dashboard.text
+    assert "Log Out" in dashboard.text
     assert [model["id"] for model in models.json()["data"]] == [
         "public/image",
         "public/image-edit",
@@ -768,6 +768,8 @@ def test_control_file_enables_managed_providers_from_credentials(monkeypatch):
     monkeypatch.setenv("MODAL_TOKEN_SECRET", "modal-secret")
     monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
     monkeypatch.setenv("SALAD_API_KEY", "salad-key")
+    monkeypatch.setenv("SALAD_ORGANISATION", "salad-organisation")
+    monkeypatch.setenv("SALAD_PROJECT", "salad-project")
     monkeypatch.setenv("VAST_API_KEY", "vast-key")
     monkeypatch.setenv("WORKER_API_KEY", "worker-key")
 
@@ -787,6 +789,18 @@ def test_control_file_enables_managed_providers_from_credentials(monkeypatch):
         for provider in loaded.providers
         if provider.management
     )
+    providers = {provider.id: provider for provider in loaded.providers}
+    assert providers["modal-serverless"].actions["deploy"].internal == "modal-deploy"
+    assert (
+        providers["modal-serverless"].actions["terminate"].internal == "modal-terminate"
+    )
+    assert sorted(providers["runpod-serverless"].actions) == [
+        "scale-down",
+        "scale-up",
+        "terminate",
+    ]
+    assert sorted(providers["salad-serverless"].actions) == ["terminate"]
+    assert sorted(providers["vast-serverless"].actions) == ["terminate"]
 
 
 @pytest.mark.asyncio
