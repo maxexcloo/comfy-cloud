@@ -31,14 +31,23 @@ and the operations dashboard. Workers remain self-contained ComfyUI gateways.
 A timed-out workflow is removed from the ComfyUI queue or interrupted when already
 running.
 
-## Video Jobs
+## History and Media
 
-Video requests create durable worker-local records. When `JOBS_DIR` is configured,
-job transitions survive process restarts. Completed outputs can be streamed from
-ComfyUI or uploaded to S3-compatible object storage.
+The control plane records every image generation, image edit and video request in
+SQLite. History retains sanitised parameters, provider, status, errors and
+timestamps. Successful output media is copied into the controller's persistent
+`media/` directory and remains viewable after a worker is stopped or destroyed.
+The authenticated dashboard opens images and videos in a popup viewer.
+
+Video requests also create durable worker-local records. When `JOBS_DIR` is
+configured, worker job transitions survive process restarts. Completed outputs can
+be streamed from ComfyUI or uploaded to S3-compatible object storage.
 
 Provider-scale durability requires object storage because worker-local output is
-lost when the worker and its volume are destroyed.
+lost when the worker and its volume are destroyed. Controller-owned history remains
+available in its `control-data` volume. Media is retained until that volume is
+explicitly pruned; `CONTROL_MAXIMUM_MEDIA_BYTES` limits each archived file and
+defaults to 2 GiB.
 
 ## Runtime Modes
 

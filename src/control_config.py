@@ -185,6 +185,7 @@ class ControlSettings:
     maximum_request_bytes: int
     ui_password: str
     ui_username: str
+    maximum_media_bytes: int = 2 * 1024 * 1024 * 1024
 
     @classmethod
     def from_env(cls) -> ControlSettings:
@@ -193,6 +194,11 @@ class ControlSettings:
         )
         if maximum_request_bytes < 1:
             raise ValueError("CONTROL_MAXIMUM_REQUEST_BYTES must be at least 1")
+        maximum_media_bytes = int(
+            os.getenv("CONTROL_MAXIMUM_MEDIA_BYTES", str(2 * 1024 * 1024 * 1024))
+        )
+        if maximum_media_bytes < 1:
+            raise ValueError("CONTROL_MAXIMUM_MEDIA_BYTES must be at least 1")
         return cls(
             api_key=required_secret("CONTROL_API_KEY"),
             config_file=Path(
@@ -200,6 +206,7 @@ class ControlSettings:
             ),
             database_path=Path(os.getenv("CONTROL_DATABASE", "/data/comfy-control.db")),
             maximum_request_bytes=maximum_request_bytes,
+            maximum_media_bytes=maximum_media_bytes,
             ui_password=required_secret("CONTROL_UI_PASSWORD"),
             ui_username=os.getenv("CONTROL_UI_USERNAME", "comfy"),
         )

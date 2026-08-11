@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 import time
@@ -19,6 +20,16 @@ class Job:
     request_json: str
     response_json: str | None
     error: str | None
+
+
+@dataclass(frozen=True)
+class Media:
+    id: int
+    history_id: str
+    content_type: str
+    filename: str
+    path: str
+    size: int
 
 
 class ControlStore:
@@ -51,6 +62,27 @@ class ControlStore:
                     response_json TEXT,
                     error TEXT
                 );
+                CREATE TABLE IF NOT EXISTS history (
+                    id TEXT PRIMARY KEY,
+                    operation TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    parameters_json TEXT NOT NULL,
+                    error TEXT
+                );
+                CREATE TABLE IF NOT EXISTS media (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    history_id TEXT NOT NULL REFERENCES history(id) ON DELETE CASCADE,
+                    content_type TEXT NOT NULL,
+                    filename TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    size INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS media_history_id
+                    ON media (history_id, id);
                 CREATE TABLE IF NOT EXISTS provider_resources (
                     provider TEXT PRIMARY KEY,
                     resource_id TEXT NOT NULL,
@@ -58,6 +90,116 @@ class ControlStore:
                 );
                 """
             )
+
+    def histories(self, limit: int = 100) -> list[dict[str, object]]:
+        with self.lock:
+            rows = self.connection.execute(
+                """
+                SELECT id, operation, model, provider, status, created_at, updated_at,
+                       parameters_json, error
+                FROM history ORDER BY created_at DESC, rowid DESC LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            media_rows = self.connection.execute(
+                """
+                SELECT id, history_id, content_type, filename, size
+                FROM media
+                WHERE history_id IN (
+                    SELECT id FROM history
+                    ORDER BY created_at DESC, rowid DESC LIMIT ?
+                )
+                ORDER BY id
+                """,
+                (limit,),
+            ).fetchall()
+        media_by_history: dict[str, list[dict[str, object]]] = {}
+        for row in media_rows:
+            item = dict(row)
+            history_id = str(item.pop("history_id"))
+            media_by_history.setdefault(history_id, []).append(item)
+        histories = []
+        for row in rows:
+            item = dict(row)
+            item["parameters"] = json.loads(str(item.pop("parameters_json")))
+            item["media"] = media_by_history.get(str(item["id"]), [])
+            histories.append(item)
+        return histories
+
+    def media(self, media_id: int) -> Media | None:
+        with self.lock:
+            row = self.connection.execute(
+                "SELECT * FROM media WHERE id = ?", (media_id,)
+            ).fetchone()
+        return Media(**dict(row)) if row else None
+
+    def media_for_history(self, history_id: str) -> list[Media]:
+        with self.lock:
+            rows = self.connection.execute(
+                "SELECT * FROM media WHERE history_id = ? ORDER BY id",
+                (history_id,),
+            ).fetchall()
+        return [Media(**dict(row)) for row in rows]
+
+    def save_history(
+        self,
+        history_id: str,
+        operation: str,
+        model: str,
+        parameters_json: str,
+    ) -> None:
+        now = int(time.time())
+        with self.lock, self.connection:
+            self.connection.execute(
+                """
+                INSERT INTO history (
+                    id, operation, model, provider, status, created_at, updated_at,
+                    parameters_json, error
+                ) VALUES (?, ?, ?, '', 'queued', ?, ?, ?, NULL)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                (history_id, operation, model, now, now, parameters_json),
+            )
+
+    def update_history(
+        self,
+        history_id: str,
+        status: str,
+        *,
+        provider: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        with self.lock, self.connection:
+            self.connection.execute(
+                """
+                UPDATE history SET
+                    provider = COALESCE(?, provider),
+                    status = ?,
+                    updated_at = ?,
+                    error = ?
+                WHERE id = ?
+                """,
+                (provider, status, int(time.time()), error, history_id),
+            )
+
+    def save_media(
+        self,
+        history_id: str,
+        content_type: str,
+        filename: str,
+        path: Path,
+        size: int,
+    ) -> int:
+        with self.lock, self.connection:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO media (
+                    history_id, content_type, filename, path, size
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (history_id, content_type, filename, str(path), size),
+            )
+        return int(cursor.lastrowid)
 
     def close(self) -> None:
         self.connection.close()

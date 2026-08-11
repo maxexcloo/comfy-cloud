@@ -7,11 +7,11 @@ import httpx
 import pytest
 import yaml
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from comfy_control.control import create_app
 from comfy_control.control_config import ControlFile, ControlSettings
-from comfy_control.controller import normalise_usage
+from comfy_control.controller import history_parameters, normalise_usage
 
 ROOT = Path(__file__).parents[1]
 
@@ -100,6 +100,10 @@ def worker_app() -> FastAPI:
             "output_url": "https://objects.example/video.mp4",
         }
 
+    @app.get("/v1/videos/upstream-video/content")
+    async def video_content() -> Response:
+        return Response(b"video", media_type="video/mp4")
+
     return app
 
 
@@ -129,6 +133,15 @@ async def test_controller_lists_and_routes_models(tmp_path):
             headers={"Authorization": "Bearer control-key"},
             json={"model": "public/image", "prompt": "test"},
         )
+        status = await client.get("/api/status", auth=("comfy", "control-key"))
+        history = status.json()["history"][0]
+        media = await client.get(
+            f"/api/history/{history['id']}/media/{history['media'][0]['id']}",
+            auth=("comfy", "control-key"),
+        )
+        denied_media = await client.get(
+            f"/api/history/{history['id']}/media/{history['media'][0]['id']}"
+        )
 
     assert health.json() == {
         "status": "ready",
@@ -145,6 +158,13 @@ async def test_controller_lists_and_routes_models(tmp_path):
     ]
     assert image.status_code == 200
     assert image.headers["x-comfy-provider"] == "worker"
+    assert image.headers["x-comfy-history-id"] == history["id"]
+    assert history["operation"] == "image_generation"
+    assert history["parameters"] == {"model": "public/image", "prompt": "test"}
+    assert history["status"] == "completed"
+    assert media.content == b"image"
+    assert media.headers["content-type"] == "image/png"
+    assert denied_media.status_code == 401
     await app.state.controller.close()
 
 
@@ -230,6 +250,60 @@ async def test_controller_persists_multipart_video_until_completion(tmp_path):
     assert status.json()["status"] == "completed", status.json()["error"]
     assert not (tmp_path / "uploads" / job_id).exists()
     await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_controller_archives_video_from_worker_content(tmp_path):
+    app = create_app(settings(tmp_path))
+    await attach_worker(app)
+    controller = app.state.controller
+    controller.store.save_history(
+        "video_history",
+        "video_generation",
+        "public/video",
+        '{"model":"public/video"}',
+    )
+
+    await controller.archive_video("video_history", "worker", {"id": "upstream-video"})
+
+    archived = controller.store.media_for_history("video_history")
+    assert len(archived) == 1
+    assert Path(archived[0].path).read_bytes() == b"video"
+    assert archived[0].content_type == "video/mp4"
+    await controller.close()
+
+
+@pytest.mark.asyncio
+async def test_history_and_media_survive_controller_restart(tmp_path):
+    configured = settings(tmp_path)
+    first = create_app(configured)
+    await attach_worker(first)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=first), base_url="http://control"
+    ) as client:
+        response = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer control-key"},
+            json={"model": "public/image", "prompt": "persistent"},
+        )
+    history_id = response.headers["x-comfy-history-id"]
+    await first.state.controller.close()
+
+    second = create_app(configured)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=second), base_url="http://control"
+    ) as client:
+        history = await client.get("/api/history", auth=("comfy", "control-key"))
+        item = history.json()["data"][0]
+        media = await client.get(
+            f"/api/history/{history_id}/media/{item['media'][0]['id']}",
+            auth=("comfy", "control-key"),
+        )
+
+    assert item["id"] == history_id
+    assert item["parameters"]["prompt"] == "persistent"
+    assert media.content == b"image"
+    await second.state.controller.close()
 
 
 @pytest.mark.asyncio
@@ -563,3 +637,17 @@ def test_usage_normalisers():
         {"label": "Replicas used", "value": 2},
         {"label": "Replica quota", "value": 10},
     ]
+
+
+def test_history_parameters_omit_embedded_media_and_secrets():
+    assert history_parameters(
+        {
+            "api_key": "secret",
+            "image": "data:image/png;base64,aW1hZ2U=",
+            "prompt": "test",
+        }
+    ) == {
+        "api_key": "***",
+        "image": "<embedded media omitted: 30 characters>",
+        "prompt": "test",
+    }

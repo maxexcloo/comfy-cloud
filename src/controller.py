@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
 
@@ -62,6 +64,27 @@ def redacted(value: object) -> object:
     return value
 
 
+def history_parameters(value: object, key: str = "") -> object:
+    if sensitive_field(key):
+        return "***"
+    if isinstance(value, dict):
+        return {name: history_parameters(item, name) for name, item in value.items()}
+    if isinstance(value, list):
+        return [history_parameters(item, key) for item in value]
+    if isinstance(value, str) and key.lower() in {
+        "image",
+        "images",
+        "input_image",
+        "mask",
+    }:
+        if value.startswith(("http://", "https://")):
+            return value
+        return f"<embedded media omitted: {len(value)} characters>"
+    if isinstance(value, str) and len(value) > 64 * 1024:
+        return f"<value omitted: {len(value)} characters>"
+    return value
+
+
 @dataclass
 class ProviderRuntime:
     config: Provider
@@ -91,7 +114,10 @@ class Controller:
             for provider in self.config.providers
         }
         self.lifecycle_client = httpx.AsyncClient(timeout=60)
+        self.media_client = httpx.AsyncClient(follow_redirects=True, timeout=120)
         self.store = ControlStore(settings.database_path)
+        self.media_path = settings.database_path.parent / "media"
+        self.media_path.mkdir(parents=True, exist_ok=True)
         self.uploads_path = settings.database_path.parent / "uploads"
         self.video_tasks: set[asyncio.Task[None]] = set()
 
@@ -142,7 +168,123 @@ class Controller:
             *(runtime.client.aclose() for runtime in self.providers.values())
         )
         await self.lifecycle_client.aclose()
+        await self.media_client.aclose()
         self.store.close()
+
+    def save_media(
+        self,
+        history_id: str,
+        content: bytes,
+        content_type: str,
+        filename: str,
+    ) -> None:
+        if len(content) > self.settings.maximum_media_bytes:
+            raise ValueError("generated media exceeds CONTROL_MAXIMUM_MEDIA_BYTES")
+        extension = media_extension(content_type)
+        directory = self.media_path / history_id
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{uuid.uuid4().hex}{extension}"
+        temporary = path.with_suffix(path.suffix + ".part")
+        temporary.write_bytes(content)
+        temporary.replace(path)
+        self.store.save_media(
+            history_id,
+            content_type.split(";", 1)[0],
+            safe_filename(filename, extension),
+            path,
+            len(content),
+        )
+
+    async def download_media(
+        self,
+        history_id: str,
+        provider: str,
+        url: str,
+        fallback_name: str,
+    ) -> None:
+        runtime = self.providers[provider]
+        base_url = self.worker_url(runtime, "")
+        resolved = urljoin(f"{base_url}/", url)
+        headers = {}
+        local = resolved == base_url or resolved.startswith(f"{base_url}/")
+        if local:
+            headers["Authorization"] = f"Bearer {runtime.config.api_key}"
+        client = runtime.client if local else self.media_client
+        async with client.stream("GET", resolved, headers=headers) as response:
+            if response.is_redirect and response.headers.get("location"):
+                redirect = response.headers["location"]
+                await self.download_media(history_id, provider, redirect, fallback_name)
+                return
+            response.raise_for_status()
+            size = 0
+            chunks = []
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > self.settings.maximum_media_bytes:
+                    raise ValueError(
+                        "generated media exceeds CONTROL_MAXIMUM_MEDIA_BYTES"
+                    )
+                chunks.append(chunk)
+            filename = unquote(Path(urlparse(resolved).path).name) or fallback_name
+            content_type = response.headers.get(
+                "content-type", media_type_from_filename(filename)
+            )
+            self.save_media(history_id, b"".join(chunks), content_type, filename)
+
+    async def archive_images(
+        self, history_id: str, provider: str, response: httpx.Response
+    ) -> None:
+        try:
+            value = response.json()
+            data = value.get("data", []) if isinstance(value, dict) else []
+            for index, item in enumerate(data):
+                if not isinstance(item, dict):
+                    continue
+                if encoded := item.get("b64_json"):
+                    content = base64.b64decode(encoded, validate=True)
+                    content_type = image_media_type(content)
+                    self.save_media(
+                        history_id,
+                        content,
+                        content_type,
+                        f"image-{index + 1}{media_extension(content_type)}",
+                    )
+                elif url := item.get("url"):
+                    await self.download_media(
+                        history_id, provider, str(url), f"image-{index + 1}.png"
+                    )
+        except Exception as exc:  # noqa: BLE001 - archival must not fail inference
+            self.store.event(
+                "error",
+                f"media archival failed: {exception_message(exc)}",
+                provider=provider,
+                request_id=history_id,
+            )
+
+    async def archive_video(
+        self, history_id: str, provider: str, response: dict[str, object]
+    ) -> None:
+        try:
+            if output_url := response.get("output_url"):
+                await self.download_media(
+                    history_id, provider, str(output_url), "video.mp4"
+                )
+                return
+            runtime = self.providers[provider]
+            upstream_id = str(response.get("id", ""))
+            await self.download_media(
+                history_id,
+                provider,
+                self.worker_url(runtime, f"/v1/videos/{upstream_id}/content"),
+                "video.mp4",
+            )
+        except Exception as exc:  # noqa: BLE001 - archival must not fail inference
+            self.store.event(
+                "error",
+                f"media archival failed: {exception_message(exc)}",
+                provider=provider,
+                request_id=history_id,
+            )
 
     def start_video(self, job: Job) -> None:
         task = asyncio.create_task(self.run_video(job))
@@ -183,6 +325,7 @@ class Controller:
                     continue
                 if response.is_success and data.get("status") == "completed":
                     upstream_id = str(data.get("id", ""))
+                    archive_data = dict(data)
                     data["id"] = job.id
                     data["model"] = job.model
                     self.store.update_job(
@@ -192,6 +335,9 @@ class Controller:
                         upstream_id=upstream_id,
                         response_json=json.dumps(data, separators=(",", ":")),
                     )
+                    self.store.update_history(
+                        job.id, "completed", provider=target.provider
+                    )
                     self.store.event(
                         "info",
                         "video completed",
@@ -199,15 +345,18 @@ class Controller:
                         request_id=request_id,
                     )
                     self.remove_uploads(job.id)
+                    await self.archive_video(job.id, target.provider, archive_data)
                     return
                 message = data.get("error") or f"HTTP {response.status_code}"
                 failures.append(f"{target.provider}: {message}")
             failure = "; ".join(failures) or "all providers failed"
             self.store.update_job(job.id, "failed", error=failure)
+            self.store.update_history(job.id, "failed", error=failure)
             self.remove_uploads(job.id)
         except Exception as exc:  # noqa: BLE001 - durable task boundary
             message = exception_message(exc)
             self.store.update_job(job.id, "failed", error=message)
+            self.store.update_history(job.id, "failed", error=message)
             self.store.event("error", message, request_id=request_id)
             self.remove_uploads(job.id)
 
@@ -486,6 +635,53 @@ def rewrite_json_model(body: bytes, model: str) -> bytes:
         raise TypeError("request body must be an object")
     value["model"] = model
     return json.dumps(value, separators=(",", ":")).encode()
+
+
+def media_extension(content_type: str) -> str:
+    media_type = content_type.split(";", 1)[0].lower()
+    return {
+        "image/gif": ".gif",
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "video/mp4": ".mp4",
+        "video/quicktime": ".mov",
+        "video/webm": ".webm",
+    }.get(media_type, ".bin")
+
+
+def image_media_type(content: bytes) -> str:
+    if content.startswith(b"GIF8"):
+        return "image/gif"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/png"
+
+
+def media_type_from_filename(filename: str) -> str:
+    return {
+        ".gif": "image/gif",
+        ".jpeg": "image/jpeg",
+        ".jpg": "image/jpeg",
+        ".mov": "video/quicktime",
+        ".mp4": "video/mp4",
+        ".png": "image/png",
+        ".webm": "video/webm",
+        ".webp": "image/webp",
+    }.get(Path(filename).suffix.lower(), "application/octet-stream")
+
+
+def safe_filename(filename: str, extension: str) -> str:
+    name = "".join(
+        character
+        for character in Path(filename).name.strip()
+        if character.isalnum() or character in {" ", "-", ".", "_"}
+    )
+    return name or f"media{extension}"
 
 
 def first_number(value: object, *paths: str) -> float | int | None:

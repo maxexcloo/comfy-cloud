@@ -25,6 +25,10 @@ Compose starts `comfy-control control` and a local `comfy-control pod` worker.
 Providers in `config/control.yaml` are enabled when their URL environment variable
 is set. Add `CLIPROXY_MANAGEMENT_KEY` to display CLIProxyAPI usage.
 
+Keep the controller's `/data` directory on persistent storage. It contains the
+SQLite job history and controller-owned copies of generated media used by the
+dashboard viewer. There is no automatic retention deletion.
+
 ## Providers
 
 Definitions under `deploy/` run the same image on Modal, RunPod, SaladCloud and

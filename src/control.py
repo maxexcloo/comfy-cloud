@@ -6,14 +6,26 @@ import hmac
 import json
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 from starlette.background import BackgroundTask
 
 from .control_config import ControlSettings
-from .controller import Controller, exception_message, rewrite_json_model
+from .controller import (
+    Controller,
+    exception_message,
+    history_parameters,
+    rewrite_json_model,
+)
 
 
 class RequestBodyTooLarge(ValueError):
@@ -79,19 +91,27 @@ h1{font-size:1.5rem}section{background:#181e24;border:1px solid #2c3640;border-r
 table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.55rem;border-bottom:1px solid #2c3640}th{color:#9fb0bf}
 button{background:#263442;border:1px solid #42576b;border-radius:5px;color:#e8edf2;margin:.15rem;padding:.35rem .55rem;cursor:pointer}
 pre{overflow:auto;white-space:pre-wrap}
+dialog{background:#181e24;border:1px solid #42576b;border-radius:10px;color:#e8edf2;max-height:90vh;max-width:min(1000px,90vw);padding:1rem}
+dialog::backdrop{background:#000b}.viewer-head{display:flex;justify-content:space-between;gap:1rem}.viewer-media{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.viewer-media img,.viewer-media video{background:#0b0e11;border-radius:6px;max-height:65vh;max-width:100%;object-fit:contain;width:100%}
 .ready,.completed{color:#67d391}.busy,.starting,.queued,.in_progress{color:#f2c166}.failed,.error{color:#ff7b72}
 small{color:#9fb0bf}</style></head><body><h1>Comfy Control</h1><small id="updated">Loading…</small>
 <section><h2>Providers</h2><table><thead><tr><th>Provider</th><th>Type</th><th>Resource</th><th>State</th><th>Usage / credit</th><th>Actions</th></tr></thead><tbody id="providers"></tbody></table></section>
 <section><h2>Action Result</h2><pre id="actionResult">No action run.</pre></section>
-<section><h2>Jobs</h2><table><thead><tr><th>Job</th><th>Model</th><th>Provider</th><th>Status</th></tr></thead><tbody id="jobs"></tbody></table></section>
+<section><h2>History</h2><table><thead><tr><th>Time</th><th>Operation</th><th>Model</th><th>Provider</th><th>Status</th><th>Media</th><th></th></tr></thead><tbody id="historyRows"></tbody></table></section>
 <section><h2>Events</h2><table><thead><tr><th>Time</th><th>Level</th><th>Provider</th><th>Message</th></tr></thead><tbody id="events"></tbody></table></section>
+<dialog id="viewer"><div class="viewer-head"><div><h2 id="viewerTitle"></h2><small id="viewerMeta"></small></div><button id="viewerClose">Close</button></div><div id="viewerMedia" class="viewer-media"></div><h3>Parameters</h3><pre id="viewerParameters"></pre></dialog>
 <script>const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let historyData=[];
 async function refresh(){const r=await fetch('/api/status');if(!r.ok)return;const d=await r.json();
 providers.innerHTML=d.providers.map(p=>`<tr><td>${esc(p.platform??p.id)}<br><small>${esc(p.id)}</small></td><td>${esc(p.type)}</td><td>${esc(p.resource_id??'—')}</td><td class="${esc(p.state)}">${esc(p.state)} (${p.active_requests})</td><td>${p.usage.status==='ok'?(p.usage.metrics.map(m=>`${esc(m.label)}: ${esc(m.value)}${m.unit?' '+esc(m.unit):''}`).join('<br>')||'No metrics'):esc(p.usage.error??p.usage.status)}</td><td>${p.actions.map(a=>`<button data-provider="${esc(p.id)}" data-action="${esc(a.name)}" data-confirmation="${esc(a.confirmation)}">${esc(a.name)}</button>`).join('')}</td></tr>`).join('');
 providers.querySelectorAll('button').forEach(b=>b.onclick=()=>act(b.dataset.provider,b.dataset.action,b.dataset.confirmation));
-jobs.innerHTML=d.jobs.map(j=>`<tr><td>${esc(j.id)}</td><td>${esc(j.model)}</td><td>${esc(j.provider)}</td><td class="${esc(j.status)}">${esc(j.status)}</td></tr>`).join('');
+historyData=d.history;historyRows.innerHTML=historyData.map(j=>`<tr><td>${new Date(j.created_at*1000).toLocaleString()}</td><td>${esc(j.operation)}</td><td>${esc(j.model)}</td><td>${esc(j.provider||'—')}</td><td class="${esc(j.status)}">${esc(j.status)}</td><td>${j.media.length}</td><td><button data-history="${esc(j.id)}">View</button></td></tr>`).join('');
+historyRows.querySelectorAll('button').forEach(b=>b.onclick=()=>showHistory(b.dataset.history));
 events.innerHTML=d.events.map(e=>`<tr><td>${new Date(e.created_at*1000).toLocaleString()}</td><td class="${esc(e.level)}">${esc(e.level)}</td><td>${esc(e.provider)}</td><td>${esc(e.message)}</td></tr>`).join('');
 updated.textContent='Updated '+new Date().toLocaleTimeString()}
+function showHistory(id){const item=historyData.find(j=>j.id===id);if(!item)return;viewerTitle.textContent=item.model;viewerMeta.textContent=`${item.operation} · ${item.provider||'no provider'} · ${item.status}`;viewerParameters.textContent=JSON.stringify({...item.parameters,error:item.error},null,2);viewerMedia.replaceChildren();for(const media of item.media){const element=document.createElement(media.content_type.startsWith('video/')?'video':'img');element.src='/api/history/'+encodeURIComponent(item.id)+'/media/'+media.id;element.title=media.filename;if(element.tagName==='VIDEO')element.controls=true;viewerMedia.appendChild(element)}viewer.showModal()}
+viewerClose.onclick=()=>viewer.close();viewer.onclick=e=>{if(e.target===viewer)viewer.close()};
 async function act(provider,action,confirmation){if(confirmation&&confirmation!=='null'&&!confirm(confirmation))return;const key=provider+'/'+action;const r=await fetch('/api/providers/'+encodeURIComponent(provider)+'/actions/'+encodeURIComponent(action),{method:'POST',headers:{'x-comfy-control-action':key}});const d=await r.json().catch(()=>({}));actionResult.textContent=JSON.stringify(d,null,2);if(!r.ok)alert(d.error?.message??'Provider action failed');await refresh()}refresh();setInterval(refresh,5000)</script></body></html>"""
 
 
@@ -166,9 +186,38 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     }
                     for runtime in controller.providers.values()
                 ],
+                "history": controller.store.histories(100),
                 "jobs": controller.store.jobs(50),
                 "events": controller.store.events(100),
             }
+        )
+
+    @app.get("/api/history")
+    async def history(request: Request) -> Response:
+        if not ui_authorised(request, settings):
+            return Response(status_code=401)
+        return JSONResponse({"data": controller.store.histories(500)})
+
+    @app.get("/api/history/{history_id}/media/{media_id}")
+    async def history_media(
+        history_id: str, media_id: int, request: Request
+    ) -> Response:
+        if not ui_authorised(request, settings):
+            return Response(status_code=401)
+        item = controller.store.media(media_id)
+        if (
+            item is None
+            or item.history_id != history_id
+            or not Path(item.path).is_file()
+        ):
+            return error("media was not found", 404, "not_found")
+        return FileResponse(
+            item.path,
+            media_type=item.content_type,
+            headers={
+                "Content-Disposition": f'inline; filename="{item.filename}"',
+                "X-Content-Type-Options": "nosniff",
+            },
         )
 
     @app.post("/api/providers/{provider_id}/actions/{action_name}")
@@ -228,6 +277,13 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         except KeyError as exc:
             return error(str(exc), 404, "model_not_found")
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        history_id = f"image_{uuid.uuid4().hex}"
+        controller.store.save_history(
+            history_id,
+            operation,
+            model.id,
+            json.dumps(history_parameters(original), separators=(",", ":")),
+        )
         headers = {
             key: value
             for key, value in request.headers.items()
@@ -235,6 +291,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         }
         failures = []
         for target in model.targets:
+            controller.store.update_history(
+                history_id, "in_progress", provider=target.provider
+            )
             try:
                 response = await controller.forward(
                     target,
@@ -255,6 +314,10 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 )
                 continue
             if response.is_success:
+                await controller.archive_images(history_id, target.provider, response)
+                controller.store.update_history(
+                    history_id, "completed", provider=target.provider
+                )
                 controller.store.event(
                     "info",
                     f"{operation} completed",
@@ -267,19 +330,26 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     media_type=response.headers.get("content-type"),
                     headers={
                         "x-comfy-provider": target.provider,
+                        "x-comfy-history-id": history_id,
                         "x-request-id": request_id,
                     },
                 )
             failures.append(f"{target.provider}: HTTP {response.status_code}")
             if response.status_code < 500 and response.status_code != 429:
+                controller.store.update_history(
+                    history_id,
+                    "failed",
+                    provider=target.provider,
+                    error=f"HTTP {response.status_code}",
+                )
                 return Response(
                     content=response.content,
                     status_code=response.status_code,
                     media_type=response.headers.get("content-type"),
                 )
-        return error(
-            "; ".join(failures) or "all providers failed", 502, "providers_failed"
-        )
+        failure = "; ".join(failures) or "all providers failed"
+        controller.store.update_history(history_id, "failed", error=failure)
+        return error(failure, 502, "providers_failed")
 
     @app.post("/v1/images/generations")
     async def image_generations(request: Request) -> Response:
@@ -318,8 +388,28 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 )
             elif key != "model":
                 fields.append((key, str(value)))
+        history_id = f"edit_{uuid.uuid4().hex}"
+        parameters = dict(fields)
+        parameters["model"] = model_id
+        parameters["input_media"] = [
+            {
+                "content_type": content_type,
+                "filename": filename,
+                "size": len(content),
+            }
+            for _, (filename, content, content_type) in files
+        ]
+        controller.store.save_history(
+            history_id,
+            "image_edit",
+            model.id,
+            json.dumps(history_parameters(parameters), separators=(",", ":")),
+        )
         failures: list[str] = []
         for target in model.targets:
+            controller.store.update_history(
+                history_id, "in_progress", provider=target.provider
+            )
             encoded = httpx.Request(
                 "POST",
                 "http://multipart.invalid",
@@ -339,25 +429,36 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 failures.append(f"{target.provider}: {exception_message(exc)}")
                 continue
             if response.is_success:
+                await controller.archive_images(history_id, target.provider, response)
+                controller.store.update_history(
+                    history_id, "completed", provider=target.provider
+                )
                 return Response(
                     content=response.content,
                     status_code=response.status_code,
                     media_type=response.headers.get("content-type"),
                     headers={
                         "x-comfy-provider": target.provider,
+                        "x-comfy-history-id": history_id,
                         "x-request-id": request_id,
                     },
                 )
             failures.append(f"{target.provider}: HTTP {response.status_code}")
             if response.status_code < 500 and response.status_code != 429:
+                controller.store.update_history(
+                    history_id,
+                    "failed",
+                    provider=target.provider,
+                    error=f"HTTP {response.status_code}",
+                )
                 return Response(
                     content=response.content,
                     status_code=response.status_code,
                     media_type=response.headers.get("content-type"),
                 )
-        return error(
-            "; ".join(failures) or "all providers failed", 502, "providers_failed"
-        )
+        failure = "; ".join(failures) or "all providers failed"
+        controller.store.update_history(history_id, "failed", error=failure)
+        return error(failure, 502, "providers_failed")
 
     @app.post("/v1/videos")
     async def create_video(request: Request) -> Response:
@@ -408,9 +509,27 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 {"_control_multipart": {"fields": fields, "files": files}},
                 separators=(",", ":"),
             )
+            parameters: object = {
+                **dict(fields),
+                "input_media": [
+                    {
+                        "content_type": item["content_type"],
+                        "filename": item["filename"],
+                        "size": Path(item["path"]).stat().st_size,
+                    }
+                    for item in files
+                ],
+            }
         else:
             request_json = body.decode()
+            parameters = values
         controller.store.save_job(public_id, model_id, request_json)
+        controller.store.save_history(
+            public_id,
+            "video_generation",
+            model_id,
+            json.dumps(history_parameters(parameters), separators=(",", ":")),
+        )
         job = controller.store.job(public_id)
         assert job is not None
         controller.start_video(job)
@@ -457,6 +576,10 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         if job.status != "completed":
             return error("video is not ready", 409, "video_not_ready")
         response_data = json.loads(job.response_json or "{}")
+        archived = controller.store.media_for_history(job_id)
+        if archived:
+            item = archived[0]
+            return FileResponse(item.path, media_type=item.content_type)
         if output_url := response_data.get("output_url"):
             return Response(status_code=302, headers={"Location": output_url})
         runtime = controller.providers[job.provider]

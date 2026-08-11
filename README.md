@@ -11,7 +11,8 @@ OpenAI-compatible client -> Comfy Control -> ComfyUI workers
 
 The same image runs as the control plane, a Pod worker or a Serverless worker.
 RunPod and Vast.ai each have distinct Pod and Serverless targets; Modal and
-SaladCloud use Serverless targets.
+SaladCloud use Serverless targets. The dashboard retains job parameters and
+controller-owned output media with an authenticated popup viewer.
 
 ## Quick Start
 
