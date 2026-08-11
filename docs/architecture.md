@@ -44,8 +44,11 @@ SQLite. History retains sanitised parameters, provider, status, errors and
 timestamps. Successful output media is copied into the controller's persistent
 `media/` directory and remains viewable after a worker is stopped or destroyed.
 The dashboard uses a normal sign-in form backed by an HTTP-only signed session
-cookie; it does not use browser Basic authentication. It opens images and videos
-in a popup viewer after sign-in.
+cookie; it does not use browser Basic authentication. It queries each provider
+control plane for current state without routing work to serverless capacity and
+provides confirmed lifecycle controls, sanitised control logs, direct
+provider-console links and a bounded image-generation test request. It opens images
+and videos in a popup viewer after sign-in.
 
 Video requests also create durable worker-local records. When `JOBS_DIR` is
 configured, worker job transitions survive process restarts. Completed outputs can

@@ -56,10 +56,12 @@ Definitions under `deploy/` run the worker image on Modal, RunPod, SaladCloud an
 Vast.ai. RunPod and Vast.ai contain separate Pod and Serverless definitions.
 
 Existing managed resources must use the names in `config/control.yaml`. SaladCloud
-also requires `SALAD_ORGANISATION` and `SALAD_PROJECT` because its API paths are
-scoped by both names. Provider API credentials and the shared `WORKER_API_KEY` are
-still injected through the secret store; discovered resource IDs and serving URLs
-remain controller runtime state.
+also requires the `SALAD_ORGANISATION` and `SALAD_PROJECT` slugs because its public
+API scopes container groups beneath both values. Keep these as deployment inputs;
+the controller discovers the group ID, DNS name and changing worker URLs at runtime.
+Provider API credentials and the shared `WORKER_API_KEY` are still injected through
+the secret store; discovered resource IDs and serving URLs remain controller runtime
+state.
 
 Use persistent storage for model weights and `JOBS_DIR` where the provider supports
 it. The worker image defaults to `comfy-control pod`; override the container

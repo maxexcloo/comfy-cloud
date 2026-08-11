@@ -182,6 +182,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert invalid_login.status_code == 401
     assert dashboard.status_code == 200
     assert "Action Result" in dashboard.text
+    assert "Send test request" in dashboard.text
     assert "Sign out" in dashboard.text
     assert [model["id"] for model in models.json()["data"]] == [
         "public/image",
@@ -205,6 +206,38 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert logout.status_code == 303
     assert logout.headers["location"] == "/login"
     assert denied_media.status_code == 401
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_dashboard_tests_provider_and_shows_control_logs(tmp_path):
+    app = create_app(settings(tmp_path))
+    await attach_worker(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        await sign_in(client)
+        tested = await client.post(
+            "/api/providers/worker/test",
+            json={
+                "model": "public/image",
+                "prompt": "test from the dashboard",
+                "size": "512x512",
+            },
+        )
+        logs = await client.get("/api/providers/worker/logs")
+        media = await client.get(
+            "/api/history/"
+            f"{tested.json()['history_id']}/media/{tested.json()['media'][0]['id']}"
+        )
+
+    assert tested.status_code == 200
+    assert tested.json()["provider"] == "worker"
+    assert tested.json()["status"] == "completed"
+    assert logs.status_code == 200
+    assert logs.json()["source"] == "Comfy Control"
+    assert logs.json()["entries"][0]["message"] == "dashboard test completed"
+    assert media.content == b"image"
     await app.state.controller.close()
 
 

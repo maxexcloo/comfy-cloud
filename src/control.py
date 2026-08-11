@@ -36,6 +36,7 @@ class RequestBodyTooLarge(ValueError):
 
 
 LOGIN_MAXIMUM_BYTES = 16 * 1024
+PROVIDER_TEST_MAXIMUM_BYTES = 16 * 1024
 SESSION_COOKIE = "comfy_control_session"
 SESSION_SECONDS = 12 * 60 * 60
 
@@ -130,7 +131,8 @@ def html() -> str:
 :root{color-scheme:dark;font:15px system-ui;background:#101418;color:#e8edf2}body{max-width:1100px;margin:0 auto;padding:2rem}
 header{align-items:center;display:flex;justify-content:space-between}h1{font-size:1.5rem}section{background:#181e24;border:1px solid #2c3640;border-radius:10px;margin:1rem 0;padding:1rem}
 table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.55rem;border-bottom:1px solid #2c3640}th{color:#9fb0bf}
-button{background:#263442;border:1px solid #42576b;border-radius:5px;color:#e8edf2;margin:.15rem;padding:.35rem .55rem;cursor:pointer}
+button,input,select,textarea{background:#263442;border:1px solid #42576b;border-radius:5px;color:#e8edf2;padding:.45rem}.button,button{cursor:pointer;display:inline-block;margin:.15rem;text-decoration:none}
+label{display:grid;gap:.35rem;margin:.8rem 0}textarea{min-height:7rem;min-width:min(36rem,75vw)}
 pre{overflow:auto;white-space:pre-wrap}
 dialog{background:#181e24;border:1px solid #42576b;border-radius:10px;color:#e8edf2;max-height:90vh;max-width:min(1000px,90vw);padding:1rem}
 dialog::backdrop{background:#000b}.viewer-head{display:flex;justify-content:space-between;gap:1rem}.viewer-media{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
@@ -142,17 +144,22 @@ small{color:#9fb0bf}</style></head><body><header><h1>Comfy Control</h1><form met
 <section><h2>History</h2><table><thead><tr><th>Time</th><th>Operation</th><th>Model</th><th>Provider</th><th>Status</th><th>Media</th><th></th></tr></thead><tbody id="historyRows"></tbody></table></section>
 <section><h2>Events</h2><table><thead><tr><th>Time</th><th>Level</th><th>Provider</th><th>Message</th></tr></thead><tbody id="events"></tbody></table></section>
 <dialog id="viewer"><div class="viewer-head"><div><h2 id="viewerTitle"></h2><small id="viewerMeta"></small></div><button id="viewerClose">Close</button></div><div id="viewerMedia" class="viewer-media"></div><h3>Parameters</h3><pre id="viewerParameters"></pre></dialog>
+<dialog id="providerDialog"><div class="viewer-head"><h2 id="providerTitle"></h2><button data-close="providerDialog">Close</button></div><pre id="providerDetails"></pre></dialog>
+<dialog id="logsDialog"><div class="viewer-head"><div><h2 id="logsTitle"></h2><small>Controller events are always available and contain no provider credentials.</small></div><button data-close="logsDialog">Close</button></div><button id="logsRefresh">Refresh</button><pre id="logsContent"></pre></dialog>
+<dialog id="testDialog"><div class="viewer-head"><h2 id="testTitle"></h2><button data-close="testDialog">Close</button></div><form id="testForm"><label>Model<select id="testModel" required></select></label><label>Size<select id="testSize"><option>512x512</option><option>768x768</option><option>1024x1024</option></select></label><label>Prompt<textarea id="testPrompt" maxlength="2000" required>A cinematic photograph of a wombat operating a compact GPU server, studio lighting</textarea></label><button id="testSubmit">Send test request</button></form><pre id="testResult">No request sent.</pre><div id="testMedia" class="viewer-media"></div></dialog>
 <script>const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let historyData=[];
-async function refresh(){const r=await fetch('/api/status');if(r.status===401){location='/login';return}if(!r.ok)return;const d=await r.json();
-providers.innerHTML=d.providers.map(p=>`<tr><td>${esc(p.platform??p.id)}<br><small>${esc(p.id)}</small></td><td>${esc(p.type)}</td><td>${esc(p.resource_id??'—')}</td><td class="${esc(p.state)}">${esc(p.state)} (${p.active_requests})</td><td>${p.usage.status==='ok'?(p.usage.metrics.map(m=>`${esc(m.label)}: ${esc(m.value)}${m.unit?' '+esc(m.unit):''}`).join('<br>')||'No metrics'):esc(p.usage.error??p.usage.status)}</td><td>${p.actions.map(a=>`<button data-provider="${esc(p.id)}" data-action="${esc(a.name)}" data-confirmation="${esc(a.confirmation)}">${esc(a.name)}</button>`).join('')}</td></tr>`).join('');
-providers.querySelectorAll('button').forEach(b=>b.onclick=()=>act(b.dataset.provider,b.dataset.action,b.dataset.confirmation));
-historyData=d.history;historyRows.innerHTML=historyData.map(j=>`<tr><td>${new Date(j.created_at*1000).toLocaleString()}</td><td>${esc(j.operation)}</td><td>${esc(j.model)}</td><td>${esc(j.provider||'—')}</td><td class="${esc(j.status)}">${esc(j.status)}</td><td>${j.media.length}</td><td><button data-history="${esc(j.id)}">View</button></td></tr>`).join('');
-historyRows.querySelectorAll('button').forEach(b=>b.onclick=()=>showHistory(b.dataset.history));
-events.innerHTML=d.events.map(e=>`<tr><td>${new Date(e.created_at*1000).toLocaleString()}</td><td class="${esc(e.level)}">${esc(e.level)}</td><td>${esc(e.provider)}</td><td>${esc(e.message)}</td></tr>`).join('');
-updated.textContent='Updated '+new Date().toLocaleTimeString()}
+let historyData=[],providerData=[],testProvider='',logsProvider='';
+async function refresh(){const r=await fetch('/api/status');if(r.status===401){location='/login';return}if(!r.ok)return;const d=await r.json();providerData=d.providers;
+providers.innerHTML=d.providers.map(p=>`<tr><td>${esc(p.platform??p.id)}<br><small>${esc(p.id)}</small></td><td>${esc(p.type)}</td><td>${esc(p.resource_id??'—')}</td><td class="${esc(p.state)}">${esc(p.state)} (${p.active_requests})${p.error?`<br><small>${esc(p.error)}</small>`:''}</td><td>${p.usage.status==='ok'?(p.usage.metrics.map(m=>`${esc(m.label)}: ${esc(m.value)}${m.unit?' '+esc(m.unit):''}`).join('<br>')||'No provider metric exposed'):esc(p.usage.error??p.usage.status)}</td><td>${p.actions.map(a=>`<button class="provider-action" data-provider="${esc(p.id)}" data-action="${esc(a.name)}" data-confirmation="${esc(a.confirmation)}">${esc(a.name)}</button>`).join('')}<button class="details" data-provider="${esc(p.id)}">status</button><button class="logs" data-provider="${esc(p.id)}">logs</button>${p.models.length?`<button class="test" data-provider="${esc(p.id)}">test</button>`:''}${p.panel_url?`<a class="button" href="${esc(p.panel_url)}" target="_blank" rel="noopener noreferrer">panel</a>`:''}</td></tr>`).join('');
+providers.querySelectorAll('.provider-action').forEach(b=>b.onclick=()=>act(b.dataset.provider,b.dataset.action,b.dataset.confirmation));providers.querySelectorAll('.details').forEach(b=>b.onclick=()=>showProvider(b.dataset.provider));providers.querySelectorAll('.logs').forEach(b=>b.onclick=()=>showLogs(b.dataset.provider));providers.querySelectorAll('.test').forEach(b=>b.onclick=()=>showTest(b.dataset.provider));
+historyData=d.history;historyRows.innerHTML=historyData.map(j=>`<tr><td>${new Date(j.created_at*1000).toLocaleString()}</td><td>${esc(j.operation)}</td><td>${esc(j.model)}</td><td>${esc(j.provider||'—')}</td><td class="${esc(j.status)}">${esc(j.status)}</td><td>${j.media.length}</td><td><button data-history="${esc(j.id)}">View</button></td></tr>`).join('');historyRows.querySelectorAll('button').forEach(b=>b.onclick=()=>showHistory(b.dataset.history));events.innerHTML=d.events.map(e=>`<tr><td>${new Date(e.created_at*1000).toLocaleString()}</td><td class="${esc(e.level)}">${esc(e.level)}</td><td>${esc(e.provider)}</td><td>${esc(e.message)}</td></tr>`).join('');updated.textContent='Updated '+new Date().toLocaleTimeString()}
 function showHistory(id){const item=historyData.find(j=>j.id===id);if(!item)return;viewerTitle.textContent=item.model;viewerMeta.textContent=`${item.operation} · ${item.provider||'no provider'} · ${item.status}`;viewerParameters.textContent=JSON.stringify({...item.parameters,error:item.error},null,2);viewerMedia.replaceChildren();for(const media of item.media){const element=document.createElement(media.content_type.startsWith('video/')?'video':'img');element.src='/api/history/'+encodeURIComponent(item.id)+'/media/'+media.id;element.title=media.filename;if(element.tagName==='VIDEO')element.controls=true;viewerMedia.appendChild(element)}viewer.showModal()}
-viewerClose.onclick=()=>viewer.close();viewer.onclick=e=>{if(e.target===viewer)viewer.close()};
+function showProvider(id){const p=providerData.find(item=>item.id===id);if(!p)return;providerTitle.textContent=(p.platform??p.id)+' status';providerDetails.textContent=JSON.stringify({id:p.id,type:p.type,state:p.state,resource_id:p.resource_id,active_requests:p.active_requests,idle_seconds:p.idle_seconds,details:p.details,usage:p.usage,error:p.error},null,2);providerDialog.showModal()}
+async function loadLogs(){logsContent.textContent='Loading…';const r=await fetch('/api/providers/'+encodeURIComponent(logsProvider)+'/logs?limit=200');const d=await r.json().catch(()=>({}));logsContent.textContent=r.ok?(d.entries.length?d.entries.map(e=>`${new Date(e.created_at*1000).toLocaleString()} ${String(e.level).toUpperCase()} ${e.message}${e.request_id?' ['+e.request_id+']':''}`).join('\n'):'No controller events recorded for this provider.'):d.error?.message??'Unable to load logs'}
+function showLogs(id){logsProvider=id;logsTitle.textContent=id+' logs';logsDialog.showModal();loadLogs()}
+function showTest(id){const p=providerData.find(item=>item.id===id);if(!p)return;testProvider=id;testTitle.textContent='Test '+(p.platform??id);testModel.innerHTML=p.models.map(model=>`<option>${esc(model)}</option>`).join('');testResult.textContent='No request sent.';testMedia.replaceChildren();testDialog.showModal()}
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>document.getElementById(b.dataset.close).close());viewerClose.onclick=()=>viewer.close();logsRefresh.onclick=loadLogs;
+testForm.onsubmit=async e=>{e.preventDefault();testSubmit.disabled=true;testResult.textContent='Sending request; this may start billable compute…';testMedia.replaceChildren();const r=await fetch('/api/providers/'+encodeURIComponent(testProvider)+'/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:testModel.value,prompt:testPrompt.value,size:testSize.value})});const d=await r.json().catch(()=>({}));testResult.textContent=JSON.stringify(d,null,2);if(r.ok)for(const media of d.media){const element=document.createElement('img');element.src='/api/history/'+encodeURIComponent(d.history_id)+'/media/'+media.id;element.title=media.filename;testMedia.appendChild(element)}testSubmit.disabled=false;await refresh()};
 async function act(provider,action,confirmation){if(confirmation&&confirmation!=='null'&&!confirm(confirmation))return;const key=provider+'/'+action;const r=await fetch('/api/providers/'+encodeURIComponent(provider)+'/actions/'+encodeURIComponent(action),{method:'POST',headers:{'x-comfy-control-action':key}});const d=await r.json().catch(()=>({}));actionResult.textContent=JSON.stringify(d,null,2);if(!r.ok)alert(d.error?.message??'Provider action failed');await refresh()}refresh();setInterval(refresh,5000)</script></body></html>"""
 
 
@@ -249,7 +256,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             ui_authorised(request, settings) or bearer_authorised(request, settings)
         ):
             return Response(status_code=401)
-        usage = await controller.usage()
+        usage, provider_statuses = await asyncio.gather(
+            controller.usage(), controller.provider_statuses()
+        )
         return JSONResponse(
             {
                 "providers": [
@@ -258,6 +267,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                         "platform": runtime.config.platform,
                         "type": runtime.config.type,
                         "usage": usage[runtime.config.id],
+                        "details": provider_statuses[runtime.config.id]["details"],
+                        "error": provider_statuses[runtime.config.id].get("error"),
+                        "panel_url": provider_statuses[runtime.config.id]["panel_url"],
                         "resource_id": controller.resource_id(runtime.config.id),
                         "state": runtime.state,
                         "active_requests": runtime.active_requests,
@@ -271,6 +283,15 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                             ).items()
                         ],
                         "idle_seconds": runtime.config.idle_seconds,
+                        "models": sorted(
+                            model.id
+                            for model in controller.config.models
+                            if model.operation == "image_generation"
+                            and any(
+                                target.provider == runtime.config.id
+                                for target in model.targets
+                            )
+                        ),
                     }
                     for runtime in controller.providers.values()
                 ],
@@ -279,6 +300,20 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 "events": controller.store.events(100),
             }
         )
+
+    @app.get("/api/providers/{provider_id}/logs")
+    async def provider_logs(provider_id: str, request: Request) -> Response:
+        if not (
+            ui_authorised(request, settings) or bearer_authorised(request, settings)
+        ):
+            return Response(status_code=401)
+        try:
+            limit = min(max(int(request.query_params.get("limit", "200")), 1), 500)
+            return JSONResponse(controller.provider_logs(provider_id, limit))
+        except ValueError:
+            return error("log limit must be a number", 400, "invalid_request")
+        except KeyError as exc:
+            return error(str(exc), 404, "provider_not_found")
 
     @app.get("/api/history")
     async def history(request: Request) -> Response:
@@ -332,6 +367,109 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
             return error(exception_message(exc), 502, "action_failed")
         return JSONResponse(result)
+
+    @app.post("/api/providers/{provider_id}/test")
+    async def provider_test(provider_id: str, request: Request) -> Response:
+        if not (
+            ui_authorised(request, settings) or bearer_authorised(request, settings)
+        ):
+            return Response(status_code=401)
+        try:
+            body = await limited_body(request, PROVIDER_TEST_MAXIMUM_BYTES)
+            values = json.loads(body)
+            if not isinstance(values, dict):
+                raise TypeError("request body must be an object")
+            prompt = str(values.get("prompt", "")).strip()
+            if not prompt or len(prompt) > 2000:
+                raise ValueError("prompt must contain between 1 and 2000 characters")
+            requested_model = str(values.get("model", ""))
+            size = str(values.get("size", "512x512"))
+            if size not in {"512x512", "768x768", "1024x1024"}:
+                raise ValueError("unsupported test size")
+            model, targets = controller.resolve_model(
+                requested_model, "image_generation", provider_id
+            )
+        except RequestBodyTooLarge:
+            return error("request body is too large", 413, "request_too_large")
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            return error(str(exc), 400, "invalid_request")
+        except KeyError as exc:
+            return error(str(exc), 404, "model_not_found")
+        target = targets[0]
+        request_id = uuid.uuid4().hex[:16]
+        history_id = f"test_{uuid.uuid4().hex}"
+        parameters = {
+            "model": requested_model,
+            "prompt": prompt,
+            "provider": provider_id,
+            "size": size,
+        }
+        controller.store.save_history(
+            history_id,
+            "image_generation",
+            model.id,
+            json.dumps(parameters, separators=(",", ":")),
+        )
+        controller.store.update_history(
+            history_id, "in_progress", provider=target.provider
+        )
+        started = time.monotonic()
+        try:
+            response = await controller.forward(
+                target,
+                "POST",
+                "/v1/images/generations",
+                json.dumps(
+                    {
+                        "model": target.model,
+                        "n": 1,
+                        "prompt": prompt,
+                        "response_format": "b64_json",
+                        "size": size,
+                    },
+                    separators=(",", ":"),
+                ).encode(),
+                {"content-type": "application/json"},
+                request_id,
+            )
+            if not response.is_success:
+                raise RuntimeError(f"provider returned HTTP {response.status_code}")
+            await controller.archive_images(history_id, target.provider, response)
+            controller.store.update_history(
+                history_id, "completed", provider=target.provider
+            )
+            controller.store.event(
+                "info",
+                "dashboard test completed",
+                provider=target.provider,
+                request_id=request_id,
+            )
+        except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
+            message = exception_message(exc)
+            controller.store.update_history(history_id, "failed", error=message)
+            controller.store.event(
+                "error", message, provider=target.provider, request_id=request_id
+            )
+            return error(message, 502, "test_failed")
+        media = controller.store.media_for_history(history_id)
+        return JSONResponse(
+            {
+                "duration_seconds": round(time.monotonic() - started, 2),
+                "history_id": history_id,
+                "media": [
+                    {
+                        "content_type": item.content_type,
+                        "filename": item.filename,
+                        "id": item.id,
+                        "size": item.size,
+                    }
+                    for item in media
+                ],
+                "model": model.id,
+                "provider": target.provider,
+                "status": "completed",
+            }
+        )
 
     @app.get("/v1/models")
     async def models(request: Request) -> Response:

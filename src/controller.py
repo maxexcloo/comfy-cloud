@@ -310,6 +310,119 @@ class Controller:
         )
         return dict(zip(self.providers, values, strict=True))
 
+    async def provider_statuses(self) -> dict[str, dict[str, object]]:
+        values = await asyncio.gather(
+            *(self.provider_status(runtime) for runtime in self.providers.values())
+        )
+        return dict(zip(self.providers, values, strict=True))
+
+    async def provider_status(self, runtime: ProviderRuntime) -> dict[str, object]:
+        management = runtime.config.management
+        details: dict[str, object] = {}
+        try:
+            resource = await self.refresh_endpoint(runtime, route=False)
+            if management is None:
+                response = await runtime.client.get(
+                    self.worker_url(runtime, runtime.config.health_path),
+                    headers={"Authorization": f"Bearer {runtime.config.api_key}"},
+                    timeout=4,
+                )
+                runtime.ready = response.is_success
+                runtime.state = "ready" if runtime.ready else "unavailable"
+            elif management.kind == "modal":
+                details = await asyncio.to_thread(
+                    modal_status, management.name, management.function or ""
+                )
+                runtime.state = str(details.pop("state"))
+            elif management.kind == "runpod-pod":
+                runtime.state = str(resource.get("desiredStatus", "unknown")).lower()
+                details = selected_fields(
+                    resource,
+                    "costPerHr",
+                    "desiredStatus",
+                    "gpuCount",
+                    "gpuTypeId",
+                    "lastStartedAt",
+                    "machineId",
+                    "vcpuCount",
+                )
+            elif management.kind == "runpod-serverless":
+                workers = resource.get("workers")
+                details = selected_fields(
+                    resource,
+                    "executionTimeoutMs",
+                    "gpuIds",
+                    "idleTimeout",
+                    "maxWorkers",
+                    "minWorkers",
+                    "workers",
+                )
+                active = first_number(workers, "running", "ready")
+                runtime.state = "ready" if active else "scaled-down"
+            elif management.kind == "salad":
+                current = resource.get("current_state")
+                runtime.state = str(
+                    (current.get("status") if isinstance(current, dict) else None)
+                    or "unknown"
+                ).lower()
+                details = selected_fields(
+                    resource,
+                    "autostart_policy",
+                    "current_state",
+                    "display_name",
+                    "replicas",
+                )
+            elif management.kind == "vast-serverless":
+                runtime.state = str(resource.get("endpoint_state", "unknown")).lower()
+                details = selected_fields(
+                    resource,
+                    "endpoint_state",
+                    "max_workers",
+                    "min_load",
+                    "num_workers",
+                    "target_util",
+                )
+            else:
+                runtime.state = str(resource.get("actual_status", "unknown")).lower()
+                details = selected_fields(
+                    resource,
+                    "actual_status",
+                    "cur_state",
+                    "dph_total",
+                    "gpu_name",
+                    "gpu_util",
+                    "num_gpus",
+                )
+            return {
+                "details": redacted(details),
+                "panel_url": provider_panel_url(runtime, details),
+                "state": runtime.state,
+                "status": "ok",
+            }
+        except Exception as exc:  # noqa: BLE001 - provider control-plane boundary
+            runtime.state = "unavailable"
+            return {
+                "details": {},
+                "error": exception_message(exc),
+                "panel_url": provider_panel_url(runtime, details),
+                "state": runtime.state,
+                "status": "unavailable",
+            }
+
+    def provider_logs(self, provider: str, limit: int = 200) -> dict[str, object]:
+        if provider not in self.providers:
+            raise KeyError(f"unknown provider: {provider}")
+        entries = [
+            event
+            for event in self.store.events(min(max(limit, 1), 500) * 10)
+            if event.get("provider") == provider
+        ][: min(max(limit, 1), 500)]
+        return {
+            "entries": redacted(entries),
+            "provider": provider,
+            "source": "Comfy Control",
+        }
+
     async def close(self) -> None:
         for task in self.video_tasks:
             task.cancel()
@@ -321,16 +434,18 @@ class Controller:
         await self.media_client.aclose()
         self.store.close()
 
-    async def refresh_endpoint(self, runtime: ProviderRuntime) -> None:
+    async def refresh_endpoint(
+        self, runtime: ProviderRuntime, *, route: bool = True
+    ) -> dict[str, object]:
         management = runtime.config.management
         if management is None:
-            return
+            return {}
         if management.kind == "modal":
             runtime.base_url = await asyncio.to_thread(
                 modal_web_url, management.name, management.function or ""
             )
             self.store.save_provider_resource(runtime.config.id, management.name)
-            return
+            return {}
 
         if management.kind.startswith("runpod-"):
             api_key = required_environment("RUNPOD_API_KEY")
@@ -354,7 +469,7 @@ class Controller:
                 runtime.base_url = (
                     f"https://{resource_id}-{management.port}.proxy.runpod.net"
                 )
-            return
+            return resource
 
         if management.kind == "salad":
             api_key = required_environment("SALAD_API_KEY")
@@ -378,7 +493,7 @@ class Controller:
                 raise RuntimeError("SaladCloud provider has invalid networking data")
             dns = str(required_mapping_value(networking, "dns"))
             runtime.base_url = dns if "://" in dns else f"https://{dns}"
-            return
+            return resource if isinstance(resource, dict) else {}
 
         api_key = required_environment("VAST_API_KEY")
         headers = {"Authorization": f"Bearer {api_key}"}
@@ -398,16 +513,17 @@ class Controller:
             self.store.save_provider_resource(
                 runtime.config.id, str(required_mapping_value(resource, "id"))
             )
-            route = await self.lifecycle_client.post(
-                "https://run.vast.ai/route/",
-                headers=headers,
-                json={"cost": 100, "endpoint": management.name},
-            )
-            route.raise_for_status()
-            runtime.base_url = str(required_mapping_value(route.json(), "url")).rstrip(
-                "/"
-            )
-            return
+            if route:
+                route_response = await self.lifecycle_client.post(
+                    "https://run.vast.ai/route/",
+                    headers=headers,
+                    json={"cost": 100, "endpoint": management.name},
+                )
+                route_response.raise_for_status()
+                runtime.base_url = str(
+                    required_mapping_value(route_response.json(), "url")
+                ).rstrip("/")
+            return resource
 
         response = await self.lifecycle_client.get(
             "https://console.vast.ai/api/v1/instances/", headers=headers
@@ -438,6 +554,7 @@ class Controller:
             )
         port = required_mapping_value(mapping[0], "HostPort")
         runtime.base_url = f"http://{address}:{port}"
+        return resource
 
     def save_media(
         self,
@@ -1210,6 +1327,32 @@ def deduplicate_metrics(
     return list({str(metric.get("label")): metric for metric in metrics}.values())
 
 
+def selected_fields(value: object, *names: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    return {name: value[name] for name in names if name in value}
+
+
+def provider_panel_url(
+    runtime: ProviderRuntime, details: dict[str, object]
+) -> str | None:
+    management = runtime.config.management
+    if management is None:
+        if runtime.config.type == "proxy" and runtime.base_url:
+            return f"{runtime.base_url}/management.html"
+        return runtime.base_url
+    if management.kind == "modal":
+        return str(details.get("panel_url") or "https://modal.com/apps")
+    if management.kind.startswith("runpod-"):
+        collection = "pods" if management.kind == "runpod-pod" else "serverless"
+        return f"https://console.runpod.io/{collection}"
+    if management.kind == "salad":
+        return "https://portal.salad.com/"
+    if management.kind == "vast-pod":
+        return "https://cloud.vast.ai/instances/"
+    return "https://cloud.vast.ai/serverless/"
+
+
 def modal_web_url(app_name: str, function_name: str) -> str:
     import modal
 
@@ -1217,6 +1360,28 @@ def modal_web_url(app_name: str, function_name: str) -> str:
     if not url:
         raise RuntimeError(f"Modal web function has no URL: {app_name}/{function_name}")
     return url.rstrip("/")
+
+
+def modal_status(app_name: str, function_name: str) -> dict[str, object]:
+    import modal
+
+    function = modal.Function.from_name(app_name, function_name)
+    stats = function.get_current_stats()
+    values = {
+        name: getattr(stats, name)
+        for name in (
+            "backlog",
+            "num_active_runners",
+            "num_total_runners",
+        )
+        if hasattr(stats, name)
+    }
+    active = values.get("num_active_runners") or values.get("num_total_runners")
+    values["state"] = "ready" if active else "scaled-down"
+    get_dashboard_url = getattr(function, "get_dashboard_url", None)
+    if callable(get_dashboard_url):
+        values["panel_url"] = get_dashboard_url()
+    return values
 
 
 def modal_usage() -> list[dict[str, object]]:
