@@ -13,6 +13,7 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
 
+from .cliproxy import CliproxyClient
 from .control_config import (
     ControlFile,
     ControlSettings,
@@ -764,14 +765,18 @@ class Controller:
             for target in targets:
                 self.store.update_job(job.id, "in_progress", provider=target.provider)
                 try:
-                    response = await self.forward(
-                        target,
-                        "POST",
-                        "/v1/videos?wait=true",
-                        *self.video_request(job, target.model),
-                        request_id,
-                    )
-                    data = response.json()
+                    response: httpx.Response | None = None
+                    if target.provider == "cliproxyapi":
+                        data = await self.cliproxy_video(job, target)
+                    else:
+                        response = await self.forward(
+                            target,
+                            "POST",
+                            "/v1/videos?wait=true",
+                            *self.video_request(job, target.model),
+                            request_id,
+                        )
+                        data = response.json()
                 except (httpx.HTTPError, RuntimeError, TimeoutError, ValueError) as exc:
                     message = exception_message(exc)
                     failures.append(f"{target.provider}: {message}")
@@ -782,7 +787,9 @@ class Controller:
                         request_id=request_id,
                     )
                     continue
-                if response.is_success and data.get("status") == "completed":
+                if (response is None or response.is_success) and data.get(
+                    "status"
+                ) == "completed":
                     upstream_id = str(data.get("id", ""))
                     archive_data = dict(data)
                     data["id"] = job.id
@@ -806,7 +813,11 @@ class Controller:
                     self.remove_uploads(job.id)
                     await self.archive_video(job.id, target.provider, archive_data)
                     return
-                message = data.get("error") or f"HTTP {response.status_code}"
+                message = data.get("error") or (
+                    f"HTTP {response.status_code}"
+                    if response is not None
+                    else "video generation failed"
+                )
                 failures.append(f"{target.provider}: {message}")
             failure = "; ".join(failures) or "all providers failed"
             self.store.update_job(job.id, "failed", error=failure)
@@ -818,6 +829,37 @@ class Controller:
             self.store.update_history(job.id, "failed", error=message)
             self.store.event("error", message, request_id=request_id)
             self.remove_uploads(job.id)
+
+    async def cliproxy_video(self, job: Job, target: Target) -> dict[str, object]:
+        runtime = self.providers[target.provider]
+        if not runtime.base_url:
+            raise RuntimeError("CLI Proxy API has no base URL")
+        value = json.loads(job.request_json)
+        multipart = value.pop("_control_multipart", None)
+        if multipart is not None:
+            value = dict(multipart["fields"])
+            images = [item for item in multipart["files"] if item["field"] == "image"]
+            if images:
+                image = images[0]
+                encoded = base64.b64encode(Path(image["path"]).read_bytes()).decode()
+                value["image"] = {
+                    "url": f"data:{image['content_type']};base64,{encoded}"
+                }
+        client = CliproxyClient(
+            runtime.base_url,
+            runtime.config.api_key,
+            runtime.config.request_timeout,
+        )
+        try:
+            output_url = await client.generate_video(value)
+        finally:
+            await client.close()
+        return {
+            "id": job.id,
+            "model": target.model,
+            "output_url": output_url,
+            "status": "completed",
+        }
 
     def video_request(self, job: Job, model: str) -> tuple[bytes, dict[str, str]]:
         value = json.loads(job.request_json)

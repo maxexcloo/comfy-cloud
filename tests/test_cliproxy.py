@@ -22,7 +22,7 @@ async def test_cliproxy_uses_fixed_media_models():
             200,
             json={
                 "status": "done",
-                "video": {"url": "https://videos.example/result.mp4"},
+                "video_url": "https://videos.example/result.mp4",
             },
         )
 
@@ -37,7 +37,13 @@ async def test_cliproxy_uses_fixed_media_models():
             {"prompt": "change"}, "source.png", b"image", "image/png"
         )
         output_url = await client.generate_video(
-            {"model": "local/video", "prompt": "move", "seconds": 5}
+            {
+                "aspect_ratio": "16:9",
+                "model": "local/video",
+                "prompt": "move",
+                "resolution": "480p",
+                "seconds": 5,
+            }
         )
     finally:
         await client.close()
@@ -49,5 +55,7 @@ async def test_cliproxy_uses_fixed_media_models():
     assert b"b64_json" in requests[1].content
     video_body = json.loads(requests[2].content)
     assert video_body["model"] == "grok-imagine-video-1.5"
-    assert video_body["duration"] == 5
+    assert video_body["aspect_ratio"] == "16:9"
+    assert video_body["resolution"] == "480p"
+    assert video_body["seconds"] == 5
     assert output_url == "https://videos.example/result.mp4"

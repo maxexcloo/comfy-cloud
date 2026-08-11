@@ -64,8 +64,9 @@ class CliproxyClient:
             "model": VIDEO_MODEL,
             "prompt": body["prompt"],
         }
-        if body.get("seconds") is not None:
-            payload["duration"] = body["seconds"]
+        for parameter in ("aspect_ratio", "resolution", "seconds"):
+            if body.get(parameter) is not None:
+                payload[parameter] = body[parameter]
         if body.get("image") is not None:
             payload["image"] = body["image"]
         response = await self.http.post("/v1/videos/generations", json=payload)
@@ -81,7 +82,11 @@ class CliproxyClient:
             status = result.get("status")
             if status in {"completed", "done"}:
                 video = result.get("video") or {}
-                output_url = video.get("url") or result.get("output_url")
+                output_url = (
+                    video.get("url")
+                    or result.get("video_url")
+                    or result.get("output_url")
+                )
                 if isinstance(output_url, str) and output_url:
                     return output_url
                 raise RuntimeError(

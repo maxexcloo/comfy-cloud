@@ -10,6 +10,7 @@ import yaml
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
+from comfy_control.cliproxy import CliproxyClient
 from comfy_control.control import create_app
 from comfy_control.control_config import ControlFile, ControlSettings
 from comfy_control.controller import (
@@ -409,6 +410,76 @@ async def test_controller_owns_video_job_and_output_url(tmp_path):
     assert status.json()["model"] == "public/video"
     assert content.status_code == 302
     assert content.headers["location"] == "https://objects.example/video.mp4"
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_controller_polls_cliproxy_video_instead_of_worker_wait_endpoint(
+    tmp_path, monkeypatch
+):
+    control_settings = settings(tmp_path)
+    config = control_settings.config_file
+    config.write_text(
+        """
+models:
+  - id: public/video
+    operation: video_generation
+    targets:
+      - model: grok-imagine-video-1.5
+        provider: cliproxyapi
+providers:
+  - id: cliproxyapi
+    api_key: proxy-key
+    base_url: http://cliproxy
+    idle_seconds: 0
+    type: proxy
+""".lstrip()
+    )
+    received: list[dict[str, object]] = []
+
+    async def generate_video(self: CliproxyClient, body: dict[str, object]) -> str:
+        received.append(body)
+        return "https://videos.example/grok.mp4"
+
+    monkeypatch.setattr(CliproxyClient, "generate_video", generate_video)
+    app = create_app(control_settings)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        submitted = await client.post(
+            "/v1/videos",
+            headers={"Authorization": "Bearer control-key"},
+            json={
+                "aspect_ratio": "16:9",
+                "model": "public/video",
+                "prompt": "test",
+                "provider": "cliproxyapi",
+                "resolution": "480p",
+                "seconds": 6,
+            },
+        )
+        assert submitted.status_code == 200, submitted.text
+        job_id = submitted.json()["id"]
+        for _ in range(20):
+            status = await client.get(
+                f"/v1/videos/{job_id}",
+                headers={"Authorization": "Bearer control-key"},
+            )
+            if status.json()["status"] == "completed":
+                break
+            await asyncio.sleep(0)
+
+    assert received == [
+        {
+            "aspect_ratio": "16:9",
+            "model": "public/video",
+            "prompt": "test",
+            "resolution": "480p",
+            "seconds": 6,
+        }
+    ]
+    assert status.json()["model"] == "public/video"
+    assert status.json()["output_url"] == "https://videos.example/grok.mp4"
     await app.state.controller.close()
 
 
