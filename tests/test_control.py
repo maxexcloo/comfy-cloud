@@ -914,6 +914,12 @@ def test_control_file_enables_configured_providers(monkeypatch):
 
     loaded = ControlFile.load(ROOT / "config/control.yaml")
 
+    assert [model.id for model in loaded.models] == [
+        "image-edit",
+        "image-generation",
+        "image-to-video",
+        "text-to-video",
+    ]
     assert [provider.id for provider in loaded.providers] == [
         "cliproxyapi",
         "runpod-pod",

@@ -1,5 +1,5 @@
 models:
-  - id: flux-2-klein-9b/image-edit
+  - id: image-edit
     operation: image_edit
     targets:
       - { model: flux-2-klein-9b/image-edit, provider: local-pod }
@@ -10,7 +10,7 @@ models:
       - { model: flux-2-klein-9b/image-edit, provider: vast-pod }
       - { model: flux-2-klein-9b/image-edit, provider: vast-serverless }
       - { model: grok-imagine-image-quality, provider: cliproxyapi }
-  - id: flux-2-klein-9b/text-to-image
+  - id: image-generation
     operation: image_generation
     targets:
       - { model: flux-2-klein-9b/text-to-image, provider: local-pod }
@@ -21,7 +21,7 @@ models:
       - { model: flux-2-klein-9b/text-to-image, provider: vast-pod }
       - { model: flux-2-klein-9b/text-to-image, provider: vast-serverless }
       - { model: grok-imagine-image-quality, provider: cliproxyapi }
-  - id: minimax-h3/image-to-video
+  - id: image-to-video
     operation: video_generation
     targets:
       - { model: minimax-h3/image-to-video, provider: modal-serverless }
@@ -31,7 +31,7 @@ models:
       - { model: minimax-h3/image-to-video, provider: vast-pod }
       - { model: minimax-h3/image-to-video, provider: vast-serverless }
       - { model: grok-imagine-video-1.5, provider: cliproxyapi }
-  - id: minimax-h3/text-to-video
+  - id: text-to-video
     operation: video_generation
     targets:
       - { model: minimax-h3/text-to-video, provider: modal-serverless }
