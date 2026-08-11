@@ -11,6 +11,7 @@ import httpx
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
 from .catalogue import Catalogue, WorkflowModel
+from .cliproxy import CliproxyClient
 from .comfy import ComfyClient, OutputRef
 from .config import Settings
 from .jobs import JobStore
@@ -83,6 +84,15 @@ class Runtime:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.catalogue = Catalogue.load(settings.catalogue_dirs)
+        self.cliproxy = (
+            CliproxyClient(
+                settings.cliproxy_url,
+                settings.cliproxy_api_key,
+                settings.workflow_timeout,
+            )
+            if settings.cliproxy_url and settings.cliproxy_api_key
+            else None
+        )
         self.comfy = ComfyClient(settings.comfy_url, settings.request_timeout)
         self.storage = ObjectStorage.from_env(settings.storage_env)
         self.jobs: dict[str, VideoJob] = {}
@@ -144,6 +154,16 @@ class Runtime:
                 job.lease_expires_at = None
                 self.job_store.save(job.record())
             self.jobs[job.id] = job
+
+    async def close(self) -> None:
+        await self.comfy.close()
+        if self.cliproxy is not None:
+            await self.cliproxy.close()
+
+    async def ready(self) -> bool:
+        if await self.comfy.ready():
+            return True
+        return self.cliproxy is not None and await self.cliproxy.ready()
 
     async def run(
         self, model: WorkflowModel, values: dict[str, Any]

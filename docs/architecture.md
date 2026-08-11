@@ -9,9 +9,9 @@ Comfy Control runs two supervised processes in one container:
 - **ComfyUI** executes workflows locally on port 8188 and is not modified by this
   project.
 
-The gateway is deliberately unaware of cloud providers and other inference
-services. Each instance controls one local ComfyUI runtime. An external gateway
-may route between independently deployed instances.
+Each instance controls one local ComfyUI runtime. It can also use CLIProxyAPI as a
+fixed fallback when ComfyUI is unavailable or execution fails. An external gateway
+may route between independently deployed Comfy Control instances.
 
 ## Request Flow
 
@@ -21,7 +21,10 @@ may route between independently deployed instances.
 3. Portable request fields are copied into a fresh API-format workflow graph.
 4. The request is admitted to the bounded queue.
 5. GPU execution is serialised and submitted to local ComfyUI.
-6. Results return as base64, an authenticated local URL or a durable
+6. If ComfyUI is unavailable or execution fails, the request is retried through
+   CLIProxyAPI with `grok-imagine-image-quality` for images and edits, or
+   `grok-imagine-video-1.5` for video.
+7. Results return as base64, an authenticated local URL or a durable
    object-storage URL.
 
 A timed-out workflow is removed from the ComfyUI queue or interrupted when already
@@ -47,7 +50,7 @@ lost when the worker and its volume are destroyed.
 - OpenAI-compatible image generation, image editing and video endpoints.
 
 The gateway uses one API key. Terminate TLS and enforce client identity, quotas,
-rate limits and provider selection in an external trusted gateway. Health and
+rate limits and deployment selection in an external trusted gateway. Health and
 metrics endpoints intentionally remain unauthenticated and expose no generated
 content.
 

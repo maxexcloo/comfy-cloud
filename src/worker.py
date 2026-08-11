@@ -6,6 +6,7 @@ import json
 import time
 import uuid
 from contextlib import asynccontextmanager
+from io import BytesIO
 from typing import Any
 from urllib.parse import parse_qsl, urlencode
 
@@ -115,7 +116,7 @@ def create_app(settings: Settings) -> FastAPI:
             task.cancel()
         if runtime.background_tasks:
             await asyncio.gather(*runtime.background_tasks, return_exceptions=True)
-        await runtime.comfy.close()
+        await runtime.close()
 
     app = FastAPI(title="Comfy Control", version="0.1.0", lifespan=lifespan)
     app.state.runtime = runtime
@@ -143,6 +144,50 @@ def create_app(settings: Settings) -> FastAPI:
                 raise ParameterError("body", "Request body is too large")
         return bytes(body)
 
+    def cliproxy_response(upstream: httpx.Response) -> Response:
+        return Response(
+            content=upstream.content,
+            status_code=upstream.status_code,
+            media_type=upstream.headers.get("content-type"),
+            headers={"x-comfy-provider": "cliproxyapi"},
+        )
+
+    async def fallback_image_generation(
+        body: dict[str, Any], comfy_error: Exception
+    ) -> Response:
+        if runtime.cliproxy is None:
+            return openai_error(str(comfy_error), 500, "generation_failed")
+        try:
+            return cliproxy_response(await runtime.cliproxy.generate_image(body))
+        except (RuntimeError, TimeoutError, httpx.HTTPError) as cliproxy_error:
+            return openai_error(
+                f"ComfyUI failed: {comfy_error}; CLIProxyAPI failed: {cliproxy_error}",
+                502,
+                "providers_failed",
+            )
+
+    async def fallback_image_edit(
+        fields: dict[str, str],
+        filename: str,
+        content: bytes,
+        content_type: str,
+        comfy_error: Exception,
+    ) -> Response:
+        if runtime.cliproxy is None:
+            return openai_error(str(comfy_error), 500, "generation_failed")
+        try:
+            return cliproxy_response(
+                await runtime.cliproxy.edit_image(
+                    fields, filename, content, content_type
+                )
+            )
+        except (RuntimeError, TimeoutError, httpx.HTTPError) as cliproxy_error:
+            return openai_error(
+                f"ComfyUI failed: {comfy_error}; CLIProxyAPI failed: {cliproxy_error}",
+                502,
+                "providers_failed",
+            )
+
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
@@ -168,7 +213,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/health/ready")
     async def ready() -> JSONResponse:
-        ready = await runtime.comfy.ready()
+        ready = await runtime.ready()
         return JSONResponse(
             {"status": "ready" if ready else "starting"},
             status_code=200 if ready else 503,
@@ -176,12 +221,19 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/health")
     async def health() -> JSONResponse:
-        ready = await runtime.comfy.ready()
+        ready = await runtime.ready()
         object_info = await runtime.object_info()
-        installed = runtime.available_models(object_info)
+        cliproxy_ready = runtime.cliproxy is not None and await runtime.cliproxy.ready()
+        installed = (
+            runtime.catalogue.list()
+            if cliproxy_ready
+            else runtime.available_models(object_info)
+        )
         return JSONResponse(
             {
                 "status": "ready" if ready else "starting",
+                "cliproxyapi": "ready" if cliproxy_ready else "unavailable",
+                "comfyui": "ready" if object_info is not None else "unavailable",
                 "models": len(installed),
                 "unavailable_models": len(runtime.catalogue.list()) - len(installed),
             },
@@ -198,7 +250,7 @@ def create_app(settings: Settings) -> FastAPI:
     @app.get("/ping", include_in_schema=False)
     async def ping() -> Response:
         """Serverless readiness contract: 204 while loading, 200 when ready."""
-        if await runtime.comfy.ready():
+        if await runtime.ready():
             return Response(status_code=200)
         return Response(status_code=204)
 
@@ -226,13 +278,16 @@ def create_app(settings: Settings) -> FastAPI:
         if denied := require(request):
             return denied
         object_info = await runtime.object_info()
+        cliproxy_ready = runtime.cliproxy is not None and await runtime.cliproxy.ready()
+        available = (
+            runtime.catalogue.list()
+            if cliproxy_ready
+            else runtime.available_models(object_info)
+        )
         return JSONResponse(
             {
                 "object": "list",
-                "data": [
-                    model_object(model)
-                    for model in runtime.available_models(object_info)
-                ],
+                "data": [model_object(model) for model in available],
             }
         )
 
@@ -241,7 +296,12 @@ def create_app(settings: Settings) -> FastAPI:
         if denied := require(request):
             return denied
         try:
-            model = await runtime.model(model_id)
+            model = runtime.catalogue.get(model_id)
+            try:
+                model = await runtime.model(model.id)
+            except KeyError:
+                if runtime.cliproxy is None or not await runtime.cliproxy.ready():
+                    raise
         except KeyError:
             return openai_error(
                 f"The model '{model_id}' does not exist",
@@ -259,7 +319,7 @@ def create_app(settings: Settings) -> FastAPI:
             body = json.loads(await limited_body(request))
             if not isinstance(body, dict):
                 raise TypeError
-            model = await runtime.model(body.get("model", ""))
+            model = runtime.catalogue.get(body.get("model", ""))
         except ParameterError:
             return openai_error("Request body is too large", 413, "request_too_large")
         except KeyError:
@@ -310,6 +370,10 @@ def create_app(settings: Settings) -> FastAPI:
         except GenerationQueueFull as exc:
             return openai_error(str(exc), 429, "rate_limit_exceeded")
         try:
+            try:
+                model = await runtime.model(model.id)
+            except KeyError as exc:
+                return await fallback_image_generation(body, exc)
             started = time.monotonic()
             refs: list[OutputRef] = []
             for index in range(count):
@@ -327,7 +391,7 @@ def create_app(settings: Settings) -> FastAPI:
                 }
             )
         except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
-            return openai_error(str(exc), 500, "generation_failed")
+            return await fallback_image_generation(body, exc)
         finally:
             await runtime.release_generation()
 
@@ -337,7 +401,7 @@ def create_app(settings: Settings) -> FastAPI:
             return denied
         form = await request.form()
         try:
-            model = await runtime.model(str(form.get("model", "")))
+            model = runtime.catalogue.get(str(form.get("model", "")))
         except KeyError:
             return openai_error(
                 "Requested model was not found", 404, "model_not_found", "model"
@@ -367,6 +431,15 @@ def create_app(settings: Settings) -> FastAPI:
             for image in images
         ):
             return openai_error("image is too large", 413, "request_too_large", "image")
+        image = images[0]
+        image_content = await image.read()
+        image_name = image.filename or "image"
+        image_type = image.content_type or "application/octet-stream"
+        fallback_fields = {
+            key: str(form[key])
+            for key in ("n", "prompt", "response_format")
+            if form.get(key) is not None
+        }
         prompt = str(form.get("prompt", ""))
         if not prompt:
             return openai_error(
@@ -388,6 +461,7 @@ def create_app(settings: Settings) -> FastAPI:
                 "invalid_value",
                 "response_format",
             )
+        fallback_fields["response_format"] = response_format
         size = str(form.get("size", "")).strip()
         if size and size != "auto":
             return openai_error(
@@ -396,14 +470,19 @@ def create_app(settings: Settings) -> FastAPI:
         try:
             uploaded = [
                 await runtime.comfy.upload(
-                    image.filename,
-                    image.file,
-                    image.content_type or "application/octet-stream",
+                    image_name,
+                    BytesIO(image_content),
+                    image_type,
                 )
-                for image in images
             ]
         except httpx.HTTPError as exc:
-            return openai_error(str(exc), 502, "upload_failed", "image")
+            return await fallback_image_edit(
+                fallback_fields,
+                image_name,
+                image_content,
+                image_type,
+                exc,
+            )
         values: dict[str, Any] = {
             "image": uploaded[0],
             "prompt": prompt,
@@ -415,6 +494,16 @@ def create_app(settings: Settings) -> FastAPI:
         except GenerationQueueFull as exc:
             return openai_error(str(exc), 429, "rate_limit_exceeded")
         try:
+            try:
+                model = await runtime.model(model.id)
+            except KeyError as exc:
+                return await fallback_image_edit(
+                    fallback_fields,
+                    image_name,
+                    image_content,
+                    image_type,
+                    exc,
+                )
             started = time.monotonic()
             refs: list[OutputRef] = []
             for index in range(count):
@@ -432,7 +521,13 @@ def create_app(settings: Settings) -> FastAPI:
                 }
             )
         except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
-            return openai_error(str(exc), 500, "generation_failed")
+            return await fallback_image_edit(
+                fallback_fields,
+                image_name,
+                image_content,
+                image_type,
+                exc,
+            )
         finally:
             await runtime.release_generation()
 
@@ -471,7 +566,11 @@ def create_app(settings: Settings) -> FastAPI:
         return settings.public_base_url or str(request.base_url).rstrip("/")
 
     async def execute_video(
-        job: VideoJob, model: WorkflowModel, values: dict[str, Any]
+        job: VideoJob,
+        model: WorkflowModel,
+        values: dict[str, Any],
+        fallback_body: dict[str, Any],
+        primary_error: Exception | None,
     ) -> None:
         try:
             job.status = "in_progress"
@@ -479,8 +578,23 @@ def create_app(settings: Settings) -> FastAPI:
                 time.time() + runtime.settings.workflow_timeout + 60
             )
             runtime.store_job(job)
-            job.output = (await runtime.run(model, values))[0]
-            await runtime.upload_output(job)
+            try:
+                if primary_error is not None:
+                    raise primary_error
+                job.output = (await runtime.run(model, values))[0]
+                await runtime.upload_output(job)
+            except Exception as comfy_error:
+                if runtime.cliproxy is None:
+                    raise
+                try:
+                    job.output_url = await runtime.cliproxy.generate_video(
+                        fallback_body
+                    )
+                except Exception as cliproxy_error:
+                    raise RuntimeError(
+                        f"ComfyUI failed: {comfy_error}; "
+                        f"CLIProxyAPI failed: {cliproxy_error}"
+                    ) from cliproxy_error
             job.status = "completed"
             job.lease_expires_at = None
             runtime.store_job(job)
@@ -518,6 +632,7 @@ def create_app(settings: Settings) -> FastAPI:
         if denied := require(request):
             return denied
         content_type = request.headers.get("content-type", "")
+        primary_error: Exception | None = None
         if content_type.startswith("multipart/form-data"):
             form = await request.form()
             body: dict[str, Any] = {
@@ -526,6 +641,7 @@ def create_app(settings: Settings) -> FastAPI:
                 if not hasattr(value, "read")
             }
             image = form.get("image")
+            fallback_body = dict(body)
             if image is not None and hasattr(image, "read"):
                 if (
                     image.size is not None
@@ -534,14 +650,24 @@ def create_app(settings: Settings) -> FastAPI:
                     return openai_error(
                         "image is too large", 413, "request_too_large", "image"
                     )
+                image_content = await image.read()
+                image_type = image.content_type or "application/octet-stream"
+                fallback_body["image"] = {
+                    "type": "image_url",
+                    "url": (
+                        f"data:{image_type};base64,"
+                        + base64.b64encode(image_content).decode()
+                    ),
+                }
                 try:
                     body["image"] = await runtime.comfy.upload(
-                        image.filename,
-                        image.file,
-                        image.content_type or "application/octet-stream",
+                        image.filename or "image",
+                        BytesIO(image_content),
+                        image_type,
                     )
                 except httpx.HTTPError as exc:
-                    return openai_error(str(exc), 502, "upload_failed", "image")
+                    primary_error = exc
+                    body["image"] = fallback_body["image"]
             for field in ("width", "height", "length", "seed", "steps"):
                 if field in body:
                     try:
@@ -563,8 +689,9 @@ def create_app(settings: Settings) -> FastAPI:
                 return openai_error(
                     "Request body must be JSON or multipart form", 400, "invalid_json"
                 )
+            fallback_body = dict(body)
         try:
-            model = await runtime.model(body.get("model", ""))
+            model = runtime.catalogue.get(body.get("model", ""))
         except KeyError:
             return openai_error(
                 "Requested model was not found", 404, "model_not_found", "model"
@@ -613,8 +740,14 @@ def create_app(settings: Settings) -> FastAPI:
                 return openai_error(
                     "seconds must be between 0 and 15", 400, "invalid_value", "seconds"
                 )
+            fallback_body["seconds"] = seconds
             frames = max(5, round(seconds * 24))
             values["length"] = frames + (5 - frames % 17) % 17
+        if primary_error is None:
+            try:
+                model = await runtime.model(model.id)
+            except KeyError as exc:
+                primary_error = exc
         requested_id = request.headers.get("x-comfy-job-id", "")
         if requested_id and (
             len(requested_id) > 128
@@ -644,7 +777,9 @@ def create_app(settings: Settings) -> FastAPI:
         runtime.jobs[job.id] = job
         runtime.store_job(job)
         runtime.video_jobs_created.inc()
-        task = runtime.start_background_task(execute_video(job, model, values))
+        task = runtime.start_background_task(
+            execute_video(job, model, values, fallback_body, primary_error)
+        )
         if request.query_params.get("wait", "").lower() in {"1", "true", "yes"}:
             await asyncio.shield(task)
         return video_response(job)
@@ -673,7 +808,7 @@ def create_app(settings: Settings) -> FastAPI:
         if denied := require(request):
             return denied
         job = runtime.get_job(job_id)
-        if not job or not job.output:
+        if not job or (not job.output and not runtime.job_output_url(job)):
             return openai_error("Video is not ready", 409, "video_not_ready")
         if output_url := runtime.job_output_url(job):
             return Response(status_code=302, headers={"Location": output_url})

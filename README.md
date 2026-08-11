@@ -1,17 +1,17 @@
 # Comfy Control
 
-Comfy Control is an authenticated OpenAI-compatible gateway for ComfyUI. It runs
-beside an unmodified ComfyUI process, translates portable image and video requests
-into checksum-pinned API workflows, and exposes health, metrics and native ComfyUI
-proxy routes.
+Comfy Control is an authenticated OpenAI-compatible media gateway. It translates
+portable image and video requests into checksum-pinned ComfyUI workflows, exposes
+health, metrics and native ComfyUI proxy routes, and can fail over to CLIProxyAPI.
 
 ```text
-OpenAI-compatible client -> Comfy Control -> ComfyUI
+OpenAI-compatible client -> Comfy Control -> ComfyUI (primary)
+                                      `-> CLIProxyAPI (fallback)
 ```
 
-Provider selection, failover and infrastructure lifecycle belong outside Comfy
-Control. Run one instance for each independently managed ComfyUI worker and route
-between those instances in an external gateway when required.
+ComfyUI is always the primary media runtime. When configured, CLIProxyAPI provides
+fixed Grok fallbacks for image generation, image editing and video generation.
+Deployment selection and infrastructure lifecycle remain external concerns.
 
 ## Quick Start
 

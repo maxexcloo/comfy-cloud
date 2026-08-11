@@ -30,8 +30,8 @@ The container workflow separately builds and smoke-tests the Comfy Control image
 - Keep pinned weight sources in `profiles/`.
 - Keep portable API behaviour directly in `src/`.
 - Keep provider-specific deployment assets in `deploy/`.
-- Keep provider selection, failover and lifecycle orchestration outside this
-  repository.
+- Keep deployment selection and lifecycle orchestration outside this repository.
+- Keep ComfyUI primary and the fixed CLIProxyAPI media fallback explicit.
 
 ## Command-Line Interface
 

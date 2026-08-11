@@ -36,3 +36,12 @@ def test_mode_environment_does_not_select_runtime(monkeypatch):
     settings = Settings.from_env("serverless")
 
     assert settings.deployment_type == "serverless"
+
+
+def test_cliproxy_fallback_requires_url_and_key_together(monkeypatch):
+    monkeypatch.setenv("API_KEY", "test-key")
+    monkeypatch.setenv("CLIPROXY_API_KEY", "proxy-key")
+    monkeypatch.delenv("CLIPROXY_URL", raising=False)
+
+    with pytest.raises(ValueError, match="must either both be set"):
+        Settings.from_env("serverless")

@@ -33,6 +33,8 @@ class Settings:
     ui_password: str
     ui_username: str
     workflow_timeout: float
+    cliproxy_api_key: str | None = None
+    cliproxy_url: str | None = None
     jobs_dir: Path | None = None
     maximum_pending_generations: int = 8
     maximum_request_bytes: int = 100 * 1024 * 1024
@@ -58,6 +60,12 @@ class Settings:
             else os.getenv("COMFY_UI_PASSWORD", "")
         )
         public_base_url = os.getenv("PUBLIC_BASE_URL")
+        cliproxy_api_key = os.getenv("CLIPROXY_API_KEY", "").strip() or None
+        cliproxy_url = os.getenv("CLIPROXY_URL", "").strip().rstrip("/") or None
+        if bool(cliproxy_api_key) != bool(cliproxy_url):
+            raise ValueError(
+                "CLIPROXY_API_KEY and CLIPROXY_URL must either both be set or both be empty"
+            )
         maximum_pending_generations = int(os.getenv("MAXIMUM_PENDING_GENERATIONS", "8"))
         maximum_request_bytes = int(
             os.getenv("MAXIMUM_REQUEST_BYTES", str(100 * 1024 * 1024))
@@ -69,6 +77,8 @@ class Settings:
         return cls(
             api_key=api_key,
             catalogue_dirs=tuple(roots),
+            cliproxy_api_key=cliproxy_api_key,
+            cliproxy_url=cliproxy_url,
             comfy_url=os.getenv("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/"),
             deployment_type=deployment_type,
             models_dir=Path(os.getenv("MODELS_DIR", "/opt/ComfyUI/models")),

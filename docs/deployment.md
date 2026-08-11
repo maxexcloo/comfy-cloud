@@ -21,6 +21,10 @@ docker compose ps
 
 Pull requests build the image and smoke-test its packaged command.
 
+Set both `CLIPROXY_URL` and `CLIPROXY_API_KEY` to enable media fallback. Leave both
+empty to run ComfyUI only. Comfy Control reports ready when either ComfyUI or the
+configured CLIProxyAPI is reachable.
+
 ## Providers
 
 Definitions under `deploy/` show how to run the same image on Modal, RunPod,

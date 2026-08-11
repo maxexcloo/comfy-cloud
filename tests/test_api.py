@@ -359,6 +359,24 @@ async def test_models_fail_closed_when_node_information_is_unavailable():
 
 
 @pytest.mark.asyncio
+async def test_cliproxyapi_keeps_catalogue_models_available():
+    app = create_app(settings())
+    app.state.runtime.object_info = AsyncMock(return_value={})
+    app.state.runtime.cliproxy = AsyncMock()
+    app.state.runtime.cliproxy.ready.return_value = True
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/v1/models", headers={"Authorization": "Bearer test-key"}
+        )
+
+    assert response.status_code == 200
+    assert {model["id"] for model in response.json()["data"]} == {
+        model.id for model in app.state.runtime.catalogue.list()
+    }
+
+
+@pytest.mark.asyncio
 async def test_health_live_ready_and_metrics():
     app = create_app(settings())
     app.state.runtime.comfy.ready = AsyncMock(return_value=True)
@@ -481,3 +499,87 @@ async def test_pod_proxies_frontend_with_basic_auth():
 
     assert response.status_code == 200
     assert response.text == "ComfyUI"
+
+
+@pytest.mark.asyncio
+async def test_image_generation_falls_back_to_cliproxyapi():
+    app = create_app(settings())
+    app.state.runtime.run = AsyncMock(side_effect=RuntimeError("ComfyUI failed"))
+    app.state.runtime.cliproxy = AsyncMock()
+    app.state.runtime.cliproxy.generate_image.return_value = httpx.Response(
+        200,
+        json={"created": 1, "data": [{"b64_json": "fallback-image"}]},
+        headers={"content-type": "application/json"},
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer test-key"},
+            json={"model": "flux-2-klein-9b", "prompt": "draw"},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["x-comfy-provider"] == "cliproxyapi"
+    assert response.json()["data"][0]["b64_json"] == "fallback-image"
+    assert app.state.runtime.cliproxy.generate_image.await_args.args[0]["model"] == (
+        "flux-2-klein-9b"
+    )
+
+
+@pytest.mark.asyncio
+async def test_image_edit_falls_back_to_cliproxyapi():
+    app = create_app(settings())
+    app.state.runtime.run = AsyncMock(side_effect=RuntimeError("ComfyUI failed"))
+    app.state.runtime.comfy.upload = AsyncMock(return_value="uploaded.png")
+    app.state.runtime.cliproxy = AsyncMock()
+    app.state.runtime.cliproxy.edit_image.return_value = httpx.Response(
+        200,
+        json={"created": 1, "data": [{"b64_json": "fallback-edit"}]},
+        headers={"content-type": "application/json"},
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/edits",
+            headers={"Authorization": "Bearer test-key"},
+            data={"model": "flux-2-klein-9b-edit", "prompt": "change"},
+            files={"image": ("source.png", b"source-image", "image/png")},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["x-comfy-provider"] == "cliproxyapi"
+    arguments = app.state.runtime.cliproxy.edit_image.await_args.args
+    assert arguments[0]["prompt"] == "change"
+    assert arguments[1:] == ("source.png", b"source-image", "image/png")
+
+
+@pytest.mark.asyncio
+async def test_video_generation_falls_back_to_cliproxyapi():
+    app = create_app(settings())
+    app.state.runtime.run = AsyncMock(side_effect=RuntimeError("ComfyUI failed"))
+    app.state.runtime.cliproxy = AsyncMock()
+    app.state.runtime.cliproxy.generate_video.return_value = (
+        "https://videos.example/fallback.mp4"
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", follow_redirects=False
+    ) as client:
+        response = await client.post(
+            "/v1/videos?wait=true",
+            headers={"Authorization": "Bearer test-key"},
+            json={"model": "minimax-h3", "prompt": "move", "seconds": 5},
+        )
+        content = await client.get(
+            f"/v1/videos/{response.json()['id']}/content",
+            headers={"Authorization": "Bearer test-key"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["output_url"] == "https://videos.example/fallback.mp4"
+    assert content.status_code == 302
+    fallback_body = app.state.runtime.cliproxy.generate_video.await_args.args[0]
+    assert fallback_body["prompt"] == "move"
+    assert fallback_body["seconds"] == 5.0

@@ -6,6 +6,8 @@ services:
     environment:
       API_KEY: ${API_KEY:?set API_KEY in .env}
       CIVITAI_TOKEN: ${CIVITAI_TOKEN:-}
+      CLIPROXY_API_KEY: ${CLIPROXY_API_KEY:-}
+      CLIPROXY_URL: ${CLIPROXY_URL:-}
       COMFY_UI_PASSWORD: ${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD in .env}
       COMFY_UI_USERNAME: ${COMFY_UI_USERNAME:-comfy}
       HF_TOKEN: ${HF_TOKEN:-}
