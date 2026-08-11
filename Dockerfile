@@ -10,6 +10,7 @@ ENV BUILTIN_CATALOGUE_DIR=/opt/comfy-control/catalogue \
     COMFYUI_URL=http://127.0.0.1:8188 \
     DEBIAN_FRONTEND=noninteractive \
     HF_XET_HIGH_PERFORMANCE=1 \
+    MODEL_PROFILES=flux-2-klein-9b \
     PATH=/opt/venv/bin:${PATH} \
     PIP_NO_CACHE_DIR=1 \
     PORT=8000 \

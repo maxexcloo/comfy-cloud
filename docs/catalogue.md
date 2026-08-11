@@ -7,16 +7,16 @@ API-format ComfyUI workflow JSON. The manifest maps portable API fields to concr
 node inputs:
 
 ```yaml
-id: flux-2-klein-4b/text-to-image
-profile: flux-2-klein-4b
+id: flux-2-klein-9b/text-to-image
+profile: flux-2-klein-9b
 operation: image_generation
 workflow: workflow.json
 input_map:
-  prompt: { node: "6", input: text }
-  width: { node: "12", input: width }
-  height: { node: "12", input: height }
-  seed: { node: "25", input: noise_seed }
-output: { node: "31", type: image }
+  prompt: { node: "4", input: text }
+  width: { node: "6", input: width }
+  height: { node: "6", input: height }
+  seed: { node: "7", input: noise_seed }
+output: { node: "13", type: image }
 ```
 
 A workflow is advertised only when all `required_files` exist and every workflow
@@ -40,13 +40,9 @@ Run `comfy-control repository-check` after catalogue or profile changes.
 
 ## Bundled Models
 
-The catalogue includes text-to-image, image-edit and MiniMax H3 video workflows.
-Multi-reference FLUX workflows require exactly two, three or four ordered `image`
-parts. Reference meaning belongs in the prompt; Comfy Control does not assign character
-roles or rewrite prompts.
-
-Model discovery reports the supported reference count as
-`capabilities.reference_images.minimum` and `.maximum`.
+The catalogue includes text-to-image, single-image edit and MiniMax H3 video
+workflows. Reference meaning belongs in the prompt; Comfy Control does not assign
+character roles or rewrite prompts.
 
 Image edits accept `image`, `prompt`, and optional `n`, `seed`, `steps` and
 `response_format`. Their dimensions follow the uploaded image. MiniMax video
@@ -56,11 +52,12 @@ first-frame `image`.
 ## Profiles
 
 Profiles under `profiles/` pin weight sources independently from workflow logic.
-Select one or more comma-separated profile names with `MODEL_PROFILES`. Fetch a
-profile manually with:
+`MODEL_PROFILES` defaults to `flux-2-klein-9b`; set it to one or more
+comma-separated profile names to change the prepared models. Fetch a profile
+manually with:
 
 ```bash
-comfy-control models-fetch profiles/flux-2-klein-4b.yaml \
+comfy-control models-fetch profiles/flux-2-klein-9b.yaml \
   --models-dir /opt/ComfyUI/models
 ```
 

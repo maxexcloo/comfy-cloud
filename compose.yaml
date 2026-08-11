@@ -10,7 +10,7 @@ services:
       COMFY_UI_USERNAME: ${COMFY_UI_USERNAME:-comfy}
       HF_TOKEN: ${HF_TOKEN:-}
       JOBS_DIR: /data/jobs
-      MODEL_PROFILES: ${MODEL_PROFILES:-}
+      MODEL_PROFILES: ${MODEL_PROFILES:-flux-2-klein-9b}
       MODELS_DIR: /opt/ComfyUI/models
     gpus: all
     healthcheck:

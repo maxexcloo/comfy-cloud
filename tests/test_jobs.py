@@ -247,11 +247,13 @@ async def test_image_url_response_uses_storage_when_configured(tmp_path):
             return f"https://bucket/images/{filename}"
 
     app.state.runtime.storage = FakeStorage()
-    app.state.runtime.catalogue.get("example").required_files = []
+    app.state.runtime.catalogue.get("flux-2-klein-9b").required_files = []
     app.state.runtime.object_info = AsyncMock(
         return_value={
             node["class_type"]: {}
-            for node in app.state.runtime.catalogue.get("example")._graph.values()
+            for node in app.state.runtime.catalogue.get(
+                "flux-2-klein-9b"
+            )._graph.values()
         }
     )
     app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])
@@ -266,7 +268,7 @@ async def test_image_url_response_uses_storage_when_configured(tmp_path):
             "/v1/images/generations",
             headers={"Authorization": "Bearer test-key"},
             json={
-                "model": "example/checkpoint-text-to-image",
+                "model": "flux-2-klein-9b/text-to-image",
                 "prompt": "a clean test",
                 "response_format": "url",
             },

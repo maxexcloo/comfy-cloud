@@ -69,8 +69,6 @@ def validate_repository(catalogue_dir: Path, profiles_dir: Path) -> None:
     for model in catalogue.list():
         if not model.workflow_sha256:
             raise ValueError(f"workflow must declare workflow_sha256: {model.id}")
-        if model.profile == "example":
-            continue
         try:
             profile = profiles[model.profile]
         except KeyError as exc:

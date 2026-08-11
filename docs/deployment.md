@@ -33,9 +33,10 @@ it. The image defaults to `comfy-control pod`; override the container command wi
 
 ## Model Preparation
 
-Set `MODEL_PROFILES` to one or more comma-separated profile names. The supervisor
-prepares those profiles before starting ComfyUI and the gateway. Hugging Face
-sources may use `HF_TOKEN`; Civitai sources may use `CIVITAI_TOKEN`.
+`MODEL_PROFILES` defaults to `flux-2-klein-9b`. Set it to one or more
+comma-separated profile names to change the prepared models. The supervisor prepares
+those profiles before starting ComfyUI and the gateway. Hugging Face sources may use
+`HF_TOKEN`; Civitai sources may use `CIVITAI_TOKEN`.
 
 Profiles can also be baked into an image by passing `MODEL_PROFILE` as a build
 argument with the corresponding build secret.

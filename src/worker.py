@@ -206,16 +206,13 @@ def create_app(settings: Settings) -> FastAPI:
         capabilities: dict[str, Any] = {
             "operation": model.operation,
             "input_modalities": ["text", "image"]
-            if model.reference_image_count or "image" in model.input_map
+            if "image" in model.input_map
             else ["text"],
             "output_modalities": [model.output.type],
             "parameters": sorted(model.input_map),
         }
         if model.operation == "image_edit":
-            capabilities["reference_images"] = {
-                "minimum": model.reference_image_count,
-                "maximum": model.reference_image_count,
-            }
+            capabilities["reference_images"] = {"minimum": 1, "maximum": 1}
         return {
             "id": model.id,
             "object": "model",
@@ -353,11 +350,10 @@ def create_app(settings: Settings) -> FastAPI:
                 "model",
             )
         images = list(form.getlist("image"))
-        required_images = model.reference_image_count
-        if len(images) != required_images:
+        if len(images) != 1:
             return openai_error(
-                f"Model '{model.id}' requires exactly {required_images} reference "
-                f"image{'s' if required_images != 1 else ''}; received {len(images)}",
+                f"Model '{model.id}' requires exactly one reference image; "
+                f"received {len(images)}",
                 400,
                 "invalid_value",
                 "image",
@@ -409,11 +405,11 @@ def create_app(settings: Settings) -> FastAPI:
         except httpx.HTTPError as exc:
             return openai_error(str(exc), 502, "upload_failed", "image")
         values: dict[str, Any] = {
+            "image": uploaded[0],
             "prompt": prompt,
             "seed": seed,
             "steps": steps,
         }
-        values.update(zip(model.reference_input_names, uploaded, strict=True))
         try:
             await runtime.reserve_generation()
         except GenerationQueueFull as exc:

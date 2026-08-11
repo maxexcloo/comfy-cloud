@@ -50,37 +50,15 @@ async def test_models_are_workflows_and_require_auth():
             "/v1/models", headers={"Authorization": "Bearer test-key"}
         )
         detail = await client.get(
-            "/v1/models/example/checkpoint-text-to-image",
+            "/v1/models/flux-2-klein-9b/text-to-image",
             headers={"Authorization": "Bearer test-key"},
         )
 
     assert denied.status_code == 401
-    assert response.json()["data"][0]["id"] == "example/checkpoint-text-to-image"
+    assert "flux-2-klein-9b/text-to-image" in {
+        model["id"] for model in response.json()["data"]
+    }
     assert detail.json()["capabilities"]["operation"] == "image_generation"
-
-
-@pytest.mark.asyncio
-async def test_image_edit_model_discovery_reports_exact_reference_count():
-    app = create_app(settings())
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get(
-            "/v1/models", headers={"Authorization": "Bearer test-key"}
-        )
-        detail = await client.get(
-            "/v1/models/flux-2-klein-9b/image-edit-3-reference",
-            headers={"Authorization": "Bearer test-key"},
-        )
-
-    listed = next(
-        model
-        for model in response.json()["data"]
-        if model["id"] == "flux-2-klein-9b/image-edit-3-reference"
-    )
-    expected = {"minimum": 3, "maximum": 3}
-    assert listed["capabilities"]["reference_images"] == expected
-    assert detail.json()["capabilities"]["reference_images"] == expected
-    assert detail.json()["capabilities"]["input_modalities"] == ["text", "image"]
 
 
 @pytest.mark.asyncio
@@ -98,7 +76,7 @@ async def test_openai_image_generation_uses_workflow_model():
             "/v1/images/generations",
             headers={"Authorization": "Bearer test-key"},
             json={
-                "model": "example/checkpoint-text-to-image",
+                "model": "flux-2-klein-9b/text-to-image",
                 "prompt": "a clean test",
                 "size": "768x512",
             },
@@ -120,7 +98,7 @@ async def test_generation_queue_rejects_excess_work():
         response = await client.post(
             "/v1/images/generations",
             headers={"Authorization": "Bearer test-key"},
-            json={"model": "example", "prompt": "test"},
+            json={"model": "flux-2-klein-9b", "prompt": "test"},
         )
 
     assert response.status_code == 429
@@ -149,13 +127,13 @@ async def test_request_size_limit_is_enforced():
 @pytest.mark.parametrize(
     ("body", "parameter"),
     [
-        ({"model": "example", "prompt": "test", "n": "many"}, "n"),
+        ({"model": "flux-2-klein-9b", "prompt": "test", "n": "many"}, "n"),
         (
-            {"model": "example", "prompt": "test", "response_format": "jpeg"},
+            {"model": "flux-2-klein-9b", "prompt": "test", "response_format": "jpeg"},
             "response_format",
         ),
-        ({"model": "example", "prompt": "test", "seed": True}, "seed"),
-        ({"model": "example", "prompt": "test", "size": "-1x512"}, "size"),
+        ({"model": "flux-2-klein-9b", "prompt": "test", "seed": True}, "seed"),
+        ({"model": "flux-2-klein-9b", "prompt": "test", "size": "-1x512"}, "size"),
     ],
 )
 async def test_image_generation_rejects_invalid_parameters(body, parameter):
@@ -184,7 +162,7 @@ async def test_image_url_uses_request_base_when_not_configured():
             "/v1/images/generations",
             headers={"Authorization": "Bearer test-key"},
             json={
-                "model": "example",
+                "model": "flux-2-klein-9b",
                 "prompt": "test",
                 "response_format": "url",
             },
@@ -200,7 +178,7 @@ async def test_image_url_uses_request_base_when_not_configured():
 @pytest.mark.asyncio
 async def test_openai_image_edit_uses_multipart_and_workflow():
     app = create_app(settings())
-    app.state.runtime.catalogue.get("flux-2-klein-4b-edit").required_files = []
+    app.state.runtime.catalogue.get("flux-2-klein-9b-edit").required_files = []
     run_values: list[dict] = []
     app.state.runtime.run = AsyncMock(
         side_effect=lambda model, values: (
@@ -233,7 +211,7 @@ async def test_openai_image_edit_uses_multipart_and_workflow():
             "/v1/images/edits",
             headers={"Authorization": "Bearer test-key"},
             data={
-                "model": "flux-2-klein-4b-edit",
+                "model": "flux-2-klein-9b-edit",
                 "prompt": "make it blue",
                 "n": "2",
                 "seed": "10",
@@ -259,107 +237,21 @@ async def test_openai_image_edit_uses_multipart_and_workflow():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("references", [2, 3, 4])
-async def test_image_edit_uploads_ordered_references(references):
-    app = create_app(settings())
-    run_values: list[dict] = []
-    uploaded_content: list[bytes] = []
-
-    async def upload(filename, content, content_type):
-        uploaded_content.append(content.read())
-        return f"uploaded-{len(uploaded_content)}.png"
-
-    app.state.runtime.comfy.upload = AsyncMock(side_effect=upload)
-    app.state.runtime.run = AsyncMock(
-        side_effect=lambda model, values: (
-            run_values.append(dict(values)) or [OutputRef("edited.png")]
-        )
-    )
-    app.state.runtime.comfy.fetch_output = AsyncMock(
-        return_value=httpx.Response(
-            200, content=b"edit", headers={"content-type": "image/png"}
-        )
-    )
-    files = [
-        ("image", (f"reference-{index}.png", f"image-{index}".encode(), "image/png"))
-        for index in range(1, references + 1)
-    ]
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/v1/images/edits",
-            headers={"Authorization": "Bearer test-key"},
-            data={
-                "model": f"flux-2-klein-9b/image-edit-{references}-reference",
-                "prompt": "combine the people in order",
-            },
-            files=files,
-        )
-
-    assert response.status_code == 200
-    assert uploaded_content == [
-        f"image-{index}".encode() for index in range(1, references + 1)
-    ]
-    assert run_values == [
-        {
-            "prompt": "combine the people in order",
-            "seed": None,
-            "steps": None,
-            **{
-                f"image_{index}": f"uploaded-{index}.png"
-                for index in range(1, references + 1)
-            },
-        }
-    ]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("model_references", "supplied_references"), [(2, 1), (2, 3), (4, 5)]
-)
-async def test_image_edit_rejects_wrong_reference_count(
-    model_references, supplied_references
-):
-    app = create_app(settings())
-    app.state.runtime.comfy.upload = AsyncMock()
-    files = [
-        ("image", (f"reference-{index}.png", b"image", "image/png"))
-        for index in range(supplied_references)
-    ]
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/v1/images/edits",
-            headers={"Authorization": "Bearer test-key"},
-            data={
-                "model": f"flux-2-klein-9b/image-edit-{model_references}-reference",
-                "prompt": "combine",
-            },
-            files=files,
-        )
-
-    assert response.status_code == 400
-    assert response.json()["error"]["param"] == "image"
-    assert response.json()["error"]["code"] == "invalid_value"
-    assert app.state.runtime.comfy.upload.await_count == 0
-
-
-@pytest.mark.asyncio
 async def test_image_edit_rejects_unsupported_parameters():
     app = create_app(settings())
-    app.state.runtime.catalogue.get("flux-2-klein-4b-edit").required_files = []
+    app.state.runtime.catalogue.get("flux-2-klein-9b-edit").required_files = []
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         no_prompt = await client.post(
             "/v1/images/edits",
             headers={"Authorization": "Bearer test-key"},
-            data={"model": "flux-2-klein-4b-edit"},
+            data={"model": "flux-2-klein-9b-edit"},
             files={"image": ("source.png", b"image-bytes", "image/png")},
         )
         bad_size = await client.post(
             "/v1/images/edits",
             headers={"Authorization": "Bearer test-key"},
-            data={"model": "flux-2-klein-4b-edit", "prompt": "ok", "size": "512x512"},
+            data={"model": "flux-2-klein-9b-edit", "prompt": "ok", "size": "512x512"},
             files={"image": ("source.png", b"image-bytes", "image/png")},
         )
 
@@ -443,7 +335,7 @@ async def test_model_with_unregistered_nodes_is_not_advertised():
             "/v1/models", headers={"Authorization": "Bearer test-key"}
         )
         detail = await client.get(
-            "/v1/models/example/checkpoint-text-to-image",
+            "/v1/models/flux-2-klein-9b/text-to-image",
             headers={"Authorization": "Bearer test-key"},
         )
     await app.state.runtime.comfy.http.aclose()
@@ -460,7 +352,7 @@ async def test_models_fail_closed_when_node_information_is_unavailable():
     headers = {"Authorization": "Bearer test-key"}
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         listing = await client.get("/v1/models", headers=headers)
-        detail = await client.get("/v1/models/example", headers=headers)
+        detail = await client.get("/v1/models/does-not-exist", headers=headers)
 
     assert listing.json()["data"] == []
     assert detail.status_code == 404

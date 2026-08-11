@@ -19,7 +19,7 @@ On a host with the NVIDIA Container Toolkit:
 
 ```bash
 cp .env.example .env
-# Replace API_KEY and COMFY_UI_PASSWORD, then select MODEL_PROFILES as required.
+# Replace API_KEY and COMFY_UI_PASSWORD. FLUX.2 klein 9B is selected by default.
 docker compose up --build --detach
 docker compose ps
 ```
