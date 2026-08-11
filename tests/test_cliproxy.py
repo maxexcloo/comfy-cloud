@@ -57,5 +57,5 @@ async def test_cliproxy_uses_fixed_media_models():
     assert video_body["model"] == "grok-imagine-video-1.5"
     assert video_body["aspect_ratio"] == "16:9"
     assert video_body["resolution"] == "480p"
-    assert video_body["seconds"] == 5
+    assert video_body["duration"] == 5
     assert output_url == "https://videos.example/result.mp4"

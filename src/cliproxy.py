@@ -64,9 +64,11 @@ class CliproxyClient:
             "model": VIDEO_MODEL,
             "prompt": body["prompt"],
         }
-        for parameter in ("aspect_ratio", "resolution", "seconds"):
+        for parameter in ("aspect_ratio", "resolution"):
             if body.get(parameter) is not None:
                 payload[parameter] = body[parameter]
+        if body.get("seconds") is not None:
+            payload["duration"] = body["seconds"]
         if body.get("image") is not None:
             payload["image"] = body["image"]
         response = await self.http.post("/v1/videos/generations", json=payload)
