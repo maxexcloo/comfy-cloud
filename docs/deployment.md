@@ -39,11 +39,11 @@ docker compose ps
 
 Pull requests build both images and smoke-test their packaged commands.
 
-Compose starts `comfy-control control` and a local `comfy-control pod` worker.
-The local Pod is enabled when `LOCAL_POD_URL` is set. Managed providers are enabled
-by their Modal, RunPod, SaladCloud or Vast.ai management credential. The controller
-discovers resources by their configured stable name and refreshes provider-assigned
-worker URLs at runtime; do not store those URLs in deployment configuration. Add
+Compose starts only `comfy-control control`. An externally managed local Pod is
+enabled when `LOCAL_POD_URL` is set. Managed providers are enabled by their Modal,
+RunPod, SaladCloud or Vast.ai management credential. The controller discovers
+resources by their configured stable name and refreshes provider-assigned worker
+URLs at runtime; do not store those URLs in deployment configuration. Add
 `CLIPROXY_MANAGEMENT_KEY` to display CLIProxyAPI usage.
 
 Keep the controller's `/data` directory on persistent storage. It contains the
@@ -83,11 +83,11 @@ those profiles before starting ComfyUI and the gateway. Hugging Face sources may
 Profiles can also be baked into an image by passing `MODEL_PROFILE` as a build
 argument with the corresponding build secret.
 
-## Object Storage
+## Output Storage
 
-Configure S3-compatible storage when generated output must outlive its worker.
-Without object storage, URLs and completed output remain tied to the worker and its
-volume.
+The controller copies successful images and videos into `/data/media` before a
+worker is stopped. Keep `/data` on persistent storage; API image URLs and completed
+video content are then served by Comfy Control with normal authentication.
 
 ## Important Limits
 

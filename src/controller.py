@@ -563,8 +563,6 @@ class Controller:
         content_type: str,
         filename: str,
     ) -> None:
-        if len(content) > self.settings.maximum_media_bytes:
-            raise ValueError("generated media exceeds CONTROL_MAXIMUM_MEDIA_BYTES")
         extension = media_extension(content_type)
         directory = self.media_path / history_id
         directory.mkdir(parents=True, exist_ok=True)
@@ -601,20 +599,31 @@ class Controller:
                 await self.download_media(history_id, provider, redirect, fallback_name)
                 return
             response.raise_for_status()
-            size = 0
-            chunks = []
-            async for chunk in response.aiter_bytes():
-                size += len(chunk)
-                if size > self.settings.maximum_media_bytes:
-                    raise ValueError(
-                        "generated media exceeds CONTROL_MAXIMUM_MEDIA_BYTES"
-                    )
-                chunks.append(chunk)
             filename = unquote(Path(urlparse(resolved).path).name) or fallback_name
             content_type = response.headers.get(
                 "content-type", media_type_from_filename(filename)
             )
-            self.save_media(history_id, b"".join(chunks), content_type, filename)
+            extension = media_extension(content_type)
+            directory = self.media_path / history_id
+            directory.mkdir(parents=True, exist_ok=True)
+            path = directory / f"{uuid.uuid4().hex}{extension}"
+            temporary = path.with_suffix(path.suffix + ".part")
+            size = 0
+            try:
+                with temporary.open("wb") as file:
+                    async for chunk in response.aiter_bytes():
+                        file.write(chunk)
+                        size += len(chunk)
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
+            self.store.save_media(
+                history_id,
+                content_type.split(";", 1)[0],
+                safe_filename(filename, extension),
+                path,
+                size,
+            )
 
     async def archive_images(
         self, history_id: str, provider: str, response: httpx.Response

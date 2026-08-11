@@ -23,18 +23,18 @@ requires the exact `x-comfy-control-action: provider/action` header.
 
 ## Quick Start
 
-On a host with the NVIDIA Container Toolkit:
+On a container host:
 
 ```bash
 cp .env.example .env
-# Set the required control, worker and UI secrets. FLUX.2 klein 9B is the default.
+# Set the required control, worker and UI secrets.
 docker compose up --build --detach
 docker compose ps
 ```
 
-Comfy Control listens on `http://localhost:28081`. Compose builds the separate
-control and worker images, then starts the control plane and one local Pod worker.
-The worker supports `pod`, `serverless` and `vast-serverless` commands.
+Comfy Control listens on `http://localhost:28081`. Compose builds and starts only
+the lightweight control plane. The control plane manages independently deployed
+worker images; `LOCAL_POD_URL` may point at an externally managed Pod worker.
 
 ## Repository Layout
 

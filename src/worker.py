@@ -536,19 +536,7 @@ def create_app(settings: Settings) -> FastAPI:
     ) -> list[dict[str, Any]]:
         data = []
         for ref in refs:
-            if response_format == "url" and runtime.storage is not None:
-                output = await runtime.comfy.fetch_output(ref)
-                url = await runtime.storage.upload(
-                    ref.filename,
-                    output.content,
-                    output.headers.get("content-type", ref.media_type),
-                    ref.subfolder,
-                )
-                if url:
-                    data.append({"url": url})
-                    continue
-                data.append({"b64_json": base64.b64encode(output.content).decode()})
-            elif response_format == "url":
+            if response_format == "url":
                 query = urlencode(
                     {
                         "filename": ref.filename,
@@ -582,7 +570,6 @@ def create_app(settings: Settings) -> FastAPI:
                 if primary_error is not None:
                     raise primary_error
                 job.output = (await runtime.run(model, values))[0]
-                await runtime.upload_output(job)
             except Exception as comfy_error:
                 if runtime.cliproxy is None:
                     raise
@@ -617,7 +604,7 @@ def create_app(settings: Settings) -> FastAPI:
                 "status": job.status,
                 "created_at": job.created_at,
                 "error": job.error,
-                "output_url": runtime.job_output_url(job),
+                "output_url": job.output_url,
             }
         )
 
@@ -799,7 +786,7 @@ def create_app(settings: Settings) -> FastAPI:
                 "status": job.status,
                 "created_at": job.created_at,
                 "error": job.error,
-                "output_url": runtime.job_output_url(job),
+                "output_url": job.output_url,
             }
         )
 
@@ -808,9 +795,9 @@ def create_app(settings: Settings) -> FastAPI:
         if denied := require(request):
             return denied
         job = runtime.get_job(job_id)
-        if not job or (not job.output and not runtime.job_output_url(job)):
+        if not job or (not job.output and not job.output_url):
             return openai_error("Video is not ready", 409, "video_not_ready")
-        if output_url := runtime.job_output_url(job):
+        if output_url := job.output_url:
             return Response(status_code=302, headers={"Location": output_url})
         return StreamingResponse(
             runtime.comfy.stream_output(job.output),

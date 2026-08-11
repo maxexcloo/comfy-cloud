@@ -38,7 +38,6 @@ class Settings:
     jobs_dir: Path | None = None
     maximum_pending_generations: int = 8
     maximum_request_bytes: int = 100 * 1024 * 1024
-    storage_env: dict[str, str] | None = None
 
     @property
     def ui_enabled(self) -> bool:

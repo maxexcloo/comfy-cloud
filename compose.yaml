@@ -5,9 +5,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.control
-    depends_on:
-      comfy-worker:
-        condition: service_healthy
     environment:
       CLIPROXY_API_KEY: ${CLIPROXY_API_KEY:-}
       CLIPROXY_MANAGEMENT_KEY: ${CLIPROXY_MANAGEMENT_KEY:-}
@@ -15,10 +12,9 @@ services:
       CONTROL_API_KEY: ${CONTROL_API_KEY:?set CONTROL_API_KEY in .env}
       CONTROL_CONFIG: /config/control.yaml
       CONTROL_DATABASE: /data/comfy-control.db
-      CONTROL_MAXIMUM_MEDIA_BYTES: ${CONTROL_MAXIMUM_MEDIA_BYTES:-2147483648}
       CONTROL_UI_PASSWORD: ${CONTROL_UI_PASSWORD:?set CONTROL_UI_PASSWORD in .env}
       CONTROL_UI_USERNAME: ${CONTROL_UI_USERNAME:-comfy}
-      LOCAL_POD_URL: http://comfy-worker:8000
+      LOCAL_POD_URL: ${LOCAL_POD_URL:-}
       MODAL_TOKEN_ID: ${MODAL_TOKEN_ID:-}
       MODAL_TOKEN_SECRET: ${MODAL_TOKEN_SECRET:-}
       RUNPOD_API_KEY: ${RUNPOD_API_KEY:-}
@@ -42,40 +38,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./config/control.yaml:/config/control.yaml:ro
-      - control-data:/data
-
-  comfy-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    environment:
-      API_KEY: ${WORKER_API_KEY:?set WORKER_API_KEY in .env}
-      CIVITAI_TOKEN: ${CIVITAI_TOKEN:-}
-      COMFY_UI_PASSWORD: ${COMFY_UI_PASSWORD:?set COMFY_UI_PASSWORD in .env}
-      COMFY_UI_USERNAME: ${COMFY_UI_USERNAME:-comfy}
-      HF_TOKEN: ${HF_TOKEN:-}
-      JOBS_DIR: /data/jobs
-      MODEL_PROFILES: ${MODEL_PROFILES:-flux-2-klein-9b}
-      MODELS_DIR: /opt/ComfyUI/models
-    gpus: all
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')
-      interval: 30s
-      retries: 5
-      start_period: 20s
-      timeout: 10s
-    restart: unless-stopped
-    volumes:
-      - jobs:/data/jobs
-      - models:/opt/ComfyUI/models
-      - output:/opt/ComfyUI/output
+      - data:/data
 
 volumes:
-  control-data:
-  jobs:
-  models:
-  output:
+  data:

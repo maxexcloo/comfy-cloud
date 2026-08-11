@@ -54,6 +54,32 @@ def error(message: str, status: int, code: str) -> JSONResponse:
     )
 
 
+def archived_image_content(
+    request: Request, controller: Controller, history_id: str, response: httpx.Response
+) -> bytes:
+    try:
+        payload = response.json()
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, list):
+            return response.content
+        archived = iter(controller.store.media_for_history(history_id))
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            if not (item.get("b64_json") or item.get("url")):
+                continue
+            media = next(archived, None)
+            if media is not None and item.get("url"):
+                item["url"] = str(
+                    request.url_for(
+                        "history_media", history_id=history_id, media_id=media.id
+                    )
+                )
+        return json.dumps(payload, separators=(",", ":")).encode()
+    except (TypeError, ValueError):
+        return response.content
+
+
 def bearer_authorised(request: Request, settings: ControlSettings) -> bool:
     scheme, _, value = request.headers.get("authorization", "").partition(" ")
     return scheme.lower() == "bearer" and hmac.compare_digest(value, settings.api_key)
@@ -325,7 +351,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def history_media(
         history_id: str, media_id: int, request: Request
     ) -> Response:
-        if not ui_authorised(request, settings):
+        if not (
+            ui_authorised(request, settings) or bearer_authorised(request, settings)
+        ):
             return Response(status_code=401)
         item = controller.store.media(media_id)
         if (
@@ -566,7 +594,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     request_id=request_id,
                 )
                 return Response(
-                    content=response.content,
+                    content=archived_image_content(
+                        request, controller, history_id, response
+                    ),
                     status_code=response.status_code,
                     media_type=response.headers.get("content-type"),
                     headers={
@@ -678,7 +708,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     history_id, "completed", provider=target.provider
                 )
                 return Response(
-                    content=response.content,
+                    content=archived_image_content(
+                        request, controller, history_id, response
+                    ),
                     status_code=response.status_code,
                     media_type=response.headers.get("content-type"),
                     headers={
@@ -814,7 +846,12 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             return error("video job was not found", 404, "not_found")
         if not content:
             if job.response_json:
-                return JSONResponse(json.loads(job.response_json))
+                response_data = json.loads(job.response_json)
+                if controller.store.media_for_history(job_id):
+                    response_data["output_url"] = str(
+                        request.url_for("video_content", job_id=job_id)
+                    )
+                return JSONResponse(response_data)
             return JSONResponse(
                 {
                     "id": job.id,

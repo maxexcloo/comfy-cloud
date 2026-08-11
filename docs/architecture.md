@@ -31,8 +31,7 @@ deployment configuration.
 7. On a retriable failure, the control plane tries the next target and eventually
    CLIProxyAPI with `grok-imagine-image-quality` for images and edits, or
    `grok-imagine-video-1.5` for video.
-8. Results return as base64, an authenticated local URL or a durable
-   object-storage URL.
+8. Results return as base64 or an authenticated URL.
 
 A timed-out workflow is removed from the ComfyUI queue or interrupted when already
 running.
@@ -52,13 +51,11 @@ and videos in a popup viewer after sign-in.
 
 Video requests also create durable worker-local records. When `JOBS_DIR` is
 configured, worker job transitions survive process restarts. Completed outputs can
-be streamed from ComfyUI or uploaded to S3-compatible object storage.
+be streamed from ComfyUI to the controller.
 
-Provider-scale durability requires object storage because worker-local output is
-lost when the worker and its volume are destroyed. Controller-owned history remains
-available in its `control-data` volume. Media is retained until that volume is
-explicitly pruned; `CONTROL_MAXIMUM_MEDIA_BYTES` limits each archived file and
-defaults to 2 GiB.
+Worker-local output is lost when the worker and its volume are destroyed.
+Controller-owned history remains available in its `data` volume, and media is
+retained until that volume is explicitly pruned.
 
 ## Runtime Modes
 

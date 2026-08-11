@@ -242,6 +242,47 @@ async def test_dashboard_tests_provider_and_shows_control_logs(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_controller_rewrites_worker_image_url_to_archived_media(tmp_path):
+    provider_app = FastAPI()
+
+    @provider_app.get("/health/ready")
+    async def provider_ready() -> dict[str, str]:
+        return {"status": "ready"}
+
+    @provider_app.post("/v1/images/generations")
+    async def provider_generation() -> dict[str, object]:
+        return {"created": 1, "data": [{"url": "/generated.png"}]}
+
+    @provider_app.get("/generated.png")
+    async def provider_media() -> Response:
+        return Response(b"archived-image", media_type="image/png")
+
+    app = create_app(settings(tmp_path))
+    runtime = app.state.controller.providers["worker"]
+    await runtime.client.aclose()
+    runtime.client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=provider_app), base_url="http://worker"
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        generated = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer control-key"},
+            json={"model": "public/image", "prompt": "test"},
+        )
+        archived_url = generated.json()["data"][0]["url"]
+        archived = await client.get(
+            archived_url, headers={"Authorization": "Bearer control-key"}
+        )
+
+    assert archived_url.startswith("http://control/api/history/")
+    assert archived.content == b"archived-image"
+    assert archived.headers["content-type"] == "image/png"
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
 async def test_controller_rejects_provider_outside_selected_model(tmp_path):
     app = create_app(settings(tmp_path))
     async with httpx.AsyncClient(
@@ -686,6 +727,7 @@ def test_compose_forwards_control_provider_environment():
     control = (ROOT / "config/control.yaml").read_text()
     required = set(re.findall(r"(?:env\.|\$\{)([A-Z][A-Z0-9_]*)", control))
     compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+    assert set(compose["services"]) == {"comfy-control"}
     forwarded = set(compose["services"]["comfy-control"]["environment"])
     env_example = {
         line.partition("=")[0]

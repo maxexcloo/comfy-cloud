@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import tempfile
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -15,7 +13,6 @@ from .cliproxy import CliproxyClient
 from .comfy import ComfyClient, OutputRef
 from .config import Settings
 from .jobs import JobStore
-from .storage import ObjectStorage
 
 
 class GenerationQueueFull(RuntimeError):
@@ -31,7 +28,6 @@ class VideoJob:
     error: str | None = None
     lease_expires_at: int | None = None
     output: OutputRef | None = None
-    output_key: str | None = None
     output_url: str | None = None
 
     def record(self) -> dict[str, Any]:
@@ -50,7 +46,6 @@ class VideoJob:
             }
             if self.output is not None
             else None,
-            "output_key": self.output_key,
             "output_url": self.output_url,
         }
 
@@ -75,7 +70,6 @@ class VideoJob:
             error=record.get("error"),
             lease_expires_at=record.get("lease_expires_at"),
             output=output,
-            output_key=record.get("output_key"),
             output_url=record.get("output_url"),
         )
 
@@ -94,7 +88,6 @@ class Runtime:
             else None
         )
         self.comfy = ComfyClient(settings.comfy_url, settings.request_timeout)
-        self.storage = ObjectStorage.from_env(settings.storage_env)
         self.jobs: dict[str, VideoJob] = {}
         self.job_store = JobStore(settings.jobs_dir)
         self.inference_lock = asyncio.Lock()
@@ -219,31 +212,6 @@ class Runtime:
         self.background_tasks.add(task)
         task.add_done_callback(self.background_tasks.discard)
         return task
-
-    def job_output_url(self, job: VideoJob) -> str | None:
-        if self.storage is not None and job.output_key:
-            return self.storage.url(job.output_key)
-        return job.output_url
-
-    async def upload_output(self, job: VideoJob) -> None:
-        if self.storage is None or job.output is None:
-            return
-        with tempfile.NamedTemporaryFile(prefix="comfy-control-", delete=False) as file:
-            temporary = Path(file.name)
-        try:
-            content_type = await self.comfy.save_output(job.output, temporary)
-            output_url = await self.storage.upload_path(
-                job.output.filename,
-                temporary,
-                content_type,
-                job.output.subfolder,
-            )
-            if output_url:
-                job.output_key = self.storage.key(
-                    job.output.filename, job.output.subfolder
-                )
-        finally:
-            temporary.unlink(missing_ok=True)
 
     async def object_info(self) -> dict[str, Any] | None:
         try:

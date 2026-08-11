@@ -83,20 +83,3 @@ comfy-control unpack model-pack/model.safetensors.pack.json \
 
 Publishing model weights may impose upstream licence obligations. Review each
 model licence before enabling public package access.
-
-## Object Storage
-
-Configure S3-compatible output storage when generated files must outlive a worker:
-
-```bash
-S3_ENDPOINT_URL=https://...
-S3_BUCKET=comfy-control
-S3_ACCESS_KEY_ID=...
-S3_SECRET_ACCESS_KEY=...
-S3_REGION=auto
-S3_PREFIX=outputs
-S3_URL_EXPIRES=3600
-```
-
-`S3_PUBLIC_BASE_URL` may replace presigned URLs. Without object storage, completed
-outputs remain on the producing worker and downloading them may wake that provider.
