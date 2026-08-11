@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+
 from comfy_control.comfy import OutputRef
 from comfy_control.config import Settings
 from comfy_control.worker import create_app as create_gateway

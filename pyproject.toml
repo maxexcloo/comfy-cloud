@@ -38,3 +38,6 @@ only-include = ["src"]
 pythonpath = ["."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff.lint.isort]
+known-first-party = ["comfy_control"]
