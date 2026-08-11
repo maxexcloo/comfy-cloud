@@ -50,7 +50,7 @@ providers:
     enabled_if: CLIPROXY_API_KEY
     health_path: /v1/models
     idle_seconds: 0
-    platform: CLIProxyAPI
+    platform: CLI Proxy API
     type: proxy
     usage:
       kind: cliproxyapi

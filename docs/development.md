@@ -31,7 +31,7 @@ The container workflow separately builds and smoke-tests the Comfy Control image
 - Keep portable API behaviour directly in `src/`.
 - Keep provider-specific deployment assets in `deploy/`.
 - Keep lifecycle and telemetry configuration in `config/control.yaml`.
-- Keep ComfyUI workers primary and the fixed CLIProxyAPI fallback last.
+- Keep ComfyUI workers primary and the fixed CLI Proxy API fallback last.
 
 ## Command-Line Interface
 

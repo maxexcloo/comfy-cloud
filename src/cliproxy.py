@@ -72,7 +72,7 @@ class CliproxyClient:
         response.raise_for_status()
         request_id = response.json().get("request_id")
         if not isinstance(request_id, str) or not request_id:
-            raise RuntimeError("CLIProxyAPI returned no video request ID")
+            raise RuntimeError("CLI Proxy API returned no video request ID")
         deadline = asyncio.get_running_loop().time() + self.timeout
         while asyncio.get_running_loop().time() < deadline:
             response = await self.http.get(f"/v1/videos/{request_id}")
@@ -84,12 +84,14 @@ class CliproxyClient:
                 output_url = video.get("url") or result.get("output_url")
                 if isinstance(output_url, str) and output_url:
                     return output_url
-                raise RuntimeError("CLIProxyAPI completed video without an output URL")
+                raise RuntimeError(
+                    "CLI Proxy API completed video without an output URL"
+                )
             if status in {"error", "failed"}:
                 raise RuntimeError(
-                    f"CLIProxyAPI video generation failed: {result.get('error', status)}"
+                    f"CLI Proxy API video generation failed: {result.get('error', status)}"
                 )
             await asyncio.sleep(1)
         raise TimeoutError(
-            f"CLIProxyAPI video generation exceeded {self.timeout} seconds"
+            f"CLI Proxy API video generation exceeded {self.timeout} seconds"
         )

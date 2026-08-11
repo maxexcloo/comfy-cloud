@@ -44,7 +44,7 @@ enabled when `LOCAL_POD_URL` is set. Managed providers are enabled by their Moda
 RunPod, SaladCloud or Vast.ai management credential. The controller discovers
 resources by their configured stable name and refreshes provider-assigned worker
 URLs at runtime; do not store those URLs in deployment configuration. Add
-`CLIPROXY_MANAGEMENT_KEY` to display CLIProxyAPI usage.
+`CLIPROXY_MANAGEMENT_KEY` to display CLI Proxy API usage.
 
 Keep the controller's `/data` directory on persistent storage. It contains the
 SQLite job history and controller-owned copies of generated media used by the
@@ -76,13 +76,13 @@ exposed. Vast.ai Serverless uses `comfy-control vast-serverless` for its request
 envelope.
 
 The dashboard displays RunPod billing history, Vast.ai credit, Modal billing-cycle
-spend, SaladCloud replica quota and CLIProxyAPI usage. SaladCloud monetary credit is
+spend, SaladCloud replica quota and CLI Proxy API usage. SaladCloud monetary credit is
 currently portal-only, so its public API contributes usage and quota instead.
-Comfy Control derives CLIProxyAPI request totals from its durable history and reads
-Grok allowances from CLIProxyAPI's authenticated account data. CLIProxyAPI v7
+Comfy Control derives CLI Proxy API request totals from its durable history and reads
+Grok allowances from CLI Proxy API's authenticated account data. CLI Proxy API v7
 removed the legacy aggregate usage route, while its replacement is a destructive
 collector queue and must not be polled by a dashboard. Keep
-`usage-statistics-enabled` set to `true` for CLIProxyAPI's own telemetry.
+`usage-statistics-enabled` set to `true` for CLI Proxy API's own telemetry.
 
 ## Model Preparation
 

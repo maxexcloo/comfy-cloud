@@ -29,7 +29,7 @@ deployment configuration.
 5. The request is admitted to the bounded queue.
 6. GPU execution is serialised and submitted to local ComfyUI.
 7. On a retriable failure, the control plane tries the next target and eventually
-   CLIProxyAPI with `grok-imagine-image-quality` for images and edits, or
+   CLI Proxy API with `grok-imagine-image-quality` for images and edits, or
    `grok-imagine-video-1.5` for video.
 8. Results return as base64 or an authenticated URL.
 
@@ -86,7 +86,7 @@ in front of the normal Serverless worker.
 ## Provider Telemetry
 
 Account telemetry is cached for one minute and cannot take inference offline.
-CLIProxyAPI reports request and token usage and obtains sanitised remaining Grok
+CLI Proxy API reports request and token usage and obtains sanitised remaining Grok
 allowances through its per-credential Management API proxy. RunPod reports Pod or
 Endpoint billing history, Vast.ai reports account credit, Modal reports billing-cycle
 spend and credits used, and SaladCloud reports public replica usage and quota.

@@ -2,14 +2,14 @@
 
 Comfy Control is an authenticated OpenAI-compatible control plane for ComfyUI. It
 routes image and video requests across Pod and Serverless deployments, controls
-provider lifecycles, reports usage and credit, and falls back to CLIProxyAPI.
+provider lifecycles, reports usage and credit, and falls back to CLI Proxy API.
 Public model IDs use configured provider fallback. Passing a qualified
 `provider/model` ID pins that provider; configured aliases such as `cliproxy` and
 `runpod` are accepted.
 
 ```text
 OpenAI-compatible client -> Comfy Control -> ComfyUI workers
-                                      `-> CLIProxyAPI (fallback)
+                                      `-> CLI Proxy API (fallback)
 ```
 
 The lightweight `control` image runs the control plane. The CUDA-enabled `worker`

@@ -161,7 +161,7 @@ def create_app(settings: Settings) -> FastAPI:
             return cliproxy_response(await runtime.cliproxy.generate_image(body))
         except (RuntimeError, TimeoutError, httpx.HTTPError) as cliproxy_error:
             return openai_error(
-                f"ComfyUI failed: {comfy_error}; CLIProxyAPI failed: {cliproxy_error}",
+                f"ComfyUI failed: {comfy_error}; CLI Proxy API failed: {cliproxy_error}",
                 502,
                 "providers_failed",
             )
@@ -183,7 +183,7 @@ def create_app(settings: Settings) -> FastAPI:
             )
         except (RuntimeError, TimeoutError, httpx.HTTPError) as cliproxy_error:
             return openai_error(
-                f"ComfyUI failed: {comfy_error}; CLIProxyAPI failed: {cliproxy_error}",
+                f"ComfyUI failed: {comfy_error}; CLI Proxy API failed: {cliproxy_error}",
                 502,
                 "providers_failed",
             )
@@ -580,7 +580,7 @@ def create_app(settings: Settings) -> FastAPI:
                 except Exception as cliproxy_error:
                     raise RuntimeError(
                         f"ComfyUI failed: {comfy_error}; "
-                        f"CLIProxyAPI failed: {cliproxy_error}"
+                        f"CLI Proxy API failed: {cliproxy_error}"
                     ) from cliproxy_error
             job.status = "completed"
             job.lease_expires_at = None
