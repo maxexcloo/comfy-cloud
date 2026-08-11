@@ -189,6 +189,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert "if(refresh.running)return" in dashboard.text
     assert ".join('\\n')" in dashboard.text
     assert "Previous media (Left arrow)" in dashboard.text
+    assert "event.clientX<bounds.left" in dashboard.text
     assert "Send test request" in dashboard.text
     assert "Log Out" in dashboard.text
     assert [model["id"] for model in models.json()["data"]] == [
