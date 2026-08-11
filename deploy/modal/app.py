@@ -5,7 +5,7 @@ import modal
 
 app = modal.App("comfy-control")
 image = modal.Image.from_registry(
-    os.getenv("WORKER_IMAGE", "ghcr.io/maxexcloo/ai-router:worker"),
+    os.getenv("WORKER_IMAGE", "ghcr.io/maxexcloo/comfy-control:main"),
     add_python="3.11",
 ).entrypoint([])
 models = modal.Volume.from_name(

@@ -18,18 +18,11 @@ env:
 
 jobs:
   image:
-    name: ${{ matrix.tag }} image
+    name: Image
     permissions:
       contents: read
       packages: write
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - dockerfile: Dockerfile.control
-            tag: control
-          - dockerfile: Dockerfile
-            tag: worker
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -47,13 +40,14 @@ jobs:
       - name: Build
         uses: docker/build-push-action@v7
         with:
-          cache-from: type=gha,scope=${{ matrix.tag }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.tag }},ignore-error=true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
           context: .
-          file: ${{ matrix.dockerfile }}
           load: ${{ github.event_name == 'pull_request' }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:main
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
       - name: Smoke-test command
         if: github.event_name == 'pull_request'
-        run: docker run --rm "${IMAGE_NAME}:${{ matrix.tag }}" comfy-control --help
+        run: docker run --rm "${IMAGE_NAME}:main" comfy-control --help

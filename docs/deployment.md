@@ -1,74 +1,53 @@
 # Deployment & Operations
 
-## Stack
+## Container
 
-Copy `.env.example` to `.env`, replace the required placeholders, then start the
-stack:
+GitHub Actions publishes one image from `main`:
+
+```text
+ghcr.io/OWNER/comfy-control:main
+```
+
+The image contains Comfy Control, pinned ComfyUI, the bundled catalogue and model
+profiles. Run it on a CUDA-capable host with persistent model and output storage.
+
+For a local GPU host:
 
 ```bash
+cp .env.example .env
 docker compose up --build --detach
 docker compose ps
 ```
 
-Compose runs Bifrost, CLIProxyAPI and Comfy Control. Bifrost loads
-`config/bifrost.bootstrap.json` only into a fresh data volume; later provider and
-access changes belong in its UI/API. Comfy Control reads `config/control.yaml` on
-every start.
+Pull requests build the image and smoke-test its packaged command.
 
-Authenticate desired CLI providers through CLIProxyAPI management. Bifrost routes
-language models through CLIProxyAPI and media models through Comfy Control.
+## Providers
 
-## Worker
+Definitions under `deploy/` show how to run the same image on Modal, RunPod,
+SaladCloud and Vast.ai. These assets configure a Comfy Control instance; provider
+selection and lifecycle orchestration remain external concerns.
 
-GitHub Actions publishes two images from `main`:
+Use persistent storage for model weights and `JOBS_DIR` where the provider supports
+it. Set `MODE=serverless` when the ComfyUI frontend should not be exposed.
 
-- `ghcr.io/OWNER/ai-router:control` for Comfy Control;
-- `ghcr.io/OWNER/ai-router:worker` for the GPU worker and ComfyUI.
+## Model Preparation
 
-Pull requests build and smoke-test both images. Configure and deploy the worker in
-your chosen GPU platform, then add its URL and API key to `config/control.yaml`.
-The example uses the `WORKER_URL` and `WORKER_API_KEY` variables from `.env`.
+Set `MODEL_PROFILES` to one or more comma-separated profile names. The supervisor
+prepares those profiles before starting ComfyUI and the gateway. Hugging Face
+sources may use `HF_TOKEN`; Civitai sources may use `CIVITAI_TOKEN`.
 
-Provider-specific worker definitions are retained under `deploy/` for Modal,
-RunPod, SaladCloud and Vast.ai. They consume the same `worker` image; they are not
-separate application stacks.
+Profiles can also be baked into an image by passing `MODEL_PROFILE` as a build
+argument with the corresponding build secret.
 
-Provider management is deliberately API-only. Declare deploy, destroy, status,
-start and stop requests in `config/control.yaml`; Comfy Control sends them from its
-backend and exposes the actions in its authenticated UI. A deploy action may set
-`resource_id_path` to capture the provider's returned identifier. Use
-`{resource_id}` in later action URLs and the worker `base_url`; the identifier is
-persisted in Comfy Control's SQLite volume.
+## Object Storage
 
-[`config/control.example.yaml`](../config/control.example.yaml) is a complete
-RunPod example using the official REST API. SaladCloud and Vast.ai use the same
-declarative action mechanism. Modal is the small exception: its retained
-`deploy/modal/app.py` definition uses Modal's programmatic Python deployment API,
-and Modal handles scaling its web function to zero.
-
-Provider API keys and the worker API key stay in `.env` and are expanded only in
-the controller process. Provider responses are redacted before the UI displays
-fields named like keys, passwords, secrets or tokens. Add confirmations to
-destructive or expensive actions.
-
-## Open WebUI
-
-Point Open WebUI's common OpenAI-compatible connection at Bifrost `/v1`. Direct
-Comfy Control integration examples remain under `examples/` for installations that
-need Open WebUI's native ComfyUI or image-generation integration.
-
-After gateway changes, verify both model discovery and a completion. Set
-`BIFROST_API_KEY` in `.env`, then pass the model name to the check:
-
-```bash
-mise run gateway:check -- provider/model
-```
+Configure S3-compatible storage when generated output must outlive its worker.
+Without object storage, URLs and completed output remain tied to the worker and its
+volume.
 
 ## Important Limits
 
-- Controller multipart uploads occupy its data volume until the job completes or
-  fails.
-- Destroy operations may remove provider data; stop is the non-destructive idle
-  path.
 - The project does not grant model redistribution rights.
-- Without object storage, outputs remain tied to the worker that produced them.
+- Publishing model weights may impose upstream licence obligations.
+- Worker-local jobs and outputs disappear when their persistent storage is
+  destroyed.

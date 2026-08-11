@@ -7,12 +7,10 @@ import os
 import shutil
 from pathlib import Path
 
-import uvicorn
 import yaml
 
 from .catalogue import Catalogue, WorkflowModel
 from .fetch import fetch_profile
-from .gateway_check import run as run_gateway_check
 from .model_pack import pack_file, unpack_file
 from .supervisor import run as run_worker
 from .validation import validate_repository
@@ -80,19 +78,6 @@ def repository_check(args: argparse.Namespace) -> None:
     print("catalogue workflows and model profiles are consistent")
 
 
-def controller(args: argparse.Namespace) -> None:
-    uvicorn.run(
-        "comfy_control.control:create_app",
-        factory=True,
-        host=args.host,
-        port=args.port,
-    )
-
-
-def gateway_check(args: argparse.Namespace) -> None:
-    run_gateway_check(args.model, args.url, args.operation)
-
-
 def worker(args: argparse.Namespace) -> None:
     run_worker(args.host, args.port)
 
@@ -106,19 +91,6 @@ def create_parser() -> argparse.ArgumentParser:
     listing.add_argument("--catalogue-dir", default="catalogue")
     listing.add_argument("--models-dir", default="models")
     listing.set_defaults(func=catalogue_list)
-    control = sub.add_parser("controller", help="run the controller service")
-    control.add_argument("--host", default=os.getenv("HOST", "0.0.0.0"))
-    control.add_argument("--port", default=int(os.getenv("PORT", "8000")), type=int)
-    control.set_defaults(func=controller)
-    gateway = sub.add_parser("gateway-check", help="probe the configured Bifrost")
-    gateway.add_argument("model")
-    gateway.add_argument(
-        "--operation",
-        choices=["chat_completion", "image_generation"],
-        default="chat_completion",
-    )
-    gateway.add_argument("--url", default="http://localhost:28080")
-    gateway.set_defaults(func=gateway_check)
     fetch = sub.add_parser(
         "models-fetch", help="fetch a pinned Hugging Face/Civitai profile"
     )

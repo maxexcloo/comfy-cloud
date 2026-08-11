@@ -42,7 +42,7 @@ Run `comfy-control repository-check` after catalogue or profile changes.
 
 The catalogue includes text-to-image, image-edit and MiniMax H3 video workflows.
 Multi-reference FLUX workflows require exactly two, three or four ordered `image`
-parts. Reference meaning belongs in the prompt; AI Router does not assign character
+parts. Reference meaning belongs in the prompt; Comfy Control does not assign character
 roles or rewrite prompts.
 
 Model discovery reports the supported reference count as

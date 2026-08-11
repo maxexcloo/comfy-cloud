@@ -1,58 +1,41 @@
-# AI Router
+# Comfy Control
 
-AI Router is a personal inference gateway for language, image and video models. It
-combines Bifrost, CLIProxyAPI and a project-owned Comfy Control service behind one
-authenticated OpenAI-compatible endpoint.
+Comfy Control is an authenticated OpenAI-compatible gateway for ComfyUI. It runs
+beside an unmodified ComfyUI process, translates portable image and video requests
+into checksum-pinned API workflows, and exposes health, metrics and native ComfyUI
+proxy routes.
 
 ```text
-                         +-> CLIProxyAPI -> subscription-backed LLMs
-Open WebUI -> Bifrost ---+
-                         +-> Comfy Control -> on-demand ComfyUI workers
+OpenAI-compatible client -> Comfy Control -> ComfyUI
 ```
 
-Bifrost owns authentication, language-model routing and request logs. CLIProxyAPI
-adapts authenticated CLI subscriptions. Comfy Control owns media routing, provider
-lifecycle, durable video jobs and the worker-side OpenAI/ComfyUI gateway.
+Provider selection, failover and infrastructure lifecycle belong outside Comfy
+Control. Run one instance for each independently managed ComfyUI worker and route
+between those instances in an external gateway when required.
 
 ## Quick Start
 
+On a host with the NVIDIA Container Toolkit:
+
 ```bash
 cp .env.example .env
-# Replace the placeholders; leave worker values empty until enabling media.
+# Replace API_KEY and COMFY_UI_PASSWORD, then select MODEL_PROFILES as required.
 docker compose up --build --detach
 docker compose ps
 ```
 
-The endpoints are:
-
-| Service                | URL                      |
-| ---------------------- | ------------------------ |
-| Bifrost gateway/UI     | `http://localhost:28080` |
-| CLIProxyAPI management | `http://localhost:28317` |
-| Comfy Control UI/API   | `http://localhost:28081` |
-
-[`config/bifrost.bootstrap.json`](config/bifrost.bootstrap.json) seeds a new
-Bifrost data volume once; Bifrost owns later changes in SQLite. The mounted
-[`config/control.yaml`](config/control.yaml) remains authoritative on every Comfy
-Control start. Copy routes from
-[`config/control.example.yaml`](config/control.example.yaml) before expecting media
-models to appear. Configured provider deploy, status, start, stop and destroy
-actions call provider APIs from the backend and appear in the authenticated Comfy
-Control UI.
+Comfy Control listens on `http://localhost:28081`. `MODE=pod` exposes the ComfyUI
+frontend with basic authentication; `MODE=serverless` exposes APIs without the
+frontend.
 
 ## Repository Layout
 
 - `catalogue/`: checksum-pinned API-format ComfyUI workflows and manifests.
-- `config/`: runtime configuration and examples.
-- `deploy/`: provider-specific worker deployment assets.
+- `deploy/`: provider-specific Comfy Control deployment assets.
 - `docs/`: architecture, catalogue, development and deployment guidance.
 - `profiles/`: pinned model sources.
-- `src/comfy_control/`: controller and worker implementation.
+- `src/`: Comfy Control implementation.
 - `tests/`: behavioural and repository tests.
-
-The overall product is AI Router. `comfy-control` remains the narrower Python
-package, command and service name. All project-owned runtime and maintenance
-operations use that one command.
 
 ## Develop
 

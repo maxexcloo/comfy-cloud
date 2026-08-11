@@ -14,7 +14,7 @@ uv = "0.12.3"
 description = "Run all repository checks"
 run = """
 prek run --all-files
-uv run --isolated --extra test pytest -q
+uv run --isolated --no-editable --extra test pytest -q
 """
 
 [tasks.cleanup]
@@ -33,10 +33,6 @@ prettier --write .
 ruff check --fix --select I .
 ruff format .
 """
-
-[tasks."gateway:check"]
-description = "Verify Bifrost model discovery and inference routing"
-run = "uv run --isolated comfy-control gateway-check"
 
 [tasks.setup]
 description = "Create local configuration if missing, then install Git hooks"

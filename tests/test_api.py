@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-
 from comfy_control.comfy import OutputRef
 from comfy_control.config import Settings
 from comfy_control.worker import create_app as create_gateway
@@ -523,7 +522,7 @@ async def test_video_request_maps_openai_size_and_seconds_to_workflow():
             "/v1/videos?wait=true",
             headers={
                 "Authorization": "Bearer test-key",
-                "x-comfy-job-id": "video_controller_job",
+                "x-comfy-job-id": "video_gateway_job",
             },
             json=body,
         )
@@ -531,7 +530,7 @@ async def test_video_request_maps_openai_size_and_seconds_to_workflow():
             "/v1/videos?wait=true",
             headers={
                 "Authorization": "Bearer test-key",
-                "x-comfy-job-id": "video_controller_job",
+                "x-comfy-job-id": "video_gateway_job",
             },
             json=body,
         )

@@ -10,7 +10,7 @@ Vast wraps serverless requests in an envelope like
 what clients sent. This worker unwraps that shape when present, otherwise it
 forwards the raw body, so it works under both the serverless router and local
 debugging. The response is streamed back unchanged, preserving the OpenAI
-shapes Bifrost and Open WebUI expect.
+shapes OpenAI-compatible clients expect.
 
 Deploy:
 

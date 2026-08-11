@@ -1,7 +1,7 @@
 {
   "containerDiskInGb": 30,
   "dockerArgs": "",
-  "imageName": "ghcr.io/maxexcloo/ai-router:worker",
+  "imageName": "ghcr.io/maxexcloo/comfy-control:main",
   "name": "comfy-control",
   "ports": "8000/http",
   "volumeInGb": 100,

@@ -7,14 +7,11 @@ mise run setup
 mise run check
 ```
 
-Setup creates `.env` from its template when missing and installs Prek hooks. The
-same gitignored file configures Compose and live checks.
-Checks use an isolated Python environment; a repository-local `.venv` is not
-required.
+Setup creates `.env` from its template when missing and installs Prek hooks. Checks
+use an isolated Python environment; a repository-local `.venv` is not required.
 
 Use `mise run fmt` for supported formatting and `mise run cleanup` to remove test,
-lint and bytecode caches. Use `mise run gateway:check` for an opt-in live Bifrost
-discovery and completion probe.
+lint and bytecode caches.
 
 ## Checks
 
@@ -22,29 +19,29 @@ discovery and completion probe.
 Actions linting, Dockerfile linting, formatting, Python linting and the pytest
 suite. Run it before handoff.
 
-The container workflow separately builds controller and worker images, validates
-the Compose model and performs readiness smoke tests for both images on pull
-requests.
+The container workflow separately builds and smoke-tests the Comfy Control image.
 
 ## Project Boundaries
 
 - Keep deterministic workflow selection in `catalogue/`, not prompt prose or
-  provider deployment code.
+  deployment code.
 - Keep external field names unchanged; use Australian English for project-owned
   prose and identifiers.
 - Keep pinned weight sources in `profiles/`.
-- Keep portable API behaviour in `src/comfy_control/`.
-- Keep provider-specific worker assets in `deploy/`.
+- Keep portable API behaviour directly in `src/`.
+- Keep provider-specific deployment assets in `deploy/`.
+- Keep provider selection, failover and lifecycle orchestration outside this
+  repository.
 
 ## Command-Line Interface
 
 The `comfy-control` command supports:
 
-- `catalogue-list`, `gateway-check` and `repository-check`;
-- `controller` and `worker` runtime services;
+- `catalogue-list` and `repository-check`;
 - `models-fetch`;
 - `pack` and `unpack`;
+- `worker`;
 - `workflow-add`.
 
-Use `workflow-add` only with an API-format ComfyUI export and restart the worker
+Use `workflow-add` only with an API-format ComfyUI export and restart Comfy Control
 after changing its mounted catalogue.
