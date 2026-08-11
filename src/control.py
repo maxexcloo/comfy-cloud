@@ -53,6 +53,15 @@ def error(message: str, status: int, code: str) -> JSONResponse:
     )
 
 
+def selected_targets(model, provider: str | None):
+    if not provider:
+        return model.targets
+    targets = [target for target in model.targets if target.provider == provider]
+    if not targets:
+        raise ValueError(f"provider '{provider}' is unavailable for model '{model.id}'")
+    return targets
+
+
 def bearer_authorised(request: Request, settings: ControlSettings) -> bool:
     scheme, _, value = request.headers.get("authorization", "").partition(" ")
     return scheme.lower() == "bearer" and hmac.compare_digest(value, settings.api_key)
@@ -358,6 +367,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         try:
             original = json.loads(body)
             model = controller.model(original.get("model", ""), operation)
+            provider = str(original.get("provider", "")).strip() or None
+            targets = selected_targets(model, provider)
         except (AttributeError, json.JSONDecodeError, ValueError) as exc:
             return error(str(exc), 400, "invalid_request")
         except KeyError as exc:
@@ -376,7 +387,10 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             if key.lower() not in {"authorization", "content-length", "host"}
         }
         failures = []
-        for target in model.targets:
+        forwarded = dict(original)
+        forwarded.pop("provider", None)
+        forwarded_body = json.dumps(forwarded, separators=(",", ":")).encode()
+        for target in targets:
             controller.store.update_history(
                 history_id, "in_progress", provider=target.provider
             )
@@ -385,7 +399,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     target,
                     request.method,
                     path,
-                    rewrite_json_model(body, target.model),
+                    rewrite_json_model(forwarded_body, target.model),
                     headers,
                     request_id,
                 )
@@ -453,6 +467,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             form = await request.form()
             model_id = str(form.get("model", ""))
             model = controller.model(model_id, "image_edit")
+            provider = str(form.get("provider", "")).strip() or None
+            targets = selected_targets(model, provider)
         except ValueError as exc:
             return error(str(exc), 400, "invalid_request")
         except KeyError as exc:
@@ -472,11 +488,13 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                         ),
                     )
                 )
-            elif key != "model":
+            elif key not in {"model", "provider"}:
                 fields.append((key, str(value)))
         history_id = f"edit_{uuid.uuid4().hex}"
         parameters = dict(fields)
         parameters["model"] = model_id
+        if provider:
+            parameters["provider"] = provider
         parameters["input_media"] = [
             {
                 "content_type": content_type,
@@ -492,7 +510,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             json.dumps(history_parameters(parameters), separators=(",", ":")),
         )
         failures: list[str] = []
-        for target in model.targets:
+        for target in targets:
             controller.store.update_history(
                 history_id, "in_progress", provider=target.provider
             )
@@ -560,12 +578,15 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             ):
                 form = await request.form()
                 model_id = str(form.get("model", ""))
+                provider = str(form.get("provider", "")).strip() or None
             else:
                 values = json.loads(body)
                 if not isinstance(values, dict):
                     raise TypeError("request body must be an object")
                 model_id = values.get("model", "")
-            controller.model(model_id, "video_generation")
+                provider = str(values.get("provider", "")).strip() or None
+            model = controller.model(model_id, "video_generation")
+            selected_targets(model, provider)
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
             return error(str(exc), 400, "invalid_request")
         except KeyError as exc:
@@ -589,7 +610,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                             "path": str(path),
                         }
                     )
-                else:
+                elif key != "provider":
                     fields.append((key, str(value)))
             request_json = json.dumps(
                 {"_control_multipart": {"fields": fields, "files": files}},
@@ -607,9 +628,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 ],
             }
         else:
-            request_json = body.decode()
+            forwarded = dict(values)
+            forwarded.pop("provider", None)
+            request_json = json.dumps(forwarded, separators=(",", ":"))
             parameters = values
-        controller.store.save_job(public_id, model_id, request_json)
+        controller.store.save_job(public_id, model_id, request_json, provider=provider)
         controller.store.save_history(
             public_id,
             "video_generation",

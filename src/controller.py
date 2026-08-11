@@ -296,11 +296,10 @@ class Controller:
         try:
             model = self.model(job.model, "video_generation")
             failures: list[str] = []
-            targets = sorted(
-                model.targets,
-                key=lambda target: (
-                    target.provider != job.provider if job.provider else False
-                ),
+            targets = (
+                [target for target in model.targets if target.provider == job.provider]
+                if job.provider
+                else model.targets
             )
             for target in targets:
                 self.store.update_job(job.id, "in_progress", provider=target.provider)

@@ -288,6 +288,7 @@ class ControlStore:
         job_id: str,
         model: str,
         request_json: str,
+        provider: str | None = None,
     ) -> None:
         now = int(time.time())
         with self.lock, self.connection:
@@ -296,10 +297,10 @@ class ControlStore:
                 INSERT INTO jobs (
                     id, model, provider, status, upstream_id, created_at, updated_at,
                     request_json, response_json, error
-                ) VALUES (?, ?, '', 'queued', '', ?, ?, ?, NULL, NULL)
+                ) VALUES (?, ?, ?, 'queued', '', ?, ?, ?, NULL, NULL)
                 ON CONFLICT(id) DO NOTHING
                 """,
-                (job_id, model, now, now, request_json),
+                (job_id, model, provider or "", now, now, request_json),
             )
 
     def update_job(

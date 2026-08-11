@@ -68,6 +68,7 @@ def worker_app() -> FastAPI:
     async def image(request: Request) -> dict[str, object]:
         body = await request.json()
         assert body["model"] == "worker/image"
+        assert "provider" not in body
         return {"created": 1, "data": [{"b64_json": "aW1hZ2U="}]}
 
     @app.post("/v1/images/edits")
@@ -75,6 +76,7 @@ def worker_app() -> FastAPI:
         form = await request.form()
         images = form.getlist("image")
         assert form["model"] == "worker/image-edit"
+        assert "provider" not in form
         assert [image.filename for image in images] == ["mara.png", "elise.png"]
         assert [await image.read() for image in images] == [b"mara", b"elise"]
         return {"created": 1, "data": [{"b64_json": "ZWRpdA=="}]}
@@ -90,6 +92,7 @@ def worker_app() -> FastAPI:
         else:
             body = await request.json()
             assert body["model"] == "worker/video"
+            assert "provider" not in body
         return {
             "id": "upstream-video",
             "object": "video",
@@ -150,7 +153,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
         image = await client.post(
             "/v1/images/generations",
             headers={"Authorization": "Bearer control-key"},
-            json={"model": "public/image", "prompt": "test"},
+            json={"model": "public/image", "prompt": "test", "provider": "worker"},
         )
         status = await client.get("/api/status")
         history = status.json()["history"][0]
@@ -185,13 +188,39 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert image.headers["x-comfy-provider"] == "worker"
     assert image.headers["x-comfy-history-id"] == history["id"]
     assert history["operation"] == "image_generation"
-    assert history["parameters"] == {"model": "public/image", "prompt": "test"}
+    assert history["parameters"] == {
+        "model": "public/image",
+        "prompt": "test",
+        "provider": "worker",
+    }
     assert history["status"] == "completed"
     assert media.content == b"image"
     assert media.headers["content-type"] == "image/png"
     assert logout.status_code == 303
     assert logout.headers["location"] == "/login"
     assert denied_media.status_code == 401
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_controller_rejects_provider_outside_selected_model(tmp_path):
+    app = create_app(settings(tmp_path))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        response = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer control-key"},
+            json={
+                "model": "public/image",
+                "prompt": "test",
+                "provider": "missing",
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_request"
+    assert "provider 'missing' is unavailable" in response.json()["error"]["message"]
     await app.state.controller.close()
 
 
@@ -205,7 +234,11 @@ async def test_controller_preserves_repeated_image_fields_in_order(tmp_path):
         response = await client.post(
             "/v1/images/edits",
             headers={"Authorization": "Bearer control-key"},
-            data={"model": "public/image-edit", "prompt": "Mara and Elise"},
+            data={
+                "model": "public/image-edit",
+                "prompt": "Mara and Elise",
+                "provider": "worker",
+            },
             files=[
                 ("image", ("mara.png", b"mara", "image/png")),
                 ("image", ("elise.png", b"elise", "image/png")),
@@ -227,7 +260,7 @@ async def test_controller_owns_video_job_and_output_url(tmp_path):
         submitted = await client.post(
             "/v1/videos",
             headers={"Authorization": "Bearer control-key"},
-            json={"model": "public/video", "prompt": "test"},
+            json={"model": "public/video", "prompt": "test", "provider": "worker"},
         )
         job_id = submitted.json()["id"]
         for _ in range(20):

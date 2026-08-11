@@ -16,6 +16,8 @@ and the operations dashboard. Workers remain self-contained ComfyUI gateways.
 ## Request Flow
 
 1. The control plane authenticates the request and selects configured targets.
+   Clients may include a `provider` field to pin one provider configured for the
+   selected public model; omitting it retains ordered fallback.
 2. It starts a stopped provider when lifecycle controls are configured.
 3. The worker checks the requested catalogue model against installed files and registered
    ComfyUI node types.
