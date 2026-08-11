@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -40,6 +41,35 @@ DASHBOARD_PAGE_SIZE = 20
 PROVIDER_TEST_MAXIMUM_BYTES = 16 * 1024
 SESSION_COOKIE = "comfy_control_session"
 SESSION_SECONDS = 12 * 60 * 60
+
+IMAGE_ASPECT_RE = re.compile(
+    r"(?<![\w:])(?:16:9|9:16|4:3|3:4|3:2|2:3|1:1|landscape|portrait|square)(?![\w:])",
+    re.IGNORECASE,
+)
+IMAGE_RESOLUTION_RE = re.compile(r"(?<!\w)(?:1k|2k)(?!\w)", re.IGNORECASE)
+IMAGE_ASPECT_ALIASES = {
+    "landscape": "16:9",
+    "portrait": "9:16",
+    "square": "1:1",
+}
+
+
+def normalise_grok_image_options(values: dict[str, object]) -> dict[str, object]:
+    """Fill Grok image options from explicit prompt phrases when fields are absent."""
+    model = str(values.get("model") or "").rsplit("/", 1)[-1]
+    if model != "grok-imagine-image-quality":
+        return values
+    normalised = dict(values)
+    prompt = str(values.get("prompt") or "")
+    aspect = str(values.get("aspect_ratio") or "").casefold().strip()
+    if aspect in {"", "auto"} and (match := IMAGE_ASPECT_RE.search(prompt)):
+        selected = match.group(0).casefold()
+        normalised["aspect_ratio"] = IMAGE_ASPECT_ALIASES.get(selected, selected)
+    resolution = str(values.get("resolution") or "").casefold().strip()
+    if not resolution:
+        match = IMAGE_RESOLUTION_RE.search(prompt)
+        normalised["resolution"] = match.group(0).casefold() if match else "1k"
+    return normalised
 
 
 def error(message: str, status: int, code: str) -> JSONResponse:
@@ -600,12 +630,15 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             return error("request body is too large", 413, "request_too_large")
         try:
             original = json.loads(body)
+            if not isinstance(original, dict):
+                raise TypeError("request body must be an object")
+            original = normalise_grok_image_options(original)
             requested_model = str(original.get("model", ""))
             provider = str(original.get("provider", "")).strip() or None
             model, targets = controller.resolve_model(
                 requested_model, operation, provider
             )
-        except (AttributeError, json.JSONDecodeError, ValueError) as exc:
+        except (AttributeError, json.JSONDecodeError, TypeError, ValueError) as exc:
             return error(str(exc), 400, "invalid_request")
         except KeyError as exc:
             return error(str(exc), 404, "model_not_found")
@@ -727,6 +760,14 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 )
             elif key not in {"model", "provider"}:
                 fields.append((key, str(value)))
+        normalised_fields = normalise_grok_image_options(
+            {"model": model_id, **dict(fields)}
+        )
+        fields = [
+            (key, str(value))
+            for key, value in normalised_fields.items()
+            if key not in {"model", "provider"}
+        ]
         history_id = f"edit_{uuid.uuid4().hex}"
         parameters = dict(fields)
         parameters["model"] = model_id

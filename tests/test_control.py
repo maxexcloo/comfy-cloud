@@ -11,7 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from comfy_control.cliproxy import CliproxyClient
-from comfy_control.control import create_app
+from comfy_control.control import create_app, normalise_grok_image_options
 from comfy_control.control_config import ControlFile, ControlSettings
 from comfy_control.controller import (
     history_parameters,
@@ -20,6 +20,47 @@ from comfy_control.controller import (
 )
 
 ROOT = Path(__file__).parents[1]
+
+
+@pytest.mark.parametrize(
+    ("prompt", "aspect_ratio", "resolution"),
+    [
+        ("Photorealistic portrait, 2K", "9:16", "2k"),
+        ("1k landscape studio photograph", "16:9", "1k"),
+        ("Square composition at 2K", "1:1", "2k"),
+        ("Studio photograph, 3:4, 1K", "3:4", "1k"),
+    ],
+)
+def test_grok_image_options_are_inferred_from_prompt_in_any_order(
+    prompt: str, aspect_ratio: str, resolution: str
+) -> None:
+    result = normalise_grok_image_options(
+        {"model": "grok-imagine-image-quality", "prompt": prompt}
+    )
+
+    assert result["aspect_ratio"] == aspect_ratio
+    assert result["resolution"] == resolution
+
+
+def test_grok_image_options_preserve_structured_values_and_default_to_1k() -> None:
+    explicit = normalise_grok_image_options(
+        {
+            "aspect_ratio": "2:3",
+            "model": "cliproxyapi/grok-imagine-image-quality",
+            "prompt": "portrait 2K",
+            "resolution": "1k",
+        }
+    )
+    defaulted = normalise_grok_image_options(
+        {"model": "grok-imagine-image-quality", "prompt": "A studio photograph"}
+    )
+    unrelated = {"model": "another-image-model", "prompt": "portrait 2K"}
+
+    assert explicit["aspect_ratio"] == "2:3"
+    assert explicit["resolution"] == "1k"
+    assert defaulted["resolution"] == "1k"
+    assert "aspect_ratio" not in defaulted
+    assert normalise_grok_image_options(unrelated) is unrelated
 
 
 def write_config(path: Path) -> None:
