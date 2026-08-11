@@ -54,7 +54,7 @@ providers:
     type: proxy
     usage:
       kind: cliproxyapi
-      url: ${CLIPROXY_URL}/v0/management/usage
+      url: ${CLIPROXY_URL}/v0/management/usage-statistics-enabled
       headers:
         authorization: Bearer ${CLIPROXY_MANAGEMENT_KEY}
   - id: local-pod

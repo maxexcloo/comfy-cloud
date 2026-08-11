@@ -207,6 +207,11 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert logout.status_code == 303
     assert logout.headers["location"] == "/login"
     assert denied_media.status_code == 401
+    assert app.state.controller.store.history_usage("worker") == {
+        "failed_requests": 0,
+        "successful_requests": 1,
+        "total_requests": 1,
+    }
     await app.state.controller.close()
 
 
@@ -851,6 +856,14 @@ def test_usage_normalisers():
     }
     assert normalise_usage("vast", {"credit": 25}) == [
         {"label": "Credit", "unit": "USD", "value": 25}
+    ]
+    assert normalise_usage(
+        "cliproxyapi",
+        {"failed_requests": 1, "successful_requests": 2, "total_requests": 3},
+    ) == [
+        {"label": "Requests", "value": 3},
+        {"label": "Successful", "value": 2},
+        {"label": "Failed", "value": 1},
     ]
     assert normalise_usage(
         "salad",

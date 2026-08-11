@@ -200,14 +200,19 @@ class Controller:
                         }
                     response = await self.lifecycle_client.get(url, headers=headers)
                     response.raise_for_status()
-                    metrics = normalise_usage(probe.kind, response.json())
                     if probe.kind == "cliproxyapi":
+                        metrics = normalise_usage(
+                            probe.kind,
+                            self.store.history_usage(runtime.config.id),
+                        )
                         try:
                             metrics.extend(await self.cliproxy_xai_quotas(probe))
                         except Exception:  # noqa: BLE001 - optional quota telemetry
                             metrics.append(
                                 {"label": "Grok allowances", "value": "unavailable"}
                             )
+                    else:
+                        metrics = normalise_usage(probe.kind, response.json())
                 runtime.usage = {"metrics": metrics, "status": "ok"}
             except Exception as exc:  # noqa: BLE001 - optional account telemetry
                 runtime.usage = {

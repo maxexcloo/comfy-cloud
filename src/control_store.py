@@ -126,6 +126,24 @@ class ControlStore:
             histories.append(item)
         return histories
 
+    def history_usage(self, provider: str) -> dict[str, int]:
+        with self.lock:
+            row = self.connection.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_requests,
+                    COALESCE(SUM(status = 'failed'), 0) AS failed_requests,
+                    COALESCE(SUM(status = 'completed'), 0) AS successful_requests
+                FROM history WHERE provider = ?
+                """,
+                (provider,),
+            ).fetchone()
+        return {
+            "failed_requests": int(row["failed_requests"]),
+            "successful_requests": int(row["successful_requests"]),
+            "total_requests": int(row["total_requests"]),
+        }
+
     def media(self, media_id: int) -> Media | None:
         with self.lock:
             row = self.connection.execute(

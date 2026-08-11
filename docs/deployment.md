@@ -78,8 +78,11 @@ envelope.
 The dashboard displays RunPod billing history, Vast.ai credit, Modal billing-cycle
 spend, SaladCloud replica quota and CLIProxyAPI usage. SaladCloud monetary credit is
 currently portal-only, so its public API contributes usage and quota instead.
-CLIProxyAPI must have `usage-statistics-enabled` set to `true`; otherwise its
-management usage route returns HTTP 404.
+Comfy Control derives CLIProxyAPI request totals from its durable history and reads
+Grok allowances from CLIProxyAPI's authenticated account data. CLIProxyAPI v7
+removed the legacy aggregate usage route, while its replacement is a destructive
+collector queue and must not be polled by a dashboard. Keep
+`usage-statistics-enabled` set to `true` for CLIProxyAPI's own telemetry.
 
 ## Model Preparation
 
