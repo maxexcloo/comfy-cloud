@@ -23,6 +23,7 @@ from .control_config import (
     UsageProbe,
 )
 from .control_store import ControlStore, Job
+from .provider_deployment import deploy_provider, terminate_provider
 
 SENSITIVE_FIELD_PARTS = (
     "accesskey",
@@ -33,6 +34,10 @@ SENSITIVE_FIELD_PARTS = (
     "secret",
     "token",
 )
+
+
+class ProviderNotDeployed(RuntimeError):
+    pass
 
 
 def exception_message(exc: Exception) -> str:
@@ -98,7 +103,7 @@ def named_resource(
             return matches[0]
     matches = [item for item in resources if item.get(name_key) == name]
     if not matches:
-        raise RuntimeError(f"provider resource not found: {name}")
+        raise ProviderNotDeployed(f"provider resource not found: {name}")
     if len(matches) > 1:
         raise RuntimeError(f"provider resource name is ambiguous: {name}")
     return matches[0]
@@ -312,15 +317,44 @@ class Controller:
 
     async def usage(self) -> dict[str, dict[str, object]]:
         values = await asyncio.gather(
-            *(self.provider_usage(runtime) for runtime in self.providers.values())
+            *(
+                self.bounded_provider_usage(runtime)
+                for runtime in self.providers.values()
+            )
         )
         return dict(zip(self.providers, values, strict=True))
 
+    async def bounded_provider_usage(
+        self, runtime: ProviderRuntime
+    ) -> dict[str, object]:
+        try:
+            return await asyncio.wait_for(self.provider_usage(runtime), timeout=8)
+        except TimeoutError:
+            return {"error": "account usage check timed out", "status": "unavailable"}
+
     async def provider_statuses(self) -> dict[str, dict[str, object]]:
         values = await asyncio.gather(
-            *(self.provider_status(runtime) for runtime in self.providers.values())
+            *(
+                self.bounded_provider_status(runtime)
+                for runtime in self.providers.values()
+            )
         )
         return dict(zip(self.providers, values, strict=True))
+
+    async def bounded_provider_status(
+        self, runtime: ProviderRuntime
+    ) -> dict[str, object]:
+        try:
+            return await asyncio.wait_for(self.provider_status(runtime), timeout=8)
+        except TimeoutError:
+            runtime.state = "unavailable"
+            return {
+                "details": {},
+                "error": "provider status check timed out",
+                "panel_url": provider_panel_url(runtime, {}),
+                "state": runtime.state,
+                "status": "unavailable",
+            }
 
     async def provider_status(self, runtime: ProviderRuntime) -> dict[str, object]:
         management = runtime.config.management
@@ -405,6 +439,17 @@ class Controller:
                 "state": runtime.state,
                 "status": "ok",
             }
+        except ProviderNotDeployed:
+            self.store.clear_provider_resource(runtime.config.id)
+            runtime.base_url = None
+            runtime.ready = False
+            runtime.state = "not-deployed"
+            return {
+                "details": {},
+                "panel_url": provider_panel_url(runtime, details),
+                "state": runtime.state,
+                "status": "ok",
+            }
         except Exception as exc:  # noqa: BLE001 - provider control-plane boundary
             runtime.state = "unavailable"
             return {
@@ -447,9 +492,16 @@ class Controller:
         if management is None:
             return {}
         if management.kind == "modal":
-            runtime.base_url = await asyncio.to_thread(
-                modal_web_url, management.name, management.function or ""
-            )
+            try:
+                runtime.base_url = await asyncio.to_thread(
+                    modal_web_url, management.name, management.function or ""
+                )
+            except Exception as exc:
+                if self.resource_id(runtime.config.id) is None:
+                    raise ProviderNotDeployed(
+                        f"provider resource not found: {management.name}"
+                    ) from exc
+                raise
             self.store.save_provider_resource(runtime.config.id, management.name)
             return {}
 
@@ -460,6 +512,10 @@ class Controller:
                 f"https://rest.runpod.io/v1/{collection}",
                 headers={"Authorization": f"Bearer {api_key}"},
             )
+            if response.status_code == 404:
+                raise ProviderNotDeployed(
+                    f"provider resource not found: {management.name}"
+                )
             response.raise_for_status()
             resource = named_resource(
                 response.json(),
@@ -489,6 +545,10 @@ class Controller:
                 f"/containers/{quote(management.name, safe='')}",
                 headers={"Salad-Api-Key": api_key},
             )
+            if response.status_code == 404:
+                raise ProviderNotDeployed(
+                    f"provider resource not found: {management.name}"
+                )
             response.raise_for_status()
             resource = response.json()
             self.store.save_provider_resource(
@@ -806,9 +866,20 @@ class Controller:
     ) -> httpx.Response:
         if action_name == "deploy" and self.resource_id(provider) is not None:
             raise RuntimeError(f"provider {provider} is already deployed")
-        if action.internal:
+        if action.internal in {"modal-deploy", "modal-terminate"}:
             response = await asyncio.to_thread(
                 modal_provider_action, action.internal, self.providers[provider]
+            )
+        elif action.internal == "provider-deploy":
+            response = await deploy_provider(
+                self.lifecycle_client, self.providers[provider].config, self.settings
+            )
+        elif action.internal == "provider-terminate":
+            resource_id = self.resource_id(provider)
+            if resource_id is None:
+                raise RuntimeError(f"provider {provider} is not deployed")
+            response = await terminate_provider(
+                self.lifecycle_client, self.providers[provider].config, resource_id
             )
         else:
             if action.url is None:
@@ -1006,6 +1077,10 @@ class Controller:
                 timeout=10,
             )
             runtime.ready = response.is_success
+        except ProviderNotDeployed:
+            self.store.clear_provider_resource(runtime.config.id)
+            runtime.base_url = None
+            runtime.ready = False
         except Exception:  # noqa: BLE001 - provider discovery and health boundary
             runtime.ready = False
         runtime.state = "ready" if runtime.ready else "stopped"
@@ -1014,21 +1089,35 @@ class Controller:
     async def ensure_ready(self, runtime: ProviderRuntime, request_id: str) -> None:
         if await self.check_ready(runtime):
             return
-        action = self.available_actions(runtime.config.id).get("start")
-        if action is None:
+        actions = self.available_actions(runtime.config.id)
+        deploy_action = actions.get("deploy")
+        start_action = actions.get("start")
+        if deploy_action is None and start_action is None:
             runtime.state = "starting"
             return
         async with runtime.lock:
             if await self.check_ready(runtime):
                 return
             runtime.state = "starting"
-            self.store.event(
-                "info",
-                "starting provider",
-                provider=runtime.config.id,
-                request_id=request_id,
-            )
-            await self.action(action, runtime.config.id, "start")
+            if (
+                deploy_action is not None
+                and self.resource_id(runtime.config.id) is None
+            ):
+                self.store.event(
+                    "info",
+                    "deploying provider",
+                    provider=runtime.config.id,
+                    request_id=request_id,
+                )
+                await self.action(deploy_action, runtime.config.id, "deploy")
+            elif start_action is not None:
+                self.store.event(
+                    "info",
+                    "starting provider",
+                    provider=runtime.config.id,
+                    request_id=request_id,
+                )
+                await self.action(start_action, runtime.config.id, "start")
             deadline = time.monotonic() + runtime.config.startup_timeout
             while time.monotonic() < deadline:
                 if await self.check_ready(runtime):

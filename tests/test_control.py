@@ -2,6 +2,7 @@ import asyncio
 import re
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -182,6 +183,9 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert invalid_login.status_code == 401
     assert dashboard.status_code == 200
     assert "Actions continue if this window is closed" in dashboard.text
+    assert 'class="provider-grid"' in dashboard.text
+    assert 'data-tab="historyPageSection"' in dashboard.text
+    assert "if(refresh.running)return" in dashboard.text
     assert ".join('\\n')" in dashboard.text
     assert "Previous media (Left arrow)" in dashboard.text
     assert "Send test request" in dashboard.text
@@ -883,12 +887,13 @@ def test_control_file_enables_managed_providers_from_credentials(monkeypatch):
         providers["modal-serverless"].actions["terminate"].internal == "modal-terminate"
     )
     assert sorted(providers["runpod-serverless"].actions) == [
+        "deploy",
         "scale-down",
         "scale-up",
         "terminate",
     ]
-    assert sorted(providers["salad-serverless"].actions) == ["terminate"]
-    assert sorted(providers["vast-serverless"].actions) == ["terminate"]
+    assert sorted(providers["salad-serverless"].actions) == ["deploy", "terminate"]
+    assert sorted(providers["vast-serverless"].actions) == ["deploy", "terminate"]
 
 
 @pytest.mark.asyncio
@@ -929,6 +934,73 @@ providers:
         "stop",
     ]
     await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_missing_managed_resource_is_not_deployed(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "provider-key")
+    configured = settings(tmp_path)
+    configured.config_file.write_text(
+        """
+models: []
+providers:
+  - id: runpod-pod
+    actions:
+      deploy:
+        internal: provider-deploy
+        resource_id_path: id
+    api_key: worker-key
+    management:
+      kind: runpod-pod
+      name: comfy-control
+""".lstrip()
+    )
+    app = create_app(configured)
+    await app.state.controller.lifecycle_client.aclose()
+    app.state.controller.lifecycle_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=[]))
+    )
+    runtime = app.state.controller.providers["runpod-pod"]
+
+    status = await app.state.controller.provider_status(runtime)
+
+    assert status["state"] == "not-deployed"
+    assert status["status"] == "ok"
+    assert sorted(app.state.controller.available_actions("runpod-pod")) == ["deploy"]
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_request_auto_deploys_missing_provider(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "provider-key")
+    configured = settings(tmp_path)
+    configured.config_file.write_text(
+        """
+models: []
+providers:
+  - id: worker
+    actions:
+      deploy:
+        internal: provider-deploy
+        resource_id_path: id
+    api_key: worker-key
+    management:
+      kind: runpod-pod
+      name: comfy-control
+""".lstrip()
+    )
+    app = create_app(configured)
+    controller = app.state.controller
+    runtime = controller.providers["worker"]
+    controller.check_ready = AsyncMock(side_effect=[False, False, True])
+    controller.action = AsyncMock(return_value=httpx.Response(201, json={"id": "pod"}))
+
+    await controller.ensure_ready(runtime, "request-1")
+
+    controller.action.assert_awaited_once()
+    assert controller.action.await_args.args[2] == "deploy"
+    assert controller.check_ready.await_count == 3
+    await controller.close()
 
 
 def test_usage_normalisers():

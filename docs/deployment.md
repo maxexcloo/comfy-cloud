@@ -55,19 +55,26 @@ dashboard viewer. There is no automatic retention deletion.
 Definitions under `deploy/` run the worker image on Modal, RunPod, SaladCloud and
 Vast.ai. RunPod and Vast.ai contain separate Pod and Serverless definitions.
 
-Existing managed resources must use the names in `config/control.yaml`. SaladCloud
-also requires the `SALAD_ORGANISATION` and `SALAD_PROJECT` slugs because its public
-API scopes container groups beneath both values. Keep these as deployment inputs;
-the controller discovers the group ID, DNS name and changing worker URLs at runtime.
-Provider API credentials and the shared `WORKER_API_KEY` are still injected through
-the secret store; discovered resource IDs and serving URLs remain controller runtime
-state.
+Managed providers are credential-driven. When no named resource exists, the dashboard
+shows `Not deployed` and offers Deploy. A routed request can also deploy the resource,
+wait for its discovered URL to become healthy, forward the request, and apply the
+configured idle policy. Provider resource identifiers are saved in the controller
+database; serving URLs are rediscovered because they may change after a start or scale
+event.
 
-The dashboard exposes controls that match each provider's lifecycle. Modal can be
-deployed and terminated, RunPod Serverless can scale its warm capacity up or down
-and be terminated, and SaladCloud groups can be started, stopped and terminated.
-Vast.ai Serverless endpoints can be terminated. Terminating compute does not delete
-the provider's persistent volume; storage remains a separately managed resource.
+SaladCloud also requires `SALAD_ORGANISATION` and `SALAD_PROJECT` because its public API
+uses both slugs as security boundaries. Comfy Control discovers a suitable current GPU
+class for SaladCloud. RunPod and Vast.ai select suitable available GPU capacity through
+their APIs. `RUNPOD_DATA_CENTRES`, `RUNPOD_GPU_TYPES`, `RUNPOD_MAXIMUM_WORKERS`,
+`SALAD_GPU_CLASSES`, `VAST_MAXIMUM_WORKERS`, `VAST_MINIMUM_GPU_RAM_GB` and
+`VAST_MINIMUM_GPU_RAM_MB` are optional overrides rather than prerequisites.
+
+Deploy creates all provider-side compute dependencies: a Pod or container group for
+Pod-style providers, a RunPod template and endpoint for RunPod Serverless, and a Vast.ai
+template, endpoint and workergroup for Vast.ai Serverless. Stop preserves a reusable Pod
+or container group. Terminate deletes its compute resource; provider-local disks may be
+deleted with that resource. Generated media is copied to the controller's persistent
+`/data` volume before idle shutdown and does not depend on provider storage.
 
 Use persistent storage for model weights and `JOBS_DIR` where the provider supports
 it. The worker image defaults to `comfy-control pod`; override the container

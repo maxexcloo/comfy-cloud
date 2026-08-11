@@ -83,6 +83,13 @@ providers:
     usage:
       kind: modal
   - id: runpod-pod
+    actions:
+      deploy:
+        internal: provider-deploy
+        resource_id_path: id
+      terminate:
+        confirmation: Terminate the RunPod Pod? Its Pod volume will be deleted.
+        internal: provider-terminate
     aliases: [runpod]
     api_key: env.WORKER_API_KEY
     enabled_if: RUNPOD_API_KEY
@@ -109,6 +116,9 @@ providers:
           authorization: Bearer ${RUNPOD_API_KEY}
   - id: runpod-serverless
     actions:
+      deploy:
+        internal: provider-deploy
+        resource_id_path: id
       scale-down:
         method: PATCH
         url: https://rest.runpod.io/v1/endpoints/{resource_id}
@@ -124,11 +134,8 @@ providers:
         json:
           workersMin: 1
       terminate:
-        confirmation: Terminate the RunPod Serverless endpoint? Its network volume will be preserved.
-        method: DELETE
-        url: https://rest.runpod.io/v1/endpoints/{resource_id}
-        headers:
-          authorization: Bearer ${RUNPOD_API_KEY}
+        confirmation: Terminate the RunPod Serverless endpoint and its workers?
+        internal: provider-terminate
     api_key: env.WORKER_API_KEY
     enabled_if: RUNPOD_API_KEY
     idle_seconds: 0
@@ -144,12 +151,12 @@ providers:
         authorization: Bearer ${RUNPOD_API_KEY}
   - id: salad-serverless
     actions:
+      deploy:
+        internal: provider-deploy
+        resource_id_path: id
       terminate:
         confirmation: Terminate the SaladCloud container group?
-        method: DELETE
-        url: https://api.salad.com/api/public/organizations/${SALAD_ORGANISATION}/projects/${SALAD_PROJECT}/containers/comfy-control
-        headers:
-          Salad-Api-Key: ${SALAD_API_KEY}
+        internal: provider-terminate
     api_key: env.WORKER_API_KEY
     enabled_if: SALAD_API_KEY
     idle_seconds: 600
@@ -161,6 +168,13 @@ providers:
     usage:
       kind: salad
   - id: vast-pod
+    actions:
+      deploy:
+        internal: provider-deploy
+        resource_id_path: new_contract
+      terminate:
+        confirmation: Terminate the Vast.ai Pod? Its instance disk will be deleted.
+        internal: provider-terminate
     api_key: env.WORKER_API_KEY
     enabled_if: VAST_API_KEY
     idle_seconds: 600
@@ -192,12 +206,12 @@ providers:
           state: stopped
   - id: vast-serverless
     actions:
+      deploy:
+        internal: provider-deploy
+        resource_id_path: id
       terminate:
         confirmation: Terminate the Vast.ai Serverless endpoint?
-        method: DELETE
-        url: https://console.vast.ai/api/v0/endptjobs/{resource_id}/
-        headers:
-          authorization: Bearer ${VAST_API_KEY}
+        internal: provider-terminate
     api_key: env.WORKER_API_KEY
     enabled_if: VAST_API_KEY
     idle_seconds: 0

@@ -18,7 +18,15 @@ class ProviderAction(BaseModel):
     url: str | None = None
     confirmation: str | None = None
     headers: dict[str, str] = Field(default_factory=dict)
-    internal: Literal["modal-deploy", "modal-terminate"] | None = None
+    internal: (
+        Literal[
+            "modal-deploy",
+            "modal-terminate",
+            "provider-deploy",
+            "provider-terminate",
+        ]
+        | None
+    ) = None
     json_body: dict[str, Any] | None = Field(default=None, alias="json")
     resource_id_path: str | None = None
 
