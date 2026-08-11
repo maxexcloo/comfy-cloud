@@ -1113,7 +1113,7 @@ class Controller:
                 for target in candidate.targets
                 if target.provider == provider_id and target.model == model_id
             ]
-            if len(matches) != 1:
+            if not matches:
                 raise KeyError(f"unknown {provider}/{model_id} route for {operation}")
             model, target = matches[0]
             return model, [target]

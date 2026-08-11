@@ -222,6 +222,39 @@ async def test_controller_lists_and_routes_models(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_controller_resolves_shared_explicit_video_route(tmp_path):
+    configured = settings(tmp_path)
+    configured.config_file.write_text(
+        """
+models:
+  - id: public/image-to-video
+    operation: video_generation
+    targets:
+      - { model: upstream/video, provider: worker }
+  - id: public/text-to-video
+    operation: video_generation
+    targets:
+      - { model: upstream/video, provider: worker }
+providers:
+  - id: worker
+    api_key: worker-key
+    base_url: http://worker
+""".lstrip()
+    )
+    app = create_app(configured)
+
+    model, targets = app.state.controller.resolve_model(
+        "worker/upstream/video", "video_generation"
+    )
+
+    assert model.id == "public/image-to-video"
+    assert [(target.model, target.provider) for target in targets] == [
+        ("upstream/video", "worker")
+    ]
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
 async def test_dashboard_tests_provider_and_shows_control_logs(tmp_path):
     app = create_app(settings(tmp_path))
     await attach_worker(app)
