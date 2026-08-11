@@ -52,7 +52,7 @@ def settings(tmp_path: Path) -> ControlSettings:
         config_file=config,
         database_path=tmp_path / "control.db",
         maximum_request_bytes=1024 * 1024,
-        ui_password="",
+        ui_password="ui-password",
         ui_username="comfy",
     )
 
@@ -115,6 +115,19 @@ async def attach_worker(app: FastAPI) -> None:
     )
 
 
+async def sign_in(client: httpx.AsyncClient) -> httpx.Response:
+    response = await client.post(
+        "/login",
+        data={"password": "ui-password", "username": "comfy"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+    assert "HttpOnly" in response.headers["set-cookie"]
+    assert "SameSite=lax" in response.headers["set-cookie"]
+    return response
+
+
 @pytest.mark.asyncio
 async def test_controller_lists_and_routes_models(tmp_path):
     app = create_app(settings(tmp_path))
@@ -124,7 +137,13 @@ async def test_controller_lists_and_routes_models(tmp_path):
     ) as client:
         health = await client.get("/health")
         denied = await client.get("/v1/models")
-        dashboard = await client.get("/", auth=("comfy", "control-key"))
+        basic = await client.get("/", auth=("comfy", "ui-password"))
+        login_page = await client.get("/login")
+        invalid_login = await client.post(
+            "/login", data={"password": "incorrect", "username": "comfy"}
+        )
+        await sign_in(client)
+        dashboard = await client.get("/")
         models = await client.get(
             "/v1/models", headers={"Authorization": "Bearer control-key"}
         )
@@ -133,12 +152,12 @@ async def test_controller_lists_and_routes_models(tmp_path):
             headers={"Authorization": "Bearer control-key"},
             json={"model": "public/image", "prompt": "test"},
         )
-        status = await client.get("/api/status", auth=("comfy", "control-key"))
+        status = await client.get("/api/status")
         history = status.json()["history"][0]
         media = await client.get(
-            f"/api/history/{history['id']}/media/{history['media'][0]['id']}",
-            auth=("comfy", "control-key"),
+            f"/api/history/{history['id']}/media/{history['media'][0]['id']}"
         )
+        logout = await client.post("/logout", follow_redirects=False)
         denied_media = await client.get(
             f"/api/history/{history['id']}/media/{history['media'][0]['id']}"
         )
@@ -149,8 +168,14 @@ async def test_controller_lists_and_routes_models(tmp_path):
         "providers": 1,
     }
     assert denied.status_code == 401
+    assert basic.status_code == 303
+    assert basic.headers["location"] == "/login"
+    assert login_page.status_code == 200
+    assert 'autocomplete="current-password"' in login_page.text
+    assert invalid_login.status_code == 401
     assert dashboard.status_code == 200
     assert "Action Result" in dashboard.text
+    assert "Sign out" in dashboard.text
     assert [model["id"] for model in models.json()["data"]] == [
         "public/image",
         "public/image-edit",
@@ -164,6 +189,8 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert history["status"] == "completed"
     assert media.content == b"image"
     assert media.headers["content-type"] == "image/png"
+    assert logout.status_code == 303
+    assert logout.headers["location"] == "/login"
     assert denied_media.status_code == 401
     await app.state.controller.close()
 
@@ -293,11 +320,11 @@ async def test_history_and_media_survive_controller_restart(tmp_path):
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=second), base_url="http://control"
     ) as client:
-        history = await client.get("/api/history", auth=("comfy", "control-key"))
+        await sign_in(client)
+        history = await client.get("/api/history")
         item = history.json()["data"][0]
         media = await client.get(
-            f"/api/history/{history_id}/media/{item['media'][0]['id']}",
-            auth=("comfy", "control-key"),
+            f"/api/history/{history_id}/media/{item['media'][0]['id']}"
         )
 
     assert item["id"] == history_id
@@ -457,13 +484,11 @@ providers:
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://control"
     ) as client:
-        status = await client.get("/api/status", auth=("comfy", "control-key"))
-        rejected = await client.post(
-            "/api/providers/worker/actions/deploy", auth=("comfy", "control-key")
-        )
+        await sign_in(client)
+        status = await client.get("/api/status")
+        rejected = await client.post("/api/providers/worker/actions/deploy")
         deployed = await client.post(
             "/api/providers/worker/actions/deploy",
-            auth=("comfy", "control-key"),
             headers={"x-comfy-control-action": "worker/deploy"},
         )
 
@@ -514,15 +539,14 @@ providers:
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://control"
     ) as client:
+        await sign_in(client)
         deployed = await client.post(
             "/api/providers/worker/actions/deploy",
-            auth=("comfy", "control-key"),
             headers={"x-comfy-control-action": "worker/deploy"},
         )
-        status = await client.get("/api/status", auth=("comfy", "control-key"))
+        status = await client.get("/api/status")
         destroyed_response = await client.post(
             "/api/providers/worker/actions/destroy",
-            auth=("comfy", "control-key"),
             headers={"x-comfy-control-action": "worker/destroy"},
         )
 

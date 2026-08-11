@@ -37,7 +37,9 @@ The control plane records every image generation, image edit and video request i
 SQLite. History retains sanitised parameters, provider, status, errors and
 timestamps. Successful output media is copied into the controller's persistent
 `media/` directory and remains viewable after a worker is stopped or destroyed.
-The authenticated dashboard opens images and videos in a popup viewer.
+The dashboard uses a normal sign-in form backed by an HTTP-only signed session
+cookie; it does not use browser Basic authentication. It opens images and videos
+in a popup viewer after sign-in.
 
 Video requests also create durable worker-local records. When `JOBS_DIR` is
 configured, worker job transitions survive process restarts. Completed outputs can

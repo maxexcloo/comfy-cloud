@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import base64
+import hashlib
 import hmac
 import json
+import time
 import uuid
 from contextlib import asynccontextmanager
+from html import escape
 from pathlib import Path
 
 import httpx
@@ -14,6 +16,7 @@ from fastapi.responses import (
     FileResponse,
     HTMLResponse,
     JSONResponse,
+    RedirectResponse,
     Response,
     StreamingResponse,
 )
@@ -30,6 +33,11 @@ from .controller import (
 
 class RequestBodyTooLarge(ValueError):
     pass
+
+
+LOGIN_MAXIMUM_BYTES = 16 * 1024
+SESSION_COOKIE = "comfy_control_session"
+SESSION_SECONDS = 12 * 60 * 60
 
 
 def error(message: str, status: int, code: str) -> JSONResponse:
@@ -50,20 +58,53 @@ def bearer_authorised(request: Request, settings: ControlSettings) -> bool:
     return scheme.lower() == "bearer" and hmac.compare_digest(value, settings.api_key)
 
 
+def session_secret(settings: ControlSettings) -> bytes:
+    return (settings.ui_password or settings.api_key).encode()
+
+
+def session_token(settings: ControlSettings, expires: int) -> str:
+    payload = str(expires)
+    signature = hmac.new(
+        session_secret(settings), payload.encode(), hashlib.sha512
+    ).hexdigest()
+    return f"{payload}.{signature}"
+
+
 def ui_authorised(request: Request, settings: ControlSettings) -> bool:
-    if bearer_authorised(request, settings):
-        return True
-    scheme, _, value = request.headers.get("authorization", "").partition(" ")
-    if scheme.lower() != "basic":
+    token = request.cookies.get(SESSION_COOKIE, "")
+    payload, separator, signature = token.partition(".")
+    if not separator:
         return False
     try:
-        username, _, password = base64.b64decode(value).decode().partition(":")
-    except (ValueError, UnicodeDecodeError):
+        expires = int(payload)
+    except ValueError:
         return False
-    expected_password = settings.ui_password or settings.api_key
-    return hmac.compare_digest(username, settings.ui_username) and hmac.compare_digest(
-        password, expected_password
+    expected = session_token(settings, expires).partition(".")[2]
+    return expires >= int(time.time()) and hmac.compare_digest(signature, expected)
+
+
+def secure_cookie(request: Request) -> bool:
+    forwarded = request.headers.get("x-forwarded-proto", "").partition(",")[0].strip()
+    return request.url.scheme == "https" or forwarded == "https"
+
+
+def login_html(settings: ControlSettings, invalid: bool = False) -> str:
+    message = (
+        '<p class="error" role="alert">Incorrect username or password.</p>'
+        if invalid
+        else ""
     )
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Sign in · Comfy Control</title><style>
+:root{{color-scheme:dark;font:15px system-ui;background:#101418;color:#e8edf2}}
+body{{display:grid;margin:0;min-height:100vh;place-items:center}}main{{background:#181e24;border:1px solid #2c3640;border-radius:10px;padding:2rem;width:min(320px,calc(100vw - 4rem))}}
+h1{{font-size:1.5rem;margin-top:0}}label{{display:grid;gap:.35rem;margin:1rem 0}}input{{background:#101418;border:1px solid #42576b;border-radius:5px;color:#e8edf2;padding:.65rem}}
+button{{background:#263442;border:1px solid #42576b;border-radius:5px;color:#e8edf2;padding:.65rem;width:100%;cursor:pointer}}.error{{color:#ff7b72}}
+</style></head><body><main><h1>Comfy Control</h1>{message}<form method="post" action="/login">
+<label>Username<input name="username" value="{escape(settings.ui_username)}" autocomplete="username" required></label>
+<label>Password<input name="password" type="password" autocomplete="current-password" required autofocus></label>
+<button type="submit">Sign in</button></form></main></body></html>"""
 
 
 async def limited_body(request: Request, maximum_bytes: int) -> bytes:
@@ -87,7 +128,7 @@ def html() -> str:
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>Comfy Control</title><style>
 :root{color-scheme:dark;font:15px system-ui;background:#101418;color:#e8edf2}body{max-width:1100px;margin:0 auto;padding:2rem}
-h1{font-size:1.5rem}section{background:#181e24;border:1px solid #2c3640;border-radius:10px;margin:1rem 0;padding:1rem}
+header{align-items:center;display:flex;justify-content:space-between}h1{font-size:1.5rem}section{background:#181e24;border:1px solid #2c3640;border-radius:10px;margin:1rem 0;padding:1rem}
 table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.55rem;border-bottom:1px solid #2c3640}th{color:#9fb0bf}
 button{background:#263442;border:1px solid #42576b;border-radius:5px;color:#e8edf2;margin:.15rem;padding:.35rem .55rem;cursor:pointer}
 pre{overflow:auto;white-space:pre-wrap}
@@ -95,7 +136,7 @@ dialog{background:#181e24;border:1px solid #42576b;border-radius:10px;color:#e8e
 dialog::backdrop{background:#000b}.viewer-head{display:flex;justify-content:space-between;gap:1rem}.viewer-media{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
 .viewer-media img,.viewer-media video{background:#0b0e11;border-radius:6px;max-height:65vh;max-width:100%;object-fit:contain;width:100%}
 .ready,.completed{color:#67d391}.busy,.starting,.queued,.in_progress{color:#f2c166}.failed,.error{color:#ff7b72}
-small{color:#9fb0bf}</style></head><body><h1>Comfy Control</h1><small id="updated">Loading…</small>
+small{color:#9fb0bf}</style></head><body><header><h1>Comfy Control</h1><form method="post" action="/logout"><button>Sign out</button></form></header><small id="updated">Loading…</small>
 <section><h2>Providers</h2><table><thead><tr><th>Provider</th><th>Type</th><th>Resource</th><th>State</th><th>Usage / credit</th><th>Actions</th></tr></thead><tbody id="providers"></tbody></table></section>
 <section><h2>Action Result</h2><pre id="actionResult">No action run.</pre></section>
 <section><h2>History</h2><table><thead><tr><th>Time</th><th>Operation</th><th>Model</th><th>Provider</th><th>Status</th><th>Media</th><th></th></tr></thead><tbody id="historyRows"></tbody></table></section>
@@ -103,7 +144,7 @@ small{color:#9fb0bf}</style></head><body><h1>Comfy Control</h1><small id="update
 <dialog id="viewer"><div class="viewer-head"><div><h2 id="viewerTitle"></h2><small id="viewerMeta"></small></div><button id="viewerClose">Close</button></div><div id="viewerMedia" class="viewer-media"></div><h3>Parameters</h3><pre id="viewerParameters"></pre></dialog>
 <script>const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let historyData=[];
-async function refresh(){const r=await fetch('/api/status');if(!r.ok)return;const d=await r.json();
+async function refresh(){const r=await fetch('/api/status');if(r.status===401){location='/login';return}if(!r.ok)return;const d=await r.json();
 providers.innerHTML=d.providers.map(p=>`<tr><td>${esc(p.platform??p.id)}<br><small>${esc(p.id)}</small></td><td>${esc(p.type)}</td><td>${esc(p.resource_id??'—')}</td><td class="${esc(p.state)}">${esc(p.state)} (${p.active_requests})</td><td>${p.usage.status==='ok'?(p.usage.metrics.map(m=>`${esc(m.label)}: ${esc(m.value)}${m.unit?' '+esc(m.unit):''}`).join('<br>')||'No metrics'):esc(p.usage.error??p.usage.status)}</td><td>${p.actions.map(a=>`<button data-provider="${esc(p.id)}" data-action="${esc(a.name)}" data-confirmation="${esc(a.confirmation)}">${esc(a.name)}</button>`).join('')}</td></tr>`).join('');
 providers.querySelectorAll('button').forEach(b=>b.onclick=()=>act(b.dataset.provider,b.dataset.action,b.dataset.confirmation));
 historyData=d.history;historyRows.innerHTML=historyData.map(j=>`<tr><td>${new Date(j.created_at*1000).toLocaleString()}</td><td>${esc(j.operation)}</td><td>${esc(j.model)}</td><td>${esc(j.provider||'—')}</td><td class="${esc(j.status)}">${esc(j.status)}</td><td>${j.media.length}</td><td><button data-history="${esc(j.id)}">View</button></td></tr>`).join('');
@@ -151,11 +192,56 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     @app.get("/")
     async def dashboard(request: Request) -> Response:
         if not ui_authorised(request, settings):
-            return Response(
-                status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="Comfy Control"'},
+            return RedirectResponse("/login", status_code=303)
+        return HTMLResponse(html(), headers={"Cache-Control": "no-store"})
+
+    @app.get("/login")
+    async def login(request: Request) -> Response:
+        if ui_authorised(request, settings):
+            return RedirectResponse("/", status_code=303)
+        return HTMLResponse(login_html(settings), headers={"Cache-Control": "no-store"})
+
+    @app.post("/login")
+    async def create_session(request: Request) -> Response:
+        try:
+            await limited_body(request, LOGIN_MAXIMUM_BYTES)
+            form = await request.form()
+        except RequestBodyTooLarge:
+            return HTMLResponse(
+                login_html(settings, invalid=True),
+                status_code=413,
+                headers={"Cache-Control": "no-store"},
             )
-        return HTMLResponse(html())
+        username = str(form.get("username", ""))
+        password = str(form.get("password", ""))
+        expected_password = settings.ui_password or settings.api_key
+        valid = hmac.compare_digest(
+            username, settings.ui_username
+        ) and hmac.compare_digest(password, expected_password)
+        if not valid:
+            return HTMLResponse(
+                login_html(settings, invalid=True),
+                status_code=401,
+                headers={"Cache-Control": "no-store"},
+            )
+        expires = int(time.time()) + SESSION_SECONDS
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie(
+            SESSION_COOKIE,
+            session_token(settings, expires),
+            httponly=True,
+            max_age=SESSION_SECONDS,
+            path="/",
+            samesite="lax",
+            secure=secure_cookie(request),
+        )
+        return response
+
+    @app.post("/logout")
+    async def delete_session() -> Response:
+        response = RedirectResponse("/login", status_code=303)
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        return response
 
     @app.get("/api/status")
     async def status(request: Request) -> Response:
