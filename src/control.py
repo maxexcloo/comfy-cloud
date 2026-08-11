@@ -36,6 +36,7 @@ class RequestBodyTooLarge(ValueError):
 
 
 LOGIN_MAXIMUM_BYTES = 16 * 1024
+DASHBOARD_PAGE_SIZE = 20
 PROVIDER_TEST_MAXIMUM_BYTES = 16 * 1024
 SESSION_COOKIE = "comfy_control_session"
 SESSION_SECONDS = 12 * 60 * 60
@@ -154,40 +155,42 @@ def html() -> str:
     return """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>Comfy Control</title><style>
-:root{color-scheme:dark;font:15px system-ui;background:#0d1116;color:#e8edf2}*{box-sizing:border-box}body{max-width:1280px;margin:0 auto;padding:2rem}
-header{align-items:flex-start;display:flex;justify-content:space-between;margin-bottom:1.5rem}.eyebrow{color:#7f93a6;font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}h1{font-size:1.65rem;margin:.2rem 0}.subtitle{color:#9fb0bf;margin:0}.header-actions{align-items:flex-end;display:flex;flex-direction:column;gap:.5rem}section{background:#151b22;border:1px solid #27323d;border-radius:12px;margin:1rem 0;padding:1rem}.section-head{align-items:center;display:flex;justify-content:space-between;margin-bottom:.7rem}.section-head h2{font-size:1rem;margin:0}.table-wrap{overflow-x:auto}
-table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.7rem .55rem;border-bottom:1px solid #27323d;vertical-align:top}tbody tr:last-child td{border-bottom:0}th{color:#8799aa;font-size:.72rem;letter-spacing:.04em;text-transform:uppercase}.provider-name{font-weight:650}.resource{color:#9fb0bf;font-family:ui-monospace,monospace;font-size:.8rem}.badge{border:1px solid #42505d;border-radius:999px;display:inline-block;font-size:.75rem;padding:.18rem .5rem}.badge.ready,.badge.completed{background:#183527;border-color:#28563c}.badge.failed,.badge.error,.badge.unavailable{background:#3b2022;border-color:#693438}.badge.busy,.badge.starting,.badge.queued,.badge.in_progress{background:#3b321d;border-color:#68562d}.actions{display:grid;gap:.4rem;min-width:230px}.primary-actions,.utility-actions{display:flex;flex-wrap:wrap;gap:.25rem}.utility-actions{align-items:center}.utility-actions button,.utility-actions .button{background:transparent;border:0;color:#9fb7ca;font-size:.78rem;padding:.15rem .25rem}.utility-actions button:hover,.utility-actions .button:hover{color:#e8edf2;text-decoration:underline}
-button,input,select,textarea{background:#222d38;border:1px solid #3a4b5c;border-radius:6px;color:#e8edf2;padding:.48rem .65rem}.button,button{cursor:pointer;display:inline-block;text-decoration:none}.button{background:#222d38;border:1px solid #3a4b5c;border-radius:6px;padding:.48rem .65rem}.secondary{background:transparent}.danger{border-color:#6d3a3d;color:#ffaaa5}
-label{display:grid;gap:.35rem;margin:.8rem 0}textarea{min-height:7rem;min-width:min(36rem,75vw)}
-pre{overflow:auto;white-space:pre-wrap}
-dialog{background:#181e24;border:1px solid #42576b;border-radius:10px;color:#e8edf2;max-height:90vh;max-width:min(1000px,90vw);padding:1rem}
-dialog::backdrop{background:#000b}.viewer-head{display:flex;justify-content:space-between;gap:1rem}.viewer-media{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
-.viewer-media img,.viewer-media video{background:#0b0e11;border-radius:6px;max-height:65vh;max-width:100%;object-fit:contain;width:100%}
+:root{color-scheme:dark;font:15px Inter,ui-sans-serif,system-ui,sans-serif;--accent:#67d3bf;--accent-strong:#92ead9;--bg:#091016;--border:#253440;--danger:#ffaaa5;--muted:#8fa3b3;--surface:#111a22;--surface-raised:#17232d;background:var(--bg);color:#eaf1f5}*{box-sizing:border-box}body{max-width:1360px;margin:0 auto;min-height:100vh;padding:2rem;background:radial-gradient(circle at 15% 0,#17314355 0,transparent 32rem),radial-gradient(circle at 90% 15%,#16372e44 0,transparent 28rem)}
+header{align-items:flex-start;display:flex;justify-content:space-between;margin-bottom:1.5rem;padding:.35rem}.eyebrow{color:var(--accent);font-size:.7rem;font-weight:750;letter-spacing:.14em;text-transform:uppercase}h1{font-size:1.8rem;letter-spacing:-.035em;margin:.2rem 0}.subtitle{color:var(--muted);margin:0}.header-actions{align-items:flex-end;display:flex;flex-direction:column;gap:.55rem}section{background:linear-gradient(145deg,#121c24ee,#0f171fee);border:1px solid var(--border);border-radius:14px;box-shadow:0 18px 50px #0003;margin:1rem 0;overflow:hidden;padding:1rem}.section-head{align-items:center;display:flex;justify-content:space-between;margin-bottom:.7rem}.section-head h2{font-size:1rem;letter-spacing:-.01em;margin:0}.table-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.75rem .6rem;border-bottom:1px solid #22313c;vertical-align:top}tbody tr:last-child td{border-bottom:0}tbody tr{transition:background .15s ease}tbody tr:hover{background:#ffffff05}th{color:#7f95a6;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.provider-name{font-weight:700}.resource{color:var(--muted);font-family:ui-monospace,monospace;font-size:.78rem}.badge{border:1px solid #42505d;border-radius:999px;display:inline-block;font-size:.72rem;font-weight:650;padding:.2rem .52rem}.badge.ready,.badge.completed{background:#153a2b;border-color:#286148}.badge.failed,.badge.error,.badge.unavailable{background:#3b2022;border-color:#693438}.badge.busy,.badge.starting,.badge.queued,.badge.in_progress{background:#3b321d;border-color:#68562d}.actions{display:grid;gap:.45rem;min-width:230px}.primary-actions,.utility-actions,.viewer-controls{display:flex;flex-wrap:wrap;gap:.3rem}.utility-actions{align-items:center}.utility-actions button,.utility-actions .button{background:transparent;border:0;color:#9fb7ca;font-size:.78rem;padding:.18rem .3rem}.utility-actions button:hover,.utility-actions .button:hover{color:#eef8fc;text-decoration:underline}
+button,input,select,textarea,.button{background:var(--surface-raised);border:1px solid #38505f;border-radius:7px;color:#eaf1f5;font:inherit;padding:.48rem .7rem}button,.button{cursor:pointer;display:inline-block;text-decoration:none;transition:border-color .15s ease,background .15s ease,transform .15s ease}button:hover,.button:hover{background:#20313d;border-color:#587181}button:active,.button:active{transform:translateY(1px)}button:focus-visible,.button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.primary-actions button{background:#18382f;border-color:#2f6d59;color:var(--accent-strong);font-weight:650}.secondary{background:transparent}.danger,.primary-actions .danger{background:#351f23;border-color:#754149;color:var(--danger)}button:disabled{cursor:not-allowed;opacity:.4}
+label{display:grid;gap:.35rem;margin:.8rem 0}textarea{min-height:7rem;min-width:min(36rem,75vw)}pre{background:#0a1117;border:1px solid #21313d;border-radius:8px;line-height:1.5;overflow:auto;padding:.8rem;white-space:pre-wrap}
+dialog{background:linear-gradient(145deg,#17232d,#101820);border:1px solid #405767;border-radius:14px;box-shadow:0 30px 100px #000a;color:#eaf1f5;max-height:92vh;max-width:min(1050px,92vw);padding:1rem;width:max-content}dialog::backdrop{backdrop-filter:blur(4px);background:#03070bc7}.viewer-head{align-items:flex-start;display:flex;justify-content:space-between;gap:2rem;margin-bottom:.8rem}.viewer-head h2{margin:.1rem 0}.viewer-media{align-items:center;background:#070c10;border:1px solid #22313c;border-radius:10px;display:flex;justify-content:center;min-height:240px;overflow:hidden}.viewer-media img,.viewer-media video{max-height:65vh;max-width:100%;object-fit:contain}.action-summary{background:#10241e;border:1px solid #285644;border-radius:8px;margin:.7rem 0;padding:.7rem}.action-summary[data-state="failed"]{background:#301d20;border-color:#693438}.pagination{align-items:center;display:flex;gap:.5rem;justify-content:flex-end;margin-top:.8rem}.pagination small{min-width:9rem;text-align:center}
 .ready,.completed{color:#67d391}.busy,.starting,.queued,.in_progress{color:#f2c166}.failed,.error,.unavailable{color:#ff7b72}
-small{color:#9fb0bf}@media(max-width:700px){body{padding:1rem}header{gap:1rem}.subtitle{display:none}th,td{padding:.6rem .45rem}}</style></head><body><header><div><div class="eyebrow">GPU orchestration</div><h1>Comfy Control</h1><p class="subtitle">Providers, usage, deployments and generated media.</p></div><div class="header-actions"><small id="updated">Loading…</small><form method="post" action="/logout"><button class="secondary">Log Out</button></form></div></header>
+td hr{border:0;border-top:1px solid #243540;margin:.45rem 0}small{color:var(--muted)}[hidden]{display:none!important}@media(max-width:700px){body{padding:.75rem}header{align-items:flex-start;gap:1rem}.subtitle{display:none}.header-actions small{font-size:.7rem}.section-head{align-items:flex-start;flex-direction:column;gap:.25rem}.table-wrap{overflow:visible}table,tbody,tr,td{display:block;width:100%}thead{display:none}tbody{display:grid;gap:.75rem}tbody tr{background:#0d151c;border:1px solid #253642;border-radius:10px;padding:.55rem}tbody tr:hover{background:#101b23}tbody td{border:0;display:grid;gap:.5rem;grid-template-columns:minmax(6.5rem,32%) 1fr;padding:.4rem .45rem}tbody td::before{color:#7890a2;content:attr(data-label);font-size:.67rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase}.actions{min-width:0}.pagination{justify-content:space-between}.pagination small{min-width:0}.viewer-head{align-items:stretch;flex-direction:column;gap:.7rem}.viewer-controls{justify-content:space-between}dialog{max-width:96vw;width:96vw}.viewer-media{min-height:180px}}</style></head><body><header><div><div class="eyebrow">GPU orchestration</div><h1>Comfy Control</h1><p class="subtitle">Providers, usage, deployments and generated media.</p></div><div class="header-actions"><small id="updated">Loading…</small><form method="post" action="/logout"><button class="secondary">Log Out</button></form></div></header>
 <section><div class="section-head"><h2>Providers</h2><small>Live provider state and account usage</small></div><div class="table-wrap"><table><thead><tr><th>Provider</th><th>Resource</th><th>State</th><th>Usage / credit</th><th>Actions</th></tr></thead><tbody id="providers"></tbody></table></div></section>
-<section><div class="section-head"><h2>History</h2><small>Latest requests and controller-owned media</small></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Operation</th><th>Model</th><th>Provider</th><th>Status</th><th>Media</th><th></th></tr></thead><tbody id="historyRows"></tbody></table></div></section>
-<section><div class="section-head"><h2>Events</h2><small>Recent controller activity</small></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Level</th><th>Provider</th><th>Message</th></tr></thead><tbody id="events"></tbody></table></div></section>
-<dialog id="actionDialog"><div class="viewer-head"><h2>Action Result</h2><button data-close="actionDialog">Close</button></div><pre id="actionResult">No action run.</pre></dialog>
-<dialog id="viewer"><div class="viewer-head"><div><h2 id="viewerTitle"></h2><small id="viewerMeta"></small></div><button id="viewerClose">Close</button></div><div id="viewerMedia" class="viewer-media"></div><h3>Parameters</h3><pre id="viewerParameters"></pre></dialog>
+<section><div class="section-head"><h2>History</h2><small id="historyCount">Controller-owned requests and media</small></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Operation</th><th>Model</th><th>Provider</th><th>Status</th><th>Media</th><th></th></tr></thead><tbody id="historyRows"></tbody></table></div><div class="pagination"><button id="historyPrevious" class="secondary">Previous</button><small id="historyPage"></small><button id="historyNext" class="secondary">Next</button></div></section>
+<section><div class="section-head"><h2>Events</h2><small id="eventCount">Persisted controller activity</small></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Level</th><th>Provider</th><th>Message</th></tr></thead><tbody id="events"></tbody></table></div><div class="pagination"><button id="eventPrevious" class="secondary">Previous</button><small id="eventPage"></small><button id="eventNext" class="secondary">Next</button></div></section>
+<dialog id="viewer"><div class="viewer-head"><div><h2 id="viewerTitle"></h2><small id="viewerMeta"></small></div><div class="viewer-controls"><button id="viewerPrevious" title="Previous media (Left arrow)">← Previous</button><button id="viewerNext" title="Next media (Right arrow)">Next →</button><button id="viewerClose" class="secondary" title="Close (Escape)">Close</button></div></div><div id="viewerMedia" class="viewer-media"></div><small id="viewerPosition"></small><h3>Parameters</h3><pre id="viewerParameters"></pre></dialog>
 <dialog id="providerDialog"><div class="viewer-head"><h2 id="providerTitle"></h2><button data-close="providerDialog">Close</button></div><pre id="providerDetails"></pre></dialog>
-<dialog id="logsDialog"><div class="viewer-head"><div><h2 id="logsTitle"></h2><small>Controller events are always available and contain no provider credentials.</small></div><button data-close="logsDialog">Close</button></div><button id="logsRefresh">Refresh</button><pre id="logsContent"></pre></dialog>
+<dialog id="logsDialog"><div class="viewer-head"><div><h2 id="logsTitle"></h2><small>Actions continue if this window is closed. Reopen it with Logs.</small></div><div class="viewer-controls"><button id="logsRefresh">Refresh</button><button data-close="logsDialog" class="secondary">Close</button></div></div><div id="actionSummary" class="action-summary" hidden><strong id="actionStatus"></strong><pre id="actionResult"></pre></div><pre id="logsContent"></pre></dialog>
 <dialog id="testDialog"><div class="viewer-head"><h2 id="testTitle"></h2><button data-close="testDialog">Close</button></div><form id="testForm"><label>Model<select id="testModel" required></select></label><label>Size<select id="testSize"><option>512x512</option><option>768x768</option><option>1024x1024</option></select></label><label>Prompt<textarea id="testPrompt" maxlength="2000" required>A cinematic photograph of a wombat operating a compact GPU server, studio lighting</textarea></label><button id="testSubmit">Send test request</button></form><pre id="testResult">No request sent.</pre><div id="testMedia" class="viewer-media"></div></dialog>
-<script>const element=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),title=v=>String(v).split('-').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
-const providers=element('providers'),historyRows=element('historyRows'),events=element('events'),updated=element('updated'),viewer=element('viewer'),viewerTitle=element('viewerTitle'),viewerMeta=element('viewerMeta'),viewerMedia=element('viewerMedia'),viewerParameters=element('viewerParameters'),viewerClose=element('viewerClose'),providerDialog=element('providerDialog'),providerTitle=element('providerTitle'),providerDetails=element('providerDetails'),logsDialog=element('logsDialog'),logsTitle=element('logsTitle'),logsContent=element('logsContent'),logsRefresh=element('logsRefresh'),testDialog=element('testDialog'),testTitle=element('testTitle'),testModel=element('testModel'),testForm=element('testForm'),testSubmit=element('testSubmit'),testResult=element('testResult'),testMedia=element('testMedia'),testSize=element('testSize'),testPrompt=element('testPrompt'),actionDialog=element('actionDialog'),actionResult=element('actionResult');
-let historyData=[],providerData=[],testProvider='',logsProvider='';
-async function refresh(){const r=await fetch('/api/status');if(r.status===401){location='/login';return}if(!r.ok)return;const d=await r.json();providerData=d.providers;
-providers.innerHTML=d.providers.map(p=>`<tr><td><div class="provider-name">${esc(p.platform??p.id)}</div><small>${esc(p.type)} · ${esc(p.id)}</small></td><td class="resource">${esc(p.resource_id??'—')}</td><td><span class="badge ${esc(p.state)}">${esc(title(p.state))}</span>${p.active_requests?`<br><small>${p.active_requests} active</small>`:''}${p.error?`<br><small>${esc(p.error)}</small>`:''}</td><td>${p.usage.status==='ok'?(p.usage.metrics.map(m=>`${esc(m.label)}: ${esc(m.value)}${m.unit?' '+esc(m.unit):''}`).join('<br>')||'No metric exposed'):esc(p.usage.error??p.usage.status)}</td><td><div class="actions">${p.actions.length?`<div class="primary-actions">${p.actions.map(a=>`<button class="provider-action ${['delete','destroy','terminate'].includes(a.name)?'danger':''}" data-provider="${esc(p.id)}" data-action="${esc(a.name)}" data-confirmation="${esc(a.confirmation)}">${esc(title(a.name))}</button>`).join('')}</div>`:''}<div class="utility-actions"><button class="details" data-provider="${esc(p.id)}">Status</button><button class="logs" data-provider="${esc(p.id)}">Logs</button>${p.models.length?`<button class="test" data-provider="${esc(p.id)}">Test</button>`:''}${p.panel_url?`<a class="button" href="${esc(p.panel_url)}" target="_blank" rel="noopener noreferrer">Panel ↗</a>`:''}</div></div></td></tr>`).join('');
+<script>const element=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),title=v=>String(v).split(/[-_]/).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
+const providers=element('providers'),historyRows=element('historyRows'),events=element('events'),updated=element('updated'),historyCount=element('historyCount'),historyPrevious=element('historyPrevious'),historyPage=element('historyPage'),historyNext=element('historyNext'),eventCount=element('eventCount'),eventPrevious=element('eventPrevious'),eventPage=element('eventPage'),eventNext=element('eventNext'),viewer=element('viewer'),viewerTitle=element('viewerTitle'),viewerMeta=element('viewerMeta'),viewerMedia=element('viewerMedia'),viewerParameters=element('viewerParameters'),viewerPosition=element('viewerPosition'),viewerPrevious=element('viewerPrevious'),viewerNext=element('viewerNext'),viewerClose=element('viewerClose'),providerDialog=element('providerDialog'),providerTitle=element('providerTitle'),providerDetails=element('providerDetails'),logsDialog=element('logsDialog'),logsTitle=element('logsTitle'),logsContent=element('logsContent'),logsRefresh=element('logsRefresh'),actionSummary=element('actionSummary'),actionStatus=element('actionStatus'),actionResult=element('actionResult'),testDialog=element('testDialog'),testTitle=element('testTitle'),testModel=element('testModel'),testForm=element('testForm'),testSubmit=element('testSubmit'),testResult=element('testResult'),testMedia=element('testMedia'),testSize=element('testSize'),testPrompt=element('testPrompt');
+let historyData=[],providerData=[],viewerItems=[],viewerIndex=0,testProvider='',logsProvider='',historyPageNumber=1,eventPageNumber=1;const actionStates=new Map(),actionPolls=new Map();
+function metricText(metric){const number=Number(metric.value),value=metric.unit==='USD'&&Number.isFinite(number)?new Intl.NumberFormat(undefined,{style:'currency',currency:'USD'}).format(number):esc(metric.value)+(metric.unit?' '+esc(metric.unit):'');return `<strong>${esc(metric.label)}</strong><br><span>${value}</span>`}
+function pagination(data,previous,label,next,count){previous.disabled=data.page<=1;next.disabled=data.page>=data.pages;label.textContent=`Page ${data.page} of ${data.pages}`;count.textContent=`${data.count} saved`}
+async function refresh(){const r=await fetch(`/api/status?history_page=${historyPageNumber}&event_page=${eventPageNumber}`);if(r.status===401){location='/login';return}if(!r.ok)throw new Error('status '+r.status);const d=await r.json();providerData=d.providers;
+providers.innerHTML=d.providers.map(p=>`<tr><td data-label="Provider"><div class="provider-name">${esc(p.platform??p.id)}</div><small>${esc(title(p.type))} · ${esc(p.id)}</small></td><td data-label="Resource" class="resource">${esc(p.resource_id??'—')}</td><td data-label="State"><span class="badge ${esc(p.state)}">${esc(title(p.state))}</span>${p.active_requests?`<br><small>${p.active_requests} active</small>`:''}${p.error?`<br><small>${esc(p.error)}</small>`:''}</td><td data-label="Usage / credit">${p.usage.status==='ok'?(p.usage.metrics.map(metricText).join('<hr>')||'No metric exposed'):esc(p.usage.error??p.usage.status)}</td><td data-label="Actions"><div class="actions">${p.actions.length?`<div class="primary-actions">${p.actions.map(a=>`<button class="provider-action ${['delete','destroy','terminate'].includes(a.name)?'danger':''}" data-provider="${esc(p.id)}" data-action="${esc(a.name)}" data-confirmation="${esc(a.confirmation)}">${esc(title(a.name))}</button>`).join('')}</div>`:''}<div class="utility-actions"><button class="details" data-provider="${esc(p.id)}">Status</button><button class="logs" data-provider="${esc(p.id)}">Logs</button>${p.models.length?`<button class="test" data-provider="${esc(p.id)}">Test</button>`:''}${p.panel_url?`<a class="button" href="${esc(p.panel_url)}" target="_blank" rel="noopener noreferrer">Panel ↗</a>`:''}</div></div></td></tr>`).join('');
 providers.querySelectorAll('.provider-action').forEach(b=>b.onclick=()=>act(b.dataset.provider,b.dataset.action,b.dataset.confirmation));providers.querySelectorAll('.details').forEach(b=>b.onclick=()=>showProvider(b.dataset.provider));providers.querySelectorAll('.logs').forEach(b=>b.onclick=()=>showLogs(b.dataset.provider));providers.querySelectorAll('.test').forEach(b=>b.onclick=()=>showTest(b.dataset.provider));
-historyData=d.history;historyRows.innerHTML=historyData.map(j=>`<tr><td>${new Date(j.created_at*1000).toLocaleString()}</td><td>${esc(j.operation)}</td><td>${esc(j.model)}</td><td>${esc(j.provider||'—')}</td><td class="${esc(j.status)}">${esc(j.status)}</td><td>${j.media.length}</td><td><button data-history="${esc(j.id)}">View</button></td></tr>`).join('');historyRows.querySelectorAll('button').forEach(b=>b.onclick=()=>showHistory(b.dataset.history));events.innerHTML=d.events.map(e=>`<tr><td>${new Date(e.created_at*1000).toLocaleString()}</td><td class="${esc(e.level)}">${esc(e.level)}</td><td>${esc(e.provider)}</td><td>${esc(e.message)}</td></tr>`).join('');updated.textContent='Updated '+new Date().toLocaleTimeString()}
-function showHistory(id){const item=historyData.find(j=>j.id===id);if(!item)return;viewerTitle.textContent=item.model;viewerMeta.textContent=`${item.operation} · ${item.provider||'no provider'} · ${item.status}`;viewerParameters.textContent=JSON.stringify({...item.parameters,error:item.error},null,2);viewerMedia.replaceChildren();for(const media of item.media){const element=document.createElement(media.content_type.startsWith('video/')?'video':'img');element.src='/api/history/'+encodeURIComponent(item.id)+'/media/'+media.id;element.title=media.filename;if(element.tagName==='VIDEO')element.controls=true;viewerMedia.appendChild(element)}viewer.showModal()}
+historyData=d.history;historyRows.innerHTML=historyData.map(j=>`<tr><td data-label="Time">${new Date(j.created_at*1000).toLocaleString()}</td><td data-label="Operation">${esc(title(j.operation))}</td><td data-label="Model">${esc(j.model)}</td><td data-label="Provider">${esc(j.provider||'—')}</td><td data-label="Status"><span class="badge ${esc(j.status)}">${esc(title(j.status))}</span></td><td data-label="Media">${j.media.length}</td><td data-label="View"><button data-history="${esc(j.id)}">View</button></td></tr>`).join('');historyRows.querySelectorAll('button').forEach(b=>b.onclick=()=>showHistory(b.dataset.history));events.innerHTML=d.events.map(e=>`<tr><td data-label="Time">${new Date(e.created_at*1000).toLocaleString()}</td><td data-label="Level" class="${esc(e.level)}">${esc(title(e.level))}</td><td data-label="Provider">${esc(e.provider||'—')}</td><td data-label="Message">${esc(e.message)}</td></tr>`).join('');pagination(d.history_pagination,historyPrevious,historyPage,historyNext,historyCount);pagination(d.event_pagination,eventPrevious,eventPage,eventNext,eventCount);updated.textContent='Updated '+new Date().toLocaleTimeString()}
+function renderViewer(){const current=viewerItems[viewerIndex],item=current.item,media=current.media;viewerTitle.textContent=item.model;viewerMeta.textContent=`${title(item.operation)} · ${item.provider||'no provider'} · ${title(item.status)}`;viewerParameters.textContent=JSON.stringify({...item.parameters,error:item.error},null,2);viewerMedia.replaceChildren();if(media){const node=document.createElement(media.content_type.startsWith('video/')?'video':'img');node.src='/api/history/'+encodeURIComponent(item.id)+'/media/'+media.id;node.title=media.filename;if(node.tagName==='VIDEO')node.controls=true;viewerMedia.appendChild(node)}else{const empty=document.createElement('small');empty.textContent='No output media is attached to this request.';viewerMedia.appendChild(empty)}viewerPosition.textContent=media?`${viewerIndex+1} of ${viewerItems.length} · ${media.filename}`:'Request details';viewerPrevious.disabled=viewerIndex===0;viewerNext.disabled=viewerIndex>=viewerItems.length-1}
+function showHistory(id){const item=historyData.find(entry=>entry.id===id);if(!item)return;viewerItems=historyData.flatMap(entry=>entry.media.map(media=>({item:entry,media})));viewerIndex=viewerItems.findIndex(entry=>entry.item.id===id);if(viewerIndex<0){viewerItems=[{item,media:null}];viewerIndex=0}renderViewer();if(!viewer.open)viewer.showModal()}
+function moveViewer(change){const target=viewerIndex+change;if(target<0||target>=viewerItems.length)return;viewerIndex=target;renderViewer()}
 function showProvider(id){const p=providerData.find(item=>item.id===id);if(!p)return;providerTitle.textContent=(p.platform??p.id)+' status';providerDetails.textContent=JSON.stringify({id:p.id,type:p.type,state:p.state,resource_id:p.resource_id,active_requests:p.active_requests,idle_seconds:p.idle_seconds,details:p.details,usage:p.usage,error:p.error},null,2);providerDialog.showModal()}
-async function loadLogs(){logsContent.textContent='Loading…';const r=await fetch('/api/providers/'+encodeURIComponent(logsProvider)+'/logs?limit=200');const d=await r.json().catch(()=>({}));logsContent.textContent=r.ok?(d.entries.length?d.entries.map(e=>`${new Date(e.created_at*1000).toLocaleString()} ${String(e.level).toUpperCase()} ${e.message}${e.request_id?' ['+e.request_id+']':''}`).join('\\n'):'No controller events recorded for this provider.'):d.error?.message??'Unable to load logs'}
-function showLogs(id){logsProvider=id;logsTitle.textContent=id+' logs';logsDialog.showModal();loadLogs()}
+function renderAction(id){const state=actionStates.get(id);actionSummary.hidden=!state;if(!state)return;actionSummary.dataset.state=state.state;actionStatus.textContent=state.label;actionResult.textContent=state.result}
+async function loadLogs(provider=logsProvider){logsContent.textContent='Loading…';const r=await fetch('/api/providers/'+encodeURIComponent(provider)+'/logs?limit=200');const d=await r.json().catch(()=>({}));if(provider!==logsProvider)return;logsContent.textContent=r.ok?(d.entries.length?d.entries.map(e=>`${new Date(e.created_at*1000).toLocaleString()} ${String(e.level).toUpperCase()} ${e.message}${e.request_id?' ['+e.request_id+']':''}`).join('\\n'):'No controller events recorded for this provider.'):d.error?.message??'Unable to load logs'}
+function showLogs(id){logsProvider=id;const p=providerData.find(item=>item.id===id);logsTitle.textContent=(p?.platform??id)+' logs';renderAction(id);if(!logsDialog.open)logsDialog.showModal();loadLogs()}
 function showTest(id){const p=providerData.find(item=>item.id===id);if(!p)return;testProvider=id;testTitle.textContent='Test '+(p.platform??id);testModel.innerHTML=p.models.map(model=>`<option>${esc(model)}</option>`).join('');testResult.textContent='No request sent.';testMedia.replaceChildren();testDialog.showModal()}
-document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>document.getElementById(b.dataset.close).close());viewerClose.onclick=()=>viewer.close();logsRefresh.onclick=loadLogs;
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>document.getElementById(b.dataset.close).close());viewerClose.onclick=()=>viewer.close();viewerPrevious.onclick=()=>moveViewer(-1);viewerNext.onclick=()=>moveViewer(1);logsRefresh.onclick=()=>loadLogs();historyPrevious.onclick=()=>{historyPageNumber--;refresh()};historyNext.onclick=()=>{historyPageNumber++;refresh()};eventPrevious.onclick=()=>{eventPageNumber--;refresh()};eventNext.onclick=()=>{eventPageNumber++;refresh()};
+document.addEventListener('keydown',event=>{if(!viewer.open)return;if(event.key==='ArrowLeft'){event.preventDefault();moveViewer(-1)}else if(event.key==='ArrowRight'){event.preventDefault();moveViewer(1)}else if(event.key==='Escape'){viewer.close()}});
 testForm.onsubmit=async e=>{e.preventDefault();testSubmit.disabled=true;testResult.textContent='Sending request; this may start billable compute…';testMedia.replaceChildren();const r=await fetch('/api/providers/'+encodeURIComponent(testProvider)+'/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:testModel.value,prompt:testPrompt.value,size:testSize.value})});const d=await r.json().catch(()=>({}));testResult.textContent=JSON.stringify(d,null,2);if(r.ok)for(const media of d.media){const element=document.createElement('img');element.src='/api/history/'+encodeURIComponent(d.history_id)+'/media/'+media.id;element.title=media.filename;testMedia.appendChild(element)}testSubmit.disabled=false;await refresh()};
-async function act(provider,action,confirmation){if(confirmation&&confirmation!=='null'&&!confirm(confirmation))return;const key=provider+'/'+action;const r=await fetch('/api/providers/'+encodeURIComponent(provider)+'/actions/'+encodeURIComponent(action),{method:'POST',headers:{'x-comfy-control-action':key}});const d=await r.json().catch(()=>({}));actionResult.textContent=JSON.stringify(d,null,2);actionDialog.showModal();if(!r.ok)alert(d.error?.message??'Provider action failed');await refresh()}refresh().catch(e=>updated.textContent='Unable to load: '+e.message);setInterval(()=>refresh().catch(()=>{}),5000)</script></body></html>"""
+async function act(provider,action,confirmation){if(confirmation&&confirmation!=='null'&&!confirm(confirmation))return;const key=provider+'/'+action;actionStates.set(provider,{label:`${title(action)} in progress…`,result:'Waiting for the provider…',state:'running'});showLogs(provider);clearInterval(actionPolls.get(provider));actionPolls.set(provider,setInterval(()=>loadLogs(provider),1000));try{const r=await fetch('/api/providers/'+encodeURIComponent(provider)+'/actions/'+encodeURIComponent(action),{method:'POST',headers:{'x-comfy-control-action':key}});const d=await r.json().catch(()=>({}));actionStates.set(provider,{label:r.ok?`${title(action)} completed`:`${title(action)} failed`,result:JSON.stringify(d,null,2),state:r.ok?'completed':'failed'});if(logsProvider===provider)renderAction(provider)}catch(error){actionStates.set(provider,{label:`${title(action)} failed`,result:String(error),state:'failed'});if(logsProvider===provider)renderAction(provider)}finally{clearInterval(actionPolls.get(provider));actionPolls.delete(provider);if(logsProvider===provider)await loadLogs(provider);await refresh()}}refresh().catch(e=>updated.textContent='Unable to load: '+e.message);setInterval(()=>refresh().catch(()=>{}),5000)</script></body></html>"""
 
 
 def create_app(settings: ControlSettings | None = None) -> FastAPI:
@@ -283,6 +286,13 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             ui_authorised(request, settings) or bearer_authorised(request, settings)
         ):
             return Response(status_code=401)
+        try:
+            event_page = max(1, int(request.query_params.get("event_page", "1")))
+            history_page = max(1, int(request.query_params.get("history_page", "1")))
+        except ValueError:
+            return error("page must be a number", 400, "invalid_request")
+        event_count = controller.store.event_count()
+        history_count = controller.store.history_count()
         usage, provider_statuses = await asyncio.gather(
             controller.usage(), controller.provider_statuses()
         )
@@ -322,9 +332,32 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     }
                     for runtime in controller.providers.values()
                 ],
-                "history": controller.store.histories(100),
+                "history": controller.store.histories(
+                    DASHBOARD_PAGE_SIZE,
+                    (history_page - 1) * DASHBOARD_PAGE_SIZE,
+                ),
+                "history_pagination": {
+                    "count": history_count,
+                    "page": history_page,
+                    "pages": max(
+                        1,
+                        (history_count + DASHBOARD_PAGE_SIZE - 1)
+                        // DASHBOARD_PAGE_SIZE,
+                    ),
+                },
                 "jobs": controller.store.jobs(50),
-                "events": controller.store.events(100),
+                "events": controller.store.events(
+                    DASHBOARD_PAGE_SIZE,
+                    (event_page - 1) * DASHBOARD_PAGE_SIZE,
+                ),
+                "event_pagination": {
+                    "count": event_count,
+                    "page": event_page,
+                    "pages": max(
+                        1,
+                        (event_count + DASHBOARD_PAGE_SIZE - 1) // DASHBOARD_PAGE_SIZE,
+                    ),
+                },
             }
         )
 
@@ -346,7 +379,24 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def history(request: Request) -> Response:
         if not ui_authorised(request, settings):
             return Response(status_code=401)
-        return JSONResponse({"data": controller.store.histories(500)})
+        try:
+            page = max(1, int(request.query_params.get("page", "1")))
+            page_size = min(
+                max(1, int(request.query_params.get("page_size", "100"))), 500
+            )
+        except ValueError:
+            return error("page must be a number", 400, "invalid_request")
+        count = controller.store.history_count()
+        return JSONResponse(
+            {
+                "data": controller.store.histories(page_size, (page - 1) * page_size),
+                "pagination": {
+                    "count": count,
+                    "page": page,
+                    "pages": max(1, (count + page_size - 1) // page_size),
+                },
+            }
+        )
 
     @app.get("/api/history/{history_id}/media/{media_id}")
     async def history_media(
@@ -387,13 +437,32 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             return error(
                 "provider action confirmation is missing", 400, "invalid_action"
             )
+        request_id = uuid.uuid4().hex[:16]
+        controller.store.event(
+            "info",
+            f"provider action {action_name} started",
+            provider=provider_id,
+            request_id=request_id,
+        )
         try:
             result = await controller.run_provider_action(
-                provider_id, action_name, uuid.uuid4().hex[:16]
+                provider_id, action_name, request_id
             )
         except KeyError as exc:
+            controller.store.event(
+                "error",
+                f"provider action {action_name} failed: {exception_message(exc)}",
+                provider=provider_id,
+                request_id=request_id,
+            )
             return error(str(exc), 404, "action_not_found")
         except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
+            controller.store.event(
+                "error",
+                f"provider action {action_name} failed: {exception_message(exc)}",
+                provider=provider_id,
+                request_id=request_id,
+            )
             return error(exception_message(exc), 502, "action_failed")
         return JSONResponse(result)
 

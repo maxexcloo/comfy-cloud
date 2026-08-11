@@ -47,7 +47,11 @@ cookie; it does not use browser Basic authentication. It queries each provider
 control plane for current state without routing work to serverless capacity and
 provides confirmed lifecycle controls, sanitised control logs, direct
 provider-console links and a bounded image-generation test request. It opens images
-and videos in a popup viewer after sign-in.
+and videos in a keyboard-accessible popup viewer after sign-in. History and events
+are paginated in the dashboard. History, jobs, provider resources and generated
+media remain in the persistent `data` volume; controller events are also persisted
+there and bounded to the latest 2,000 records. Provider actions record their start,
+success or failure, and display live controller logs in a closeable dialog.
 
 Video requests also create durable worker-local records. When `JOBS_DIR` is
 configured, worker job transitions survive process restarts. Completed outputs can

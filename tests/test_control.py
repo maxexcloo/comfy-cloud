@@ -181,8 +181,9 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert 'autocomplete="current-password"' in login_page.text
     assert invalid_login.status_code == 401
     assert dashboard.status_code == 200
-    assert "Action Result" in dashboard.text
+    assert "Actions continue if this window is closed" in dashboard.text
     assert ".join('\\n')" in dashboard.text
+    assert "Previous media (Left arrow)" in dashboard.text
     assert "Send test request" in dashboard.text
     assert "Log Out" in dashboard.text
     assert [model["id"] for model in models.json()["data"]] == [
@@ -202,6 +203,11 @@ async def test_controller_lists_and_routes_models(tmp_path):
         "prompt": "test",
     }
     assert history["status"] == "completed"
+    assert status.json()["history_pagination"] == {
+        "count": 1,
+        "page": 1,
+        "pages": 1,
+    }
     assert media.content == b"image"
     assert media.headers["content-type"] == "image/png"
     assert logout.status_code == 303
@@ -452,6 +458,42 @@ async def test_history_and_media_survive_controller_restart(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_dashboard_paginates_persisted_history_and_events(tmp_path):
+    app = create_app(settings(tmp_path))
+    for index in range(21):
+        app.state.controller.store.save_history(
+            f"history-{index}",
+            "image_generation",
+            "public/image",
+            '{"model":"public/image"}',
+        )
+        app.state.controller.store.event("info", f"event {index}", provider="worker")
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        response = await client.get(
+            "/api/status?event_page=2&history_page=2",
+            headers={"Authorization": "Bearer control-key"},
+        )
+
+    assert response.status_code == 200
+    assert len(response.json()["events"]) == 1
+    assert len(response.json()["history"]) == 1
+    assert response.json()["event_pagination"] == {
+        "count": 21,
+        "page": 2,
+        "pages": 2,
+    }
+    assert response.json()["history_pagination"] == {
+        "count": 21,
+        "page": 2,
+        "pages": 2,
+    }
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
 async def test_controller_uses_ordered_fallback(tmp_path):
     configured = settings(tmp_path)
     configured.config_file.write_text(
@@ -620,6 +662,14 @@ providers:
     ]
     assert rejected.status_code == 400
     assert deployed.json()["body"] == {"api_key": "***", "status": "deployed"}
+    messages = [
+        entry["message"]
+        for entry in app.state.controller.provider_logs("worker")["entries"]
+    ]
+    assert messages == [
+        "provider action deploy succeeded",
+        "provider action deploy started",
+    ]
     await app.state.controller.close()
 
 

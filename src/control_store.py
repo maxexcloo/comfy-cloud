@@ -91,15 +91,15 @@ class ControlStore:
                 """
             )
 
-    def histories(self, limit: int = 100) -> list[dict[str, object]]:
+    def histories(self, limit: int = 100, offset: int = 0) -> list[dict[str, object]]:
         with self.lock:
             rows = self.connection.execute(
                 """
                 SELECT id, operation, model, provider, status, created_at, updated_at,
                        parameters_json, error
-                FROM history ORDER BY created_at DESC, rowid DESC LIMIT ?
+                FROM history ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?
                 """,
-                (limit,),
+                (limit, offset),
             ).fetchall()
             media_rows = self.connection.execute(
                 """
@@ -107,11 +107,11 @@ class ControlStore:
                 FROM media
                 WHERE history_id IN (
                     SELECT id FROM history
-                    ORDER BY created_at DESC, rowid DESC LIMIT ?
+                    ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?
                 )
                 ORDER BY id
                 """,
-                (limit,),
+                (limit, offset),
             ).fetchall()
         media_by_history: dict[str, list[dict[str, object]]] = {}
         for row in media_rows:
@@ -125,6 +125,13 @@ class ControlStore:
             item["media"] = media_by_history.get(str(item["id"]), [])
             histories.append(item)
         return histories
+
+    def history_count(self) -> int:
+        with self.lock:
+            row = self.connection.execute(
+                "SELECT COUNT(*) AS count FROM history"
+            ).fetchone()
+        return int(row["count"])
 
     def history_usage(self, provider: str) -> dict[str, int]:
         with self.lock:
@@ -245,14 +252,21 @@ class ControlStore:
                 """
             )
 
-    def events(self, limit: int = 100) -> list[dict[str, object]]:
+    def event_count(self) -> int:
+        with self.lock:
+            row = self.connection.execute(
+                "SELECT COUNT(*) AS count FROM events"
+            ).fetchone()
+        return int(row["count"])
+
+    def events(self, limit: int = 100, offset: int = 0) -> list[dict[str, object]]:
         with self.lock:
             rows = self.connection.execute(
                 """
                 SELECT created_at, level, message, provider, request_id
-                FROM events ORDER BY id DESC LIMIT ?
+                FROM events ORDER BY id DESC LIMIT ? OFFSET ?
                 """,
-                (limit,),
+                (limit, offset),
             ).fetchall()
         return [dict(row) for row in rows]
 
