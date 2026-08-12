@@ -14,8 +14,7 @@ from .control_contracts import (
     ProviderTestResult,
 )
 from .control_dashboard import bearer_authorised, ui_authorised
-from .control_http import RequestBodyTooLarge, error, limited_body
-from .controller import exception_message
+from .control_http import RequestBodyTooLarge, error, exception_message, limited_body
 
 TEST_MAXIMUM_BYTES = 16 * 1024
 
@@ -164,7 +163,7 @@ async def provider_test(provider_id: str, request: Request) -> Response:
             )
             if not response.is_success:
                 raise RuntimeError(f"provider returned HTTP {response.status_code}")
-            await controller.archive_images(history_id, target.provider, response)
+            await controller.media.archive_images(history_id, target.provider, response)
         else:
             width, height = size.split("x", 1)
             outputs = await controller.execute_internal(
@@ -174,7 +173,7 @@ async def provider_test(provider_id: str, request: Request) -> Response:
                 {"height": int(height), "prompt": prompt, "width": int(width)},
             )
             for content, content_type, filename in outputs:
-                controller.save_media(history_id, content, content_type, filename)
+                controller.media.save(history_id, content, content_type, filename)
         controller.store.finish_attempt(attempt_id, "completed")
         controller.store.update_history(
             history_id, "completed", provider=target.provider

@@ -9,14 +9,14 @@ from fastapi.responses import Response
 
 from .control_contracts import ImageGenerationRequest, ImageGenerationResponse
 from .control_dashboard import bearer_authorised
-from .control_http import RequestBodyTooLarge, error, limited_body
+from .control_http import RequestBodyTooLarge, error, exception_message, limited_body
 from .control_inference import (
     archived_image_content,
     canonical_parameters,
     internal_image_content,
     normalise_grok_image_options,
 )
-from .controller import exception_message, history_parameters, rewrite_json_model
+from .controller import history_parameters, rewrite_json_model
 
 router = APIRouter(prefix="/v1", tags=["inference"])
 
@@ -108,7 +108,9 @@ async def generate_image(request: Request, operation: str, path: str) -> Respons
         if response is None or response.is_success:
             controller.store.finish_attempt(attempt_id, "completed")
             if response is not None:
-                await controller.archive_images(history_id, target.provider, response)
+                await controller.media.archive_images(
+                    history_id, target.provider, response
+                )
             controller.store.update_history(
                 history_id, "completed", provider=target.provider
             )
@@ -292,7 +294,7 @@ async def image_edits(request: Request) -> Response:
         json.dumps(history_parameters(parameters), separators=(",", ":")),
     )
     for field_name, (filename, content, content_type) in files:
-        controller.save_input_media(
+        controller.media.save_input(
             history_id, content, content_type, filename, field_name
         )
     failures: list[str] = []
@@ -343,7 +345,9 @@ async def image_edits(request: Request) -> Response:
         if response is None or response.is_success:
             controller.store.finish_attempt(attempt_id, "completed")
             if response is not None:
-                await controller.archive_images(history_id, target.provider, response)
+                await controller.media.archive_images(
+                    history_id, target.provider, response
+                )
             controller.store.update_history(
                 history_id, "completed", provider=target.provider
             )

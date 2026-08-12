@@ -102,7 +102,7 @@ def internal_image_content(
 ) -> bytes:
     data = []
     for content, content_type, filename in outputs:
-        media_id = controller.save_media(history_id, content, content_type, filename)
+        media_id = controller.media.save(history_id, content, content_type, filename)
         if response_format == "url":
             data.append(
                 {

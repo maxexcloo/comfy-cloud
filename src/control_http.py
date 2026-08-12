@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
 
 class RequestBodyTooLarge(ValueError):
     pass
+
+
+def exception_message(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"provider API returned HTTP {exc.response.status_code}"
+    if isinstance(exc, httpx.RequestError):
+        return f"provider connection failed ({type(exc).__name__})"
+    return str(exc)
 
 
 def error(message: str, status: int, code: str) -> JSONResponse:

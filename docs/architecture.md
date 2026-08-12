@@ -77,6 +77,9 @@ duration where available, and are associated with their generation as ordered
 inputs or outputs. The media library uses FTS-backed fuzzy prompt lookup, structured
 parameter filters and source-to-derivative links. Assets remain viewable after a
 worker is stopped or destroyed.
+A controller-owned media service handles bounded remote input resolution, private
+network protection, archive downloads, durable paths and media persistence. Provider
+orchestration does not perform media network or filesystem operations directly.
 The dashboard uses a normal sign-in form backed by an HTTP-only signed session
 cookie; it does not use browser Basic authentication. It queries each provider
 control plane for current state without routing work to serverless capacity and

@@ -75,7 +75,7 @@ async def create_video(request: Request) -> Response:
     files: list[dict[str, str]] = []
     remote_source: str | None = None
     if request.headers.get("content-type", "").startswith("multipart/form-data"):
-        directory = controller.uploads_path / public_id
+        directory = controller.media.uploads_path / public_id
         directory.mkdir(parents=True)
         fields: list[tuple[str, str]] = []
         for key, value in form.multi_items():
@@ -122,10 +122,10 @@ async def create_video(request: Request) -> Response:
                     content_type,
                     filename,
                     remote_source,
-                ) = await controller.remote_input(image_reference)
+                ) = await controller.media.resolve_input(image_reference)
             except (httpx.HTTPError, OSError, ValueError) as exc:
                 return error(str(exc), 400, "invalid_image")
-            directory = controller.uploads_path / public_id
+            directory = controller.media.uploads_path / public_id
             directory.mkdir(parents=True)
             path = directory / "0"
             path.write_bytes(content)
@@ -163,7 +163,7 @@ async def create_video(request: Request) -> Response:
         json.dumps(history_parameters(parameters), separators=(",", ":")),
     )
     for item in files:
-        controller.save_input_media(
+        controller.media.save_input(
             public_id,
             Path(item["path"]).read_bytes(),
             item["content_type"],
