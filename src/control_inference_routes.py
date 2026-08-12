@@ -8,6 +8,13 @@ import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
+from .control_contracts import (
+    ImageGenerationRequest,
+    ImageGenerationResponse,
+    InferenceModelList,
+    VideoCreateRequest,
+    VideoJob,
+)
 from .control_dashboard import bearer_authorised
 from .control_http import RequestBodyTooLarge, error, limited_body
 from .control_inference import (
@@ -164,12 +171,54 @@ async def generate_image(request: Request, operation: str, path: str) -> Respons
     return error(failure, 502, "providers_failed")
 
 
-@router.post("/images/generations")
+@router.post(
+    "/images/generations",
+    operation_id="create_image",
+    response_model=ImageGenerationResponse,
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "schema": ImageGenerationRequest.model_json_schema()
+                }
+            },
+            "required": True,
+        }
+    },
+)
 async def image_generations(request: Request) -> Response:
     return await generate_image(request, "image_generation", "/v1/images/generations")
 
 
-@router.post("/images/edits")
+@router.post(
+    "/images/edits",
+    operation_id="edit_image",
+    response_model=ImageGenerationResponse,
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "additionalProperties": True,
+                        "properties": {
+                            "image": {
+                                "format": "binary",
+                                "items": {"format": "binary", "type": "string"},
+                                "type": "array",
+                            },
+                            "model": {"type": "string"},
+                            "prompt": {"type": "string"},
+                            "provider": {"type": "string"},
+                        },
+                        "required": ["image", "model", "prompt"],
+                        "type": "object",
+                    }
+                }
+            },
+            "required": True,
+        }
+    },
+)
 async def image_edits(request: Request) -> Response:
     controller = request.app.state.controller
     settings = request.app.state.settings
@@ -351,7 +400,32 @@ async def image_edits(request: Request) -> Response:
     return error(failure, 502, "providers_failed")
 
 
-@router.post("/videos")
+@router.post(
+    "/videos",
+    operation_id="create_video",
+    response_model=VideoJob,
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {"schema": VideoCreateRequest.model_json_schema()},
+                "multipart/form-data": {
+                    "schema": {
+                        "additionalProperties": True,
+                        "properties": {
+                            "image": {"format": "binary", "type": "string"},
+                            "model": {"type": "string"},
+                            "prompt": {"type": "string"},
+                            "provider": {"type": "string"},
+                        },
+                        "required": ["model", "prompt"],
+                        "type": "object",
+                    }
+                },
+            },
+            "required": True,
+        }
+    },
+)
 async def create_video(request: Request) -> Response:
     controller = request.app.state.controller
     settings = request.app.state.settings
@@ -495,12 +569,12 @@ async def create_video(request: Request) -> Response:
     )
 
 
-@router.get("/videos/{job_id}")
+@router.get("/videos/{job_id}", operation_id="get_video", response_model=VideoJob)
 async def get_video(job_id: str, request: Request) -> Response:
     return await video_response(job_id, request, content=False)
 
 
-@router.get("/videos/{job_id}/content")
+@router.get("/videos/{job_id}/content", operation_id="get_video_content")
 async def video_content(job_id: str, request: Request) -> Response:
     return await video_response(job_id, request, content=True)
 
@@ -544,7 +618,7 @@ async def video_response(job_id: str, request: Request, *, content: bool) -> Res
     return error("video output was not archived", 409, "video_output_missing")
 
 
-@router.get("/models")
+@router.get("/models", operation_id="list_models", response_model=InferenceModelList)
 async def models(request: Request) -> Response:
     controller = request.app.state.controller
     settings = request.app.state.settings

@@ -98,3 +98,60 @@ class ProviderTestResult(BaseModel):
     model: str
     provider: str
     status: Literal["completed"]
+
+
+class ImageData(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    b64_json: str | None = None
+    revised_prompt: str | None = None
+    url: str | None = None
+
+
+class ImageGenerationRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    model: str
+    n: int = Field(default=1, ge=1, le=4)
+    prompt: str
+    provider: str | None = None
+    response_format: Literal["b64_json", "url"] = "b64_json"
+    size: str = "auto"
+
+
+class ImageGenerationResponse(BaseModel):
+    created: int
+    data: list[ImageData]
+
+
+class InferenceModel(BaseModel):
+    created: int
+    id: str
+    object: Literal["model"]
+    owned_by: str
+
+
+class InferenceModelList(BaseModel):
+    data: list[InferenceModel]
+    object: Literal["list"]
+
+
+class VideoCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    image: str | None = None
+    model: str
+    prompt: str
+    provider: str | None = None
+
+
+class VideoJob(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    created_at: int
+    error: str | None = None
+    id: str
+    model: str
+    object: Literal["video"]
+    output_url: str | None = None
+    status: str

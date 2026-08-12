@@ -1441,6 +1441,9 @@ def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):
     test_body = schema["paths"]["/ops/providers/{provider_id}/test"]["post"][
         "requestBody"
     ]
+    image_create = schema["paths"]["/v1/images/generations"]["post"]
+    image_edit = schema["paths"]["/v1/images/edits"]["post"]
+    video_create = schema["paths"]["/v1/videos"]["post"]
     assert status_schema["content"]["application/json"]["schema"]["$ref"].endswith(
         "/OperationsStatus"
     )
@@ -1452,6 +1455,22 @@ def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):
         "model",
         "prompt",
     ]
+    assert image_create["operationId"] == "create_image"
+    assert image_create["requestBody"]["content"]["application/json"]["schema"][
+        "required"
+    ] == ["model", "prompt"]
+    assert image_create["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ].endswith("/ImageGenerationResponse")
+    assert image_edit["operationId"] == "edit_image"
+    assert "multipart/form-data" in image_edit["requestBody"]["content"]
+    assert video_create["operationId"] == "create_video"
+    assert set(video_create["requestBody"]["content"]) == {
+        "application/json",
+        "multipart/form-data",
+    }
+    assert schema["paths"]["/v1/models"]["get"]["operationId"] == "list_models"
+    assert schema["paths"]["/v1/videos/{job_id}"]["get"]["operationId"] == ("get_video")
     assert schema["paths"]["/ops/history"]["get"]["operationId"] == (
         "generation_history"
     )
