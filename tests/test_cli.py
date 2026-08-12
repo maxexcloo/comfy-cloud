@@ -7,6 +7,7 @@ ROOT = Path(__file__).parents[1]
 
 def test_runtime_images_use_the_packaged_commands():
     parser = create_parser()
+    worker = (ROOT / "Dockerfile.worker").read_text()
 
     assert parser.parse_args(["control"]).func.__name__ == "control"
     assert parser.parse_args(["pod"]).func.__name__ == "pod"
@@ -14,4 +15,5 @@ def test_runtime_images_use_the_packaged_commands():
     assert (
         'CMD ["comfy-control", "control"]' in (ROOT / "Dockerfile.control").read_text()
     )
-    assert 'CMD ["comfy-control", "pod"]' in (ROOT / "Dockerfile.worker").read_text()
+    assert 'CMD ["comfy-control", "pod"]' in worker
+    assert 'uv pip install --python "${VIRTUAL_ENV}/bin/python" pip' in worker

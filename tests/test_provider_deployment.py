@@ -1,5 +1,8 @@
 import json
+import runpy
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -79,6 +82,38 @@ def test_worker_ui_credentials_fall_back_when_compose_values_are_empty(
 
     assert environment["COMFY_UI_PASSWORD"] == "ui-password"
     assert environment["COMFY_UI_USERNAME"] == "comfy"
+
+
+def test_modal_function_uses_worker_image_python(monkeypatch):
+    function_options: dict[str, object] = {}
+    image_options: dict[str, object] = {}
+
+    class FakeApp:
+        def __init__(self, name):
+            assert name == "comfy-control"
+
+        def function(self, **options):
+            function_options.update(options)
+            return lambda value: value
+
+    fake_modal = SimpleNamespace(
+        App=FakeApp,
+        Image=SimpleNamespace(
+            from_registry=lambda *args, **kwargs: (
+                image_options.update(kwargs)
+                or SimpleNamespace(entrypoint=lambda value: value)
+            )
+        ),
+        Secret=SimpleNamespace(from_dict=lambda value: value),
+        Volume=SimpleNamespace(from_name=lambda *args, **kwargs: object()),
+        web_server=lambda *args, **kwargs: lambda value: value,
+    )
+    monkeypatch.setitem(sys.modules, "modal", fake_modal)
+
+    runpy.run_path(ROOT / "deploy/modal/app.py")
+
+    assert "add_python" not in image_options
+    assert "serialized" not in function_options
 
 
 @pytest.mark.asyncio

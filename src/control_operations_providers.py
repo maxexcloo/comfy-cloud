@@ -57,7 +57,7 @@ async def provider_action(
             request_id=request_id,
         )
         return error(str(exc), 404, "action_not_found")
-    except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
+    except Exception as exc:  # noqa: BLE001 - provider SDK boundary
         controller.store.event(
             "error",
             f"provider action {action_name} failed: {exception_message(exc)}",

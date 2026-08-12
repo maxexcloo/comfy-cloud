@@ -5,11 +5,14 @@ from collections.abc import Mapping
 import modal
 
 
+def serve() -> None:
+    subprocess.Popen(["comfy-control", "serverless"])
+
+
 def build_app(configuration: Mapping[str, str]) -> modal.App:
     app = modal.App("comfy-control")
     image = modal.Image.from_registry(
         configuration.get("WORKER_IMAGE", "ghcr.io/maxexcloo/comfy-control:worker"),
-        add_python="3.11",
     ).entrypoint([])
     models = modal.Volume.from_name(
         configuration.get("MODAL_MODEL_VOLUME", "comfy-control-models"),
@@ -38,7 +41,7 @@ def build_app(configuration: Mapping[str, str]) -> modal.App:
         if value := configuration.get(name):
             environment[name] = value
 
-    @app.function(
+    registered_serve = app.function(
         env=environment,
         gpu=configuration.get("MODAL_GPU", "L40S"),
         image=image,
@@ -46,10 +49,8 @@ def build_app(configuration: Mapping[str, str]) -> modal.App:
         scaledown_window=int(configuration.get("MODAL_SCALEDOWN_WINDOW", "60")),
         secrets=secrets,
         volumes={"/opt/ComfyUI/models": models},
-    )
-    @modal.web_server(8000, startup_timeout=900)
-    def serve():
-        subprocess.Popen(["comfy-control", "serverless"])
+    )(modal.web_server(8000, startup_timeout=900)(serve))
+    del registered_serve
 
     return app
 

@@ -6,7 +6,6 @@ import uuid
 from importlib import resources
 from urllib.parse import quote
 
-import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import (
     RedirectResponse,
@@ -281,7 +280,7 @@ async def provider_action(
         await controller.run_provider_action(
             provider_id, action_name, uuid.uuid4().hex[:16]
         )
-    except (KeyError, RuntimeError, httpx.HTTPError) as exc:
+    except Exception as exc:  # noqa: BLE001 - provider SDK boundary
         return error(str(exc), 400, "provider_action_failed")
     return RedirectResponse(
         f"/providers?message={quote(f'{provider_id} {action_name} completed'.title())}",
