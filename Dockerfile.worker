@@ -20,7 +20,7 @@ ENV BUILTIN_CATALOGUE_DIR=/opt/comfy-control/catalogue \
 
 RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/ubuntu.sources && \
     apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates ffmpeg git python3 python3-pip python3-venv && \
+    apt-get install -y --no-install-recommends build-essential ca-certificates ffmpeg git python3 python3-pip python3-venv && \
     rm -rf /var/lib/apt/lists/* && \
     uv venv "${VIRTUAL_ENV}" && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" pip
@@ -36,7 +36,7 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY catalogue ./catalogue
 COPY profiles ./profiles
-RUN uv export --frozen --no-dev --extra build --extra modal --extra vast --no-emit-project \
+RUN uv export --frozen --no-dev --extra build --extra vast --no-emit-project \
       --no-hashes --output-file /tmp/requirements.txt \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /tmp/requirements.txt \
     && uv build --wheel --out-dir /tmp/dist \

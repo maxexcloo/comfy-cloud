@@ -115,7 +115,10 @@ def test_modal_function_uses_worker_image_python(monkeypatch):
 
     runpy.run_path(ROOT / "deploy/modal/app.py")
 
-    assert "add_python" not in image_options
+    assert image_options["add_python"] == "3.12"
+    assert image_options["setup_dockerfile_commands"] == [
+        "ENV PATH=/usr/local/bin:/usr/bin:/bin"
+    ]
     assert "serialized" not in function_options
     assert function_options["env"] == {"MODELS_DIR": "/models"}
     assert function_options["volumes"] == {"/models": models}

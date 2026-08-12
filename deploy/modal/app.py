@@ -6,13 +6,15 @@ import modal
 
 
 def serve() -> None:
-    subprocess.Popen(["comfy-control", "serverless"])
+    subprocess.Popen(["/opt/venv/bin/comfy-control", "serverless"])
 
 
 def build_app(configuration: Mapping[str, str]) -> modal.App:
     app = modal.App("comfy-control")
     image = modal.Image.from_registry(
         configuration.get("WORKER_IMAGE", "ghcr.io/maxexcloo/comfy-control:worker"),
+        add_python="3.12",
+        setup_dockerfile_commands=["ENV PATH=/usr/local/bin:/usr/bin:/bin"],
     ).entrypoint([])
     models = modal.Volume.from_name(
         configuration.get("MODAL_MODEL_VOLUME", "comfy-control-models"),
