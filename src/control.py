@@ -21,13 +21,10 @@ from fastapi.responses import (
     Response,
 )
 from jinja2 import Environment, select_autoescape
-from pydantic import ValidationError
 
 from .control_config import ControlSettings
 from .control_contracts import (
     OperationsStatus,
-    PreferenceDescription,
-    PreferenceUpdate,
     ProviderActionResult,
     ProviderLogs,
     ProviderTestRequest,
@@ -52,6 +49,7 @@ from .control_inference import (
 )
 from .control_operations_history import router as history_operations_router
 from .control_operations_media import router as media_operations_router
+from .control_operations_settings import router as settings_operations_router
 from .control_preferences import ConfigurationConflict
 from .controller import (
     Controller,
@@ -139,6 +137,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     app.state.settings = settings
     app.include_router(history_operations_router)
     app.include_router(media_operations_router)
+    app.include_router(settings_operations_router)
 
     @app.get("/health/live")
     async def live() -> dict[str, str]:
@@ -605,65 +604,6 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             return error("log limit must be a number", 400, "invalid_request")
         except KeyError as exc:
             return error(str(exc), 404, "provider_not_found")
-
-    @app.get(
-        "/ops/settings",
-        tags=["operations"],
-        operation_id="get_preferences",
-        response_model=PreferenceDescription,
-    )
-    async def get_settings(request: Request) -> Response:
-        if not ui_authorised(request, settings):
-            return Response(status_code=401)
-        return JSONResponse(controller.describe_configuration())
-
-    @app.patch(
-        "/ops/settings",
-        tags=["operations"],
-        operation_id="update_preferences",
-        response_model=PreferenceDescription,
-        openapi_extra={
-            "requestBody": {
-                "content": {
-                    "application/json": {"schema": PreferenceUpdate.model_json_schema()}
-                },
-                "required": True,
-            }
-        },
-    )
-    async def update_settings(request: Request) -> Response:
-        if not ui_authorised(request, settings):
-            return Response(status_code=401)
-        if request.headers.get("x-comfy-control-settings") != "update":
-            return error(
-                "settings confirmation is missing", 400, "invalid_configuration"
-            )
-        try:
-            body = await limited_body(request, 256 * 1024)
-            payload = json.loads(body)
-            if not isinstance(payload, dict) or not isinstance(
-                payload.get("values"), dict
-            ):
-                raise TypeError("settings request must contain a values object")
-            revision = int(payload.get("revision"))
-            await controller.update_preferences(payload["values"], revision)
-        except RequestBodyTooLarge:
-            return error("settings request is too large", 413, "request_too_large")
-        except ConfigurationConflict as exc:
-            return error(str(exc), 409, "configuration_conflict")
-        except RuntimeError as exc:
-            status = 409 if "requests are active" in str(exc) else 500
-            return error(str(exc), status, "configuration_update_failed")
-        except ValidationError as exc:
-            message = "; ".join(
-                f"{'.'.join(map(str, item['loc']))}: {item['msg']}"
-                for item in exc.errors(include_input=False, include_url=False)
-            )
-            return error(message, 400, "invalid_configuration")
-        except (json.JSONDecodeError, TypeError, ValueError) as exc:
-            return error(str(exc), 400, "invalid_configuration")
-        controller.store.event("info", "control configuration updated")
-        return JSONResponse(controller.describe_configuration())
 
     @app.post(
         "/ops/providers/{provider_id}/actions/{action_name}",
