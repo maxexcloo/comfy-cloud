@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import json
 import time
 import uuid
@@ -24,16 +23,13 @@ from jinja2 import Environment, select_autoescape
 
 from .control_config import ControlSettings
 from .control_dashboard import (
-    SESSION_COOKIE,
     SESSION_SECONDS,
     bearer_authorised,
     csrf_token,
-    login_html,
-    secure_cookie,
-    session_token,
     ui_authorised,
     valid_csrf,
 )
+from .control_dashboard_sessions import router as dashboard_sessions_router
 from .control_http import RequestBodyTooLarge, error, limited_body
 from .control_inference import (
     archived_image_content,
@@ -60,7 +56,6 @@ MEDIA_LIBRARY_HTML = (
 )
 TEMPLATES = Environment(autoescape=select_autoescape(("html", "xml")))
 DASHBOARD_PAGE_SIZE = 20
-LOGIN_MAXIMUM_BYTES = 16 * 1024
 
 
 def html() -> str:
@@ -96,6 +91,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     app = FastAPI(title="Comfy Control", version="current", lifespan=lifespan)
     app.state.controller = controller
     app.state.settings = settings
+    app.include_router(dashboard_sessions_router)
     app.include_router(history_operations_router)
     app.include_router(media_operations_router)
     app.include_router(settings_operations_router)
@@ -392,54 +388,6 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         if controller.store.media_asset(asset_id) is None:
             return error("media was not found", 404, "not_found")
         return JSONResponse(controller.store.media_lineage(asset_id))
-
-    @app.get("/login")
-    async def login(request: Request) -> Response:
-        if ui_authorised(request, settings):
-            return RedirectResponse("/", status_code=303)
-        return HTMLResponse(login_html(settings), headers={"Cache-Control": "no-store"})
-
-    @app.post("/login")
-    async def create_session(request: Request) -> Response:
-        try:
-            await limited_body(request, LOGIN_MAXIMUM_BYTES)
-            form = await request.form()
-        except RequestBodyTooLarge:
-            return HTMLResponse(
-                login_html(settings, invalid=True),
-                status_code=413,
-                headers={"Cache-Control": "no-store"},
-            )
-        username = str(form.get("username", ""))
-        password = str(form.get("password", ""))
-        expected_password = settings.ui_password or settings.api_key
-        valid = hmac.compare_digest(
-            username, settings.ui_username
-        ) and hmac.compare_digest(password, expected_password)
-        if not valid:
-            return HTMLResponse(
-                login_html(settings, invalid=True),
-                status_code=401,
-                headers={"Cache-Control": "no-store"},
-            )
-        expires = int(time.time()) + SESSION_SECONDS
-        response = RedirectResponse("/", status_code=303)
-        response.set_cookie(
-            SESSION_COOKIE,
-            session_token(settings, expires),
-            httponly=True,
-            max_age=SESSION_SECONDS,
-            path="/",
-            samesite="lax",
-            secure=secure_cookie(request),
-        )
-        return response
-
-    @app.post("/logout")
-    async def delete_session() -> Response:
-        response = RedirectResponse("/login", status_code=303)
-        response.delete_cookie(SESSION_COOKIE, path="/")
-        return response
 
     @app.get("/v1/models")
     async def models(request: Request) -> Response:
