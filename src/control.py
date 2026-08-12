@@ -25,7 +25,6 @@ from pydantic import ValidationError
 
 from .control_config import ControlSettings
 from .control_contracts import (
-    HistoryPage,
     OperationsStatus,
     PreferenceDescription,
     PreferenceUpdate,
@@ -51,6 +50,7 @@ from .control_inference import (
     internal_image_content,
     normalise_grok_image_options,
 )
+from .control_operations_history import router as history_operations_router
 from .control_operations_media import router as media_operations_router
 from .control_preferences import ConfigurationConflict
 from .controller import (
@@ -137,6 +137,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     app = FastAPI(title="Comfy Control", version="current", lifespan=lifespan)
     app.state.controller = controller
     app.state.settings = settings
+    app.include_router(history_operations_router)
     app.include_router(media_operations_router)
 
     @app.get("/health/live")
@@ -663,62 +664,6 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             return error(str(exc), 400, "invalid_configuration")
         controller.store.event("info", "control configuration updated")
         return JSONResponse(controller.describe_configuration())
-
-    @app.get(
-        "/ops/history",
-        tags=["operations"],
-        operation_id="generation_history",
-        response_model=HistoryPage,
-    )
-    async def history(request: Request) -> Response:
-        if not ui_authorised(request, settings):
-            return Response(status_code=401)
-        try:
-            page = max(1, int(request.query_params.get("page", "1")))
-            page_size = min(
-                max(1, int(request.query_params.get("page_size", "100"))), 500
-            )
-        except ValueError:
-            return error("page must be a number", 400, "invalid_request")
-        count = controller.store.history_count()
-        return JSONResponse(
-            {
-                "data": controller.store.histories(page_size, (page - 1) * page_size),
-                "pagination": {
-                    "count": count,
-                    "page": page,
-                    "pages": max(1, (count + page_size - 1) // page_size),
-                },
-            }
-        )
-
-    @app.get(
-        "/ops/history/{history_id}/media/{media_id}",
-        tags=["operations"],
-        operation_id="generation_media",
-    )
-    async def history_media(
-        history_id: str, media_id: int, request: Request
-    ) -> Response:
-        if not (
-            ui_authorised(request, settings) or bearer_authorised(request, settings)
-        ):
-            return Response(status_code=401)
-        item = controller.store.media(media_id)
-        if (
-            item is None
-            or item.history_id != history_id
-            or not Path(item.path).is_file()
-        ):
-            return error("media was not found", 404, "not_found")
-        return FileResponse(
-            item.path,
-            media_type=item.content_type,
-            headers={
-                "Content-Disposition": f'inline; filename="{item.filename}"',
-                "X-Content-Type-Options": "nosniff",
-            },
-        )
 
     @app.post(
         "/ops/providers/{provider_id}/actions/{action_name}",

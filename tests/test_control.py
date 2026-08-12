@@ -1451,3 +1451,12 @@ def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):
         "model",
         "prompt",
     ]
+    assert schema["paths"]["/ops/history"]["get"]["operationId"] == (
+        "generation_history"
+    )
+    assert (
+        schema["paths"]["/ops/history/{history_id}/media/{media_id}"]["get"][
+            "operationId"
+        ]
+        == "generation_media"
+    )
