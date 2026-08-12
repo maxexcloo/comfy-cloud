@@ -4,18 +4,15 @@ from pathlib import Path
 import httpx
 import pytest
 
-from comfy_control import provider_deployment
+from comfy_control import provider_deployment_common
 from comfy_control.control_config import (
     ControlSettings,
     Provider,
     ProviderManagement,
 )
 from comfy_control.control_preferences import ControlPreferences
-from comfy_control.provider_deployment import (
-    configured_environment,
-    deploy_provider,
-    terminate_provider,
-)
+from comfy_control.provider_deployment import deploy_provider, terminate_provider
+from comfy_control.provider_deployment_common import configured_environment
 
 ROOT = Path(__file__).parents[1]
 
@@ -47,7 +44,7 @@ def provider(kind: str, name: str = "comfy-control") -> Provider:
 
 @pytest.fixture(autouse=True)
 def deployment_root(monkeypatch):
-    monkeypatch.setattr(provider_deployment, "DEPLOYMENT_ROOT", ROOT / "deploy")
+    monkeypatch.setattr(provider_deployment_common, "DEPLOYMENT_ROOT", ROOT / "deploy")
 
 
 @pytest.mark.asyncio

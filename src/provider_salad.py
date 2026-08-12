@@ -12,7 +12,7 @@ from .provider_adapter import (
     ProviderNotDeployed,
     required_mapping_value,
 )
-from .provider_deployment import required_preference
+from .provider_deployment_common import required_preference
 from .provider_telemetry import normalise_usage, selected_fields
 
 

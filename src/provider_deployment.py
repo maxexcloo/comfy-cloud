@@ -1,103 +1,28 @@
 from __future__ import annotations
 
-import json
-import os
-import shlex
-from pathlib import Path
-from typing import Any
 from urllib.parse import quote
 
 import httpx
 
 from .control_config import ControlSettings, Provider
 from .control_preferences import ControlPreferences
-
-DEPLOYMENT_ROOT = Path(
-    os.getenv("CONTROL_DEPLOYMENT_ROOT", "/opt/comfy-control/deploy")
+from .provider_deployment_common import (
+    checked_request,
+    configured_environment,
+    deployment_asset,
+    docker_flags,
+    required_preference,
+    response_json,
 )
-RUNPOD_ENDPOINT_GPUS = [
-    "NVIDIA L40S",
-    "NVIDIA RTX 6000 Ada Generation",
-    "NVIDIA GeForce RTX 4090",
-    "NVIDIA RTX A6000",
-]
-
-
-def required_preference(name: str, preferences: ControlPreferences) -> str:
-    value = preferences.environment().get(name)
-    if not value:
-        raise RuntimeError(f"{name} is required to manage this provider")
-    return value
-
-
-def deployment_asset(*parts: str) -> dict[str, Any]:
-    path = DEPLOYMENT_ROOT.joinpath(*parts)
-    if not path.is_file():
-        raise RuntimeError(f"provider deployment asset was not found: {path}")
-    value = json.loads(path.read_text())
-    if not isinstance(value, dict):
-        raise TypeError(f"provider deployment asset is invalid: {path}")
-    return value
-
-
-def worker_environment(
-    provider: Provider,
-    preferences: ControlPreferences,
-    settings: ControlSettings,
-) -> dict[str, str]:
-    configured = preferences.environment()
-    environment = {
-        "API_KEY": provider.api_key,
-        "COMFY_UI_PASSWORD": configured.get("COMFY_UI_PASSWORD", "").strip()
-        or settings.ui_password,
-        "COMFY_UI_USERNAME": configured.get("COMFY_UI_USERNAME", "").strip()
-        or settings.ui_username,
-    }
-    for name in (
-        "CIVITAI_TOKEN",
-        "HF_TOKEN",
-        "MAXIMUM_PENDING_GENERATIONS",
-        "MAXIMUM_REQUEST_BYTES",
-        "MODEL_PROFILES",
-        "REQUEST_TIMEOUT",
-        "WORKFLOW_TIMEOUT",
-    ):
-        if value := configured.get(name):
-            environment[name] = value
-    return environment
-
-
-def configured_environment(
-    configured: object,
-    provider: Provider,
-    preferences: ControlPreferences,
-    settings: ControlSettings,
-) -> dict[str, str]:
-    if isinstance(configured, list):
-        environment = {
-            str(item["key"]): str(item["value"])
-            for item in configured
-            if isinstance(item, dict) and "key" in item and "value" in item
-        }
-    elif isinstance(configured, dict):
-        environment = {str(key): str(value) for key, value in configured.items()}
-    else:
-        environment = {}
-    environment.update(worker_environment(provider, preferences, settings))
-    return environment
-
-
-def docker_flags(environment: dict[str, str], port: int) -> str:
-    flags = [
-        f"-e {shlex.quote(f'{name}={value}')}"
-        for name, value in sorted(environment.items())
-    ]
-    flags.append(f"-p {port}:{port}")
-    return " ".join(flags)
-
-
-def response_json(status_code: int, value: object) -> httpx.Response:
-    return httpx.Response(status_code, json=value)
+from .provider_deployment_runpod import (
+    deploy_pod as deploy_runpod_pod,
+)
+from .provider_deployment_runpod import (
+    deploy_serverless as deploy_runpod_serverless,
+)
+from .provider_deployment_runpod import (
+    terminate as terminate_runpod,
+)
 
 
 async def deploy_provider(
@@ -132,13 +57,7 @@ async def terminate_provider(
     if management is None:
         raise RuntimeError("provider has no deployment management")
     if management.kind.startswith("runpod-"):
-        collection = "pods" if management.kind == "runpod-pod" else "endpoints"
-        return await checked_request(
-            client,
-            "DELETE",
-            f"https://rest.runpod.io/v1/{collection}/{quote(resource_id, safe='')}",
-            headers=runpod_headers(preferences),
-        )
+        return await terminate_runpod(client, provider, preferences, resource_id)
     if management.kind == "salad":
         return await checked_request(
             client,
@@ -183,150 +102,6 @@ async def terminate_provider(
             headers=vast_headers(preferences),
         )
     raise RuntimeError(f"unsupported standalone provider: {management.kind}")
-
-
-async def checked_request(
-    client: httpx.AsyncClient,
-    method: str,
-    url: str,
-    **kwargs: object,
-) -> httpx.Response:
-    response = await client.request(method, url, **kwargs)
-    response.raise_for_status()
-    return response
-
-
-def runpod_headers(preferences: ControlPreferences) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {required_preference('RUNPOD_API_KEY', preferences)}"
-    }
-
-
-async def deploy_runpod_pod(
-    client: httpx.AsyncClient,
-    provider: Provider,
-    preferences: ControlPreferences,
-    settings: ControlSettings,
-) -> httpx.Response:
-    environment = preferences.environment()
-    payload = deployment_asset("runpod", "pod.json")
-    docker_args = str(payload.pop("dockerArgs", "")).strip()
-    payload["dockerEntrypoint"] = []
-    payload["dockerStartCmd"] = shlex.split(docker_args) if docker_args else []
-    payload["env"] = configured_environment(
-        payload.get("env"), provider, preferences, settings
-    )
-    payload["name"] = provider.management.name  # type: ignore[union-attr]
-    payload["imageName"] = preferences.worker_image
-    if isinstance(payload.get("ports"), str):
-        payload["ports"] = [
-            item.strip() for item in payload["ports"].split(",") if item.strip()
-        ]
-    if gpu_types := environment.get("RUNPOD_GPU_TYPES"):
-        payload["gpuTypeIds"] = [
-            item.strip() for item in gpu_types.split(",") if item.strip()
-        ]
-    if data_centres := environment.get("RUNPOD_DATA_CENTRES"):
-        payload["dataCenterIds"] = [
-            item.strip() for item in data_centres.split(",") if item.strip()
-        ]
-    return await checked_request(
-        client,
-        "POST",
-        "https://rest.runpod.io/v1/pods",
-        headers=runpod_headers(preferences),
-        json=payload,
-    )
-
-
-async def deploy_runpod_serverless(
-    client: httpx.AsyncClient,
-    provider: Provider,
-    preferences: ControlPreferences,
-    settings: ControlSettings,
-) -> httpx.Response:
-    environment = preferences.environment()
-    template = deployment_asset("runpod", "serverless.json")
-    docker_args = str(template.pop("dockerArgs", "")).strip()
-    template.pop("endpointType", None)
-    template["dockerEntrypoint"] = []
-    template["dockerStartCmd"] = shlex.split(docker_args) if docker_args else []
-    template["env"] = configured_environment(
-        template.get("env"), provider, preferences, settings
-    )
-    template["imageName"] = preferences.worker_image
-    template["isPublic"] = False
-    template["isServerless"] = True
-    template["name"] = f"{provider.management.name}-template"  # type: ignore[union-attr]
-    template["volumeInGb"] = 0
-    if isinstance(template.get("ports"), str):
-        template["ports"] = [
-            item.strip() for item in template["ports"].split(",") if item.strip()
-        ]
-    templates_response = await checked_request(
-        client,
-        "GET",
-        "https://rest.runpod.io/v1/templates",
-        headers=runpod_headers(preferences),
-    )
-    templates = templates_response.json()
-    existing = (
-        next(
-            (
-                item
-                for item in templates
-                if isinstance(item, dict) and item.get("name") == template["name"]
-            ),
-            None,
-        )
-        if isinstance(templates, list)
-        else None
-    )
-    if existing is None:
-        template_response = await checked_request(
-            client,
-            "POST",
-            "https://rest.runpod.io/v1/templates",
-            headers=runpod_headers(preferences),
-            json=template,
-        )
-        template_value = template_response.json()
-    else:
-        template_value = existing
-    template_id = template_value.get("id") if isinstance(template_value, dict) else None
-    if not template_id:
-        raise RuntimeError("RunPod template response has no id")
-    gpu_types = [
-        item.strip()
-        for item in environment.get(
-            "RUNPOD_GPU_TYPES", ",".join(RUNPOD_ENDPOINT_GPUS)
-        ).split(",")
-        if item.strip()
-    ]
-    endpoint: dict[str, object] = {
-        "endpointType": "load-balancer",
-        "executionTimeoutMs": int(provider.request_timeout * 1000),
-        "gpuCount": 1,
-        "gpuTypeIds": gpu_types,
-        "idleTimeout": min(max(provider.idle_seconds or 60, 1), 3600),
-        "name": provider.management.name,  # type: ignore[union-attr]
-        "scalerType": "QUEUE_DELAY",
-        "scalerValue": 4,
-        "templateId": str(template_id),
-        "workersMax": preferences.runpod_maximum_workers,
-        "workersMin": 0,
-    }
-    if data_centres := environment.get("RUNPOD_DATA_CENTRES"):
-        endpoint["dataCenterIds"] = [
-            item.strip() for item in data_centres.split(",") if item.strip()
-        ]
-    return await checked_request(
-        client,
-        "POST",
-        "https://rest.runpod.io/v1/endpoints",
-        headers=runpod_headers(preferences),
-        json=endpoint,
-    )
 
 
 def salad_headers(preferences: ControlPreferences) -> dict[str, str]:
