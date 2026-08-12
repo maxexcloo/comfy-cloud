@@ -23,6 +23,12 @@ from .provider_deployment_runpod import (
 from .provider_deployment_runpod import (
     terminate as terminate_runpod,
 )
+from .provider_deployment_salad import (
+    deploy as deploy_salad,
+)
+from .provider_deployment_salad import (
+    terminate as terminate_salad,
+)
 
 
 async def deploy_provider(
@@ -59,12 +65,7 @@ async def terminate_provider(
     if management.kind.startswith("runpod-"):
         return await terminate_runpod(client, provider, preferences, resource_id)
     if management.kind == "salad":
-        return await checked_request(
-            client,
-            "DELETE",
-            f"{salad_container_url(provider, preferences)}",
-            headers=salad_headers(preferences),
-        )
+        return await terminate_salad(client, provider, preferences, resource_id)
     if management.kind == "vast-pod":
         return await checked_request(
             client,
@@ -102,100 +103,6 @@ async def terminate_provider(
             headers=vast_headers(preferences),
         )
     raise RuntimeError(f"unsupported standalone provider: {management.kind}")
-
-
-def salad_headers(preferences: ControlPreferences) -> dict[str, str]:
-    return {"Salad-Api-Key": required_preference("SALAD_API_KEY", preferences)}
-
-
-def salad_scope(provider: Provider, preferences: ControlPreferences) -> tuple[str, str]:
-    management = provider.management
-    if management is None:
-        raise RuntimeError("provider has no SaladCloud management")
-    return (
-        management.organisation
-        or required_preference("SALAD_ORGANISATION", preferences),
-        management.project or required_preference("SALAD_PROJECT", preferences),
-    )
-
-
-def salad_container_url(provider: Provider, preferences: ControlPreferences) -> str:
-    organisation, project = salad_scope(provider, preferences)
-    management = provider.management
-    assert management is not None
-    return (
-        "https://api.salad.com/api/public/organizations/"
-        f"{quote(organisation, safe='')}/projects/{quote(project, safe='')}"
-        f"/containers/{quote(management.name, safe='')}"
-    )
-
-
-async def salad_gpu_classes(
-    client: httpx.AsyncClient,
-    provider: Provider,
-    preferences: ControlPreferences,
-) -> list[str]:
-    if preferences.salad_gpu_classes:
-        return preferences.salad_gpu_classes
-    organisation, _ = salad_scope(provider, preferences)
-    response = await checked_request(
-        client,
-        "GET",
-        "https://api.salad.com/api/public/organizations/"
-        f"{quote(organisation, safe='')}/gpu-classes",
-        headers=salad_headers(preferences),
-    )
-    payload = response.json()
-    values = payload.get("items", []) if isinstance(payload, dict) else payload
-    classes = (
-        [item for item in values if isinstance(item, dict)]
-        if isinstance(values, list)
-        else []
-    )
-    preferred = ("l40s", "4090", "5090", "a6000", "a40")
-    matches = [
-        str(item.get("id"))
-        for item in classes
-        if item.get("id")
-        and any(name in str(item.get("name", "")).lower() for name in preferred)
-    ]
-    if not matches:
-        raise RuntimeError(
-            "SaladCloud has no suitable GPU class; set SALAD_GPU_CLASSES explicitly"
-        )
-    return matches
-
-
-async def deploy_salad(
-    client: httpx.AsyncClient,
-    provider: Provider,
-    preferences: ControlPreferences,
-    settings: ControlSettings,
-) -> httpx.Response:
-    payload = deployment_asset("salad", "container-group.json")
-    container = payload.get("container")
-    if not isinstance(container, dict):
-        raise TypeError("SaladCloud deployment asset has no container")
-    container["image"] = preferences.worker_image
-    container["environment_variables"] = configured_environment(
-        container.get("environment_variables"), provider, preferences, settings
-    )
-    resources = container.get("resources")
-    if not isinstance(resources, dict):
-        raise TypeError("SaladCloud deployment asset has no resources")
-    resources["gpu_classes"] = await salad_gpu_classes(client, provider, preferences)
-    management = provider.management
-    assert management is not None
-    payload["name"] = management.name
-    organisation, project = salad_scope(provider, preferences)
-    return await checked_request(
-        client,
-        "POST",
-        "https://api.salad.com/api/public/organizations/"
-        f"{quote(organisation, safe='')}/projects/{quote(project, safe='')}/containers",
-        headers=salad_headers(preferences),
-        json=payload,
-    )
 
 
 def vast_headers(preferences: ControlPreferences) -> dict[str, str]:
