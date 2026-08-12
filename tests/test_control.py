@@ -981,6 +981,8 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert 'href="/assets/dashboard.css?current"' in providers.text
     assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text
+    assert 'href="http://worker"' in providers.text
+    assert "Open Panel" not in providers.text
     assert events.text.count("Wombat Needle Event") == 1
     assert "Unrelated Event" not in events.text
     assert f"/history?q={history_id}" in events.text
@@ -1425,11 +1427,11 @@ def test_control_file_enables_configured_providers(monkeypatch):
     ]
     assert [provider.id for provider in loaded.providers] == [
         "cliproxyapi",
+        "runpod",
         "runpod-pod",
-        "runpod-serverless",
     ]
     assert loaded.models[0].targets[-1].provider == "cliproxyapi"
-    assert loaded.providers[1].type == "pod"
+    assert loaded.providers[2].type == "pod"
 
 
 def test_control_file_enables_managed_providers_from_credentials(monkeypatch):
@@ -1449,12 +1451,12 @@ def test_control_file_enables_managed_providers_from_credentials(monkeypatch):
 
     assert [provider.id for provider in loaded.providers] == [
         "cliproxyapi",
-        "modal-serverless",
+        "modal",
+        "runpod",
         "runpod-pod",
-        "runpod-serverless",
-        "salad-serverless",
+        "salad",
+        "vast",
         "vast-pod",
-        "vast-serverless",
     ]
     assert all(
         provider.base_url is None
@@ -1462,18 +1464,16 @@ def test_control_file_enables_managed_providers_from_credentials(monkeypatch):
         if provider.management
     )
     providers = {provider.id: provider for provider in loaded.providers}
-    assert providers["modal-serverless"].actions["deploy"].internal == "modal-deploy"
-    assert (
-        providers["modal-serverless"].actions["terminate"].internal == "modal-terminate"
-    )
-    assert sorted(providers["runpod-serverless"].actions) == [
+    assert providers["modal"].actions["deploy"].internal == "modal-deploy"
+    assert providers["modal"].actions["terminate"].internal == "modal-terminate"
+    assert sorted(providers["runpod"].actions) == [
         "deploy",
         "scale-down",
         "scale-up",
         "terminate",
     ]
-    assert sorted(providers["salad-serverless"].actions) == ["deploy", "terminate"]
-    assert sorted(providers["vast-serverless"].actions) == ["deploy", "terminate"]
+    assert sorted(providers["salad"].actions) == ["deploy", "terminate"]
+    assert sorted(providers["vast"].actions) == ["deploy", "terminate"]
 
 
 @pytest.mark.asyncio
@@ -1721,8 +1721,70 @@ def test_media_metadata_and_schema_migrations_are_persisted(tmp_path: Path):
     ).fetchall()
 
     assert (item["width"], item["height"]) == (640, 480)
-    assert [row["version"] for row in versions] == [1, 2]
+    assert [row["version"] for row in versions] == [1, 2, 3]
     store.close()
+
+
+def test_provider_identifiers_are_migrated_to_current_names(tmp_path: Path):
+    database = tmp_path / "control.db"
+    store = ControlStore(database)
+    with store.connection:
+        store.connection.execute("DELETE FROM schema_migrations WHERE version = 3")
+        store.connection.execute(
+            "INSERT INTO history (id, operation, model, provider, provider_model, "
+            "status, created_at, updated_at, parameters_json, error) "
+            "VALUES ('old', 'image_generation', 'image-generation', "
+            "'modal-serverless', 'worker/image', 'completed', 1, 2, ?, NULL)",
+            ('{"provider":"modal-serverless"}',),
+        )
+        store.connection.execute(
+            "INSERT INTO provider_attempts "
+            "(history_id, provider, model, started_at, finished_at, status, error) "
+            "VALUES ('old', 'modal-serverless', 'worker/image', 1, 2, "
+            "'completed', NULL)"
+        )
+        store.connection.execute(
+            "INSERT INTO provider_resources (provider, resource_id, updated_at) "
+            "VALUES ('runpod-serverless', 'endpoint', 1)"
+        )
+        store.connection.execute(
+            "INSERT INTO generation_parameters "
+            "(history_id, path, position, value_type, text_value) "
+            "VALUES ('old', 'provider', 0, 'text', 'modal-serverless')"
+        )
+        store.connection.execute(
+            "INSERT INTO control_configuration "
+            "(id, revision, document_json, updated_at) VALUES (1, 1, ?, 1)",
+            ('{"routes":{"image-generation":["runpod-serverless"]}}',),
+        )
+    store.close()
+
+    migrated = ControlStore(database)
+    history = migrated.connection.execute(
+        "SELECT provider, parameters_json FROM history WHERE id = 'old'"
+    ).fetchone()
+    attempt = migrated.connection.execute(
+        "SELECT provider FROM provider_attempts WHERE history_id = 'old'"
+    ).fetchone()
+    resources = migrated.connection.execute(
+        "SELECT provider FROM provider_resources"
+    ).fetchall()
+    parameter = migrated.connection.execute(
+        "SELECT text_value FROM generation_parameters WHERE history_id = 'old'"
+    ).fetchone()
+    document = json.loads(
+        migrated.connection.execute(
+            "SELECT document_json FROM control_configuration WHERE id = 1"
+        ).fetchone()["document_json"]
+    )
+
+    assert history["provider"] == "modal"
+    assert json.loads(history["parameters_json"])["provider"] == "modal"
+    assert attempt["provider"] == "modal"
+    assert [row["provider"] for row in resources] == ["runpod"]
+    assert parameter["text_value"] == "modal"
+    assert document["routes"]["image-generation"] == ["runpod"]
+    migrated.close()
 
 
 def test_historical_routes_and_unique_input_lineage_are_reconciled(tmp_path: Path):

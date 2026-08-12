@@ -13,14 +13,10 @@ ADAPTERS: dict[str, ProviderAdapter] = {
     "modal": ModalAdapter("modal", "https://modal.com/apps"),
     "proxy": ProxyAdapter("proxy"),
     "runpod-pod": RunPodPodAdapter("runpod-pod", "https://console.runpod.io/pods"),
-    "runpod-serverless": RunPodServerlessAdapter(
-        "runpod-serverless", "https://console.runpod.io/serverless"
-    ),
+    "runpod": RunPodServerlessAdapter("runpod", "https://console.runpod.io/serverless"),
     "salad": SaladAdapter("salad", "https://portal.salad.com/"),
     "vast-pod": VastPodAdapter("vast-pod", "https://cloud.vast.ai/instances/"),
-    "vast-serverless": VastServerlessAdapter(
-        "vast-serverless", "https://cloud.vast.ai/serverless/"
-    ),
+    "vast": VastServerlessAdapter("vast", "https://cloud.vast.ai/serverless/"),
 }
 
 

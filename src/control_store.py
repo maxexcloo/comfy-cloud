@@ -11,6 +11,23 @@ from pathlib import Path
 
 from rapidfuzz.fuzz import WRatio
 
+PROVIDER_RENAMES = {
+    "modal-serverless": "modal",
+    "runpod-serverless": "runpod",
+    "salad-serverless": "salad",
+    "vast-serverless": "vast",
+}
+
+
+def current_provider_names(value: object) -> object:
+    if isinstance(value, dict):
+        return {key: current_provider_names(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [current_provider_names(item) for item in value]
+    if isinstance(value, str):
+        return PROVIDER_RENAMES.get(value, value)
+    return value
+
 
 @dataclass(frozen=True)
 class Job:
@@ -299,6 +316,69 @@ class ControlStore:
                 "VALUES (2, ?)",
                 (int(time.time()),),
             )
+            migrated = self.connection.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = 3"
+            ).fetchone()
+            if migrated is None:
+                for previous, current in PROVIDER_RENAMES.items():
+                    for table in ("events", "history", "jobs", "provider_attempts"):
+                        self.connection.execute(
+                            f"UPDATE {table} SET provider = ? WHERE provider = ?",
+                            (current, previous),
+                        )
+                    resource = self.connection.execute(
+                        "SELECT resource_id, updated_at FROM provider_resources "
+                        "WHERE provider = ?",
+                        (previous,),
+                    ).fetchone()
+                    if resource is not None:
+                        self.connection.execute(
+                            "INSERT OR REPLACE INTO provider_resources "
+                            "(provider, resource_id, updated_at) VALUES (?, ?, ?)",
+                            (current, resource["resource_id"], resource["updated_at"]),
+                        )
+                        self.connection.execute(
+                            "DELETE FROM provider_resources WHERE provider = ?",
+                            (previous,),
+                        )
+                    self.connection.execute(
+                        "UPDATE generation_parameters SET text_value = ? "
+                        "WHERE text_value = ?",
+                        (current, previous),
+                    )
+                for table, identifier, columns in (
+                    ("control_configuration", "id", ("document_json",)),
+                    ("history", "id", ("parameters_json",)),
+                    ("jobs", "id", ("request_json", "response_json")),
+                ):
+                    rows = self.connection.execute(
+                        f"SELECT {identifier}, {', '.join(columns)} FROM {table}"
+                    ).fetchall()
+                    for row in rows:
+                        updates = {}
+                        for column in columns:
+                            if row[column] is None:
+                                continue
+                            try:
+                                value = json.loads(str(row[column]))
+                            except json.JSONDecodeError:
+                                continue
+                            current = current_provider_names(value)
+                            if current != value:
+                                updates[column] = json.dumps(current)
+                        if updates:
+                            assignments = ", ".join(
+                                f"{column} = ?" for column in updates
+                            )
+                            self.connection.execute(
+                                f"UPDATE {table} SET {assignments} WHERE {identifier} = ?",
+                                (*updates.values(), row[identifier]),
+                            )
+                self.connection.execute("DELETE FROM generation_search")
+                self.connection.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (3, ?)",
+                    (int(time.time()),),
+                )
             rows = self.connection.execute(
                 "SELECT id, content_type, path FROM media_assets "
                 "WHERE width IS NULL AND height IS NULL AND duration IS NULL"

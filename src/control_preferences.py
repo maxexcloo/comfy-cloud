@@ -40,7 +40,6 @@ class ControlPreferences(BaseModel):
         "comfy_ui_username": ("COMFY_UI_USERNAME",),
         "control_maximum_request_bytes": ("CONTROL_MAXIMUM_REQUEST_BYTES",),
         "hf_token": ("HF_TOKEN",),
-        "local_pod_url": ("LOCAL_POD_URL",),
         "maximum_pending_generations": ("MAXIMUM_PENDING_GENERATIONS",),
         "maximum_request_bytes": ("MAXIMUM_REQUEST_BYTES",),
         "modal_gpu": ("MODAL_GPU",),
@@ -128,11 +127,6 @@ class ControlPreferences(BaseModel):
         },
         "cliproxy_url": {
             "label": "CLI Proxy URL",
-            "section": "Providers",
-            "type": "url",
-        },
-        "local_pod_url": {
-            "label": "Local Pod URL",
             "section": "Providers",
             "type": "url",
         },
@@ -248,7 +242,6 @@ class ControlPreferences(BaseModel):
     vast_api_key: str = ""
     worker_api_key: str = ""
     cliproxy_url: str = ""
-    local_pod_url: str = ""
     salad_organisation: str = ""
     salad_project: str = ""
     modal_gpu: str = "L40S"
@@ -282,7 +275,7 @@ class ControlPreferences(BaseModel):
     def clean_list(cls, value: list[str]) -> list[str]:
         return list(dict.fromkeys(item.strip() for item in value if item.strip()))
 
-    @field_validator("cliproxy_url", "local_pod_url", "public_base_url")
+    @field_validator("cliproxy_url", "public_base_url")
     @classmethod
     def validate_url(cls, value: str) -> str:
         value = value.strip().rstrip("/")
@@ -340,7 +333,6 @@ class ControlPreferences(BaseModel):
                 os.getenv("CONTROL_MAXIMUM_REQUEST_BYTES", str(100 * 1024 * 1024))
             ),
             hf_token=os.getenv("HF_TOKEN", ""),
-            local_pod_url=os.getenv("LOCAL_POD_URL", ""),
             maximum_pending_generations=int(
                 os.getenv("MAXIMUM_PENDING_GENERATIONS", "8")
             ),
@@ -395,7 +387,6 @@ class ControlPreferences(BaseModel):
             "COMFY_UI_PASSWORD": self.comfy_ui_password,
             "COMFY_UI_USERNAME": self.comfy_ui_username,
             "HF_TOKEN": self.hf_token,
-            "LOCAL_POD_URL": self.local_pod_url,
             "MAXIMUM_PENDING_GENERATIONS": str(self.maximum_pending_generations),
             "MAXIMUM_REQUEST_BYTES": str(self.maximum_request_bytes),
             "MODAL_GPU": self.modal_gpu,

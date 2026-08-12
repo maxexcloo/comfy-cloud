@@ -26,7 +26,12 @@
               >{{ provider.platform[:2] | upper }}</span
             >
             <div>
-              <strong>{{ provider.platform }}</strong><br /><small
+              {% if provider.panel_url %}<a
+                href="{{ provider.panel_url }}"
+                target="_blank"
+                rel="noopener noreferrer"
+                ><strong>{{ provider.platform }}</strong></a
+              >{% else %}<strong>{{ provider.platform }}</strong>{% endif %}<br /><small
                 >{{ provider.id }}</small
               >
             </div>
@@ -69,12 +74,6 @@
               data-log-url="/providers/{{ provider.id }}/logs"
             >
               Logs</button
-            >{% endif %} {% if provider.panel_url %}<a
-              class="button"
-              href="{{ provider.panel_url }}"
-              target="_blank"
-              rel="noopener noreferrer"
-              >Open Panel</a
             >{% endif %}
           </div>
         </td>

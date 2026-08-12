@@ -15,13 +15,12 @@ from .control_config import (
 
 PROVIDER_CATALOGUE = (
     {"id": "cliproxyapi", "platform": "CLI Proxy API", "type": "proxy"},
-    {"id": "local-pod", "platform": "Local", "type": "pod"},
-    {"id": "modal-serverless", "platform": "Modal", "type": "serverless"},
-    {"id": "runpod-pod", "platform": "RunPod", "type": "pod"},
-    {"id": "runpod-serverless", "platform": "RunPod", "type": "serverless"},
-    {"id": "salad-serverless", "platform": "SaladCloud", "type": "serverless"},
-    {"id": "vast-pod", "platform": "Vast.ai", "type": "pod"},
-    {"id": "vast-serverless", "platform": "Vast.ai", "type": "serverless"},
+    {"id": "modal", "platform": "Modal", "type": "serverless"},
+    {"id": "runpod", "platform": "RunPod", "type": "serverless"},
+    {"id": "runpod-pod", "platform": "RunPod (Pod)", "type": "pod"},
+    {"id": "salad", "platform": "SaladCloud", "type": "serverless"},
+    {"id": "vast", "platform": "Vast", "type": "serverless"},
+    {"id": "vast-pod", "platform": "Vast (Pod)", "type": "pod"},
 )
 
 MODEL_ROUTES = {
@@ -29,13 +28,12 @@ MODEL_ROUTES = {
         "image_edit",
         "flux-2-klein-9b/image-edit",
         (
-            "local-pod",
-            "modal-serverless",
+            "modal",
             "runpod-pod",
-            "runpod-serverless",
-            "salad-serverless",
+            "runpod",
+            "salad",
             "vast-pod",
-            "vast-serverless",
+            "vast",
         ),
         ("cliproxyapi", "grok-imagine-image-quality"),
     ),
@@ -43,13 +41,12 @@ MODEL_ROUTES = {
         "image_generation",
         "flux-2-klein-9b/text-to-image",
         (
-            "local-pod",
-            "modal-serverless",
+            "modal",
             "runpod-pod",
-            "runpod-serverless",
-            "salad-serverless",
+            "runpod",
+            "salad",
             "vast-pod",
-            "vast-serverless",
+            "vast",
         ),
         ("cliproxyapi", "grok-imagine-image-quality"),
     ),
@@ -57,12 +54,12 @@ MODEL_ROUTES = {
         "video_generation",
         "minimax-h3/image-to-video",
         (
-            "modal-serverless",
+            "modal",
             "runpod-pod",
-            "runpod-serverless",
-            "salad-serverless",
+            "runpod",
+            "salad",
             "vast-pod",
-            "vast-serverless",
+            "vast",
         ),
         ("cliproxyapi", "grok-imagine-video-1.5"),
     ),
@@ -70,12 +67,12 @@ MODEL_ROUTES = {
         "video_generation",
         "minimax-h3/text-to-video",
         (
-            "modal-serverless",
+            "modal",
             "runpod-pod",
-            "runpod-serverless",
-            "salad-serverless",
+            "runpod",
+            "salad",
             "vast-pod",
-            "vast-serverless",
+            "vast",
         ),
         ("cliproxyapi", "grok-imagine-video-1.5"),
     ),
@@ -151,17 +148,6 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                 ),
             )
         )
-    if environment.get("LOCAL_POD_URL") and worker_key:
-        configured.append(
-            Provider(
-                api_key=worker_key,
-                base_url=environment["LOCAL_POD_URL"],
-                id="local-pod",
-                idle_seconds=0,
-                platform="Local",
-                type="pod",
-            )
-        )
     if environment.get("MODAL_TOKEN_ID") and worker_key:
         configured.append(
             managed_provider(
@@ -174,7 +160,7 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                 },
                 api_key=worker_key,
                 function="serve",
-                identifier="modal-serverless",
+                identifier="modal",
                 idle_seconds=0,
                 kind="modal",
                 name="comfy-control",
@@ -197,7 +183,6 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                             "Terminate the RunPod Pod? Its Pod volume will be deleted.",
                         ),
                     },
-                    aliases=["runpod"],
                     api_key=worker_key,
                     identifier="runpod-pod",
                     idle_seconds=600,
@@ -214,7 +199,7 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                         ),
                     ),
                     name="comfy-control",
-                    platform="RunPod",
+                    platform="RunPod (Pod)",
                     provider_type="pod",
                     usage=UsageProbe(
                         headers=headers,
@@ -245,9 +230,9 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                         ),
                     },
                     api_key=worker_key,
-                    identifier="runpod-serverless",
+                    identifier="runpod",
                     idle_seconds=0,
-                    kind="runpod-serverless",
+                    kind="runpod",
                     name="comfy-control",
                     platform="RunPod",
                     provider_type="serverless",
@@ -270,7 +255,7 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                     ),
                 },
                 api_key=worker_key,
-                identifier="salad-serverless",
+                identifier="salad",
                 idle_seconds=600,
                 kind="salad",
                 name="comfy-control",
@@ -318,7 +303,7 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                         ),
                     ),
                     name="comfy-control-pod",
-                    platform="Vast.ai",
+                    platform="Vast (Pod)",
                     provider_type="pod",
                     usage=usage,
                 ),
@@ -333,17 +318,17 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                         ),
                     },
                     api_key=worker_key,
-                    identifier="vast-serverless",
+                    identifier="vast",
                     idle_seconds=0,
-                    kind="vast-serverless",
+                    kind="vast",
                     name="comfy-control-serverless",
-                    platform="Vast.ai",
+                    platform="Vast",
                     provider_type="serverless",
                     usage=usage,
                 ),
             ]
         )
-    return configured
+    return sorted(configured, key=lambda provider: provider.id)
 
 
 def routes() -> dict[str, list[str]]:

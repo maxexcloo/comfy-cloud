@@ -62,11 +62,11 @@ class UsageProbe(BaseModel):
 class ProviderManagement(BaseModel):
     kind: Literal[
         "modal",
+        "runpod",
         "runpod-pod",
-        "runpod-serverless",
         "salad",
+        "vast",
         "vast-pod",
-        "vast-serverless",
     ]
     name: str
     function: str | None = None

@@ -53,9 +53,7 @@ def settings_group(name: str) -> tuple[str, str]:
     if name.startswith("salad_"):
         return "Providers", "SaladCloud"
     if name.startswith("vast_"):
-        return "Providers", "Vast.ai"
-    if name == "local_pod_url":
-        return "Providers", "Local Pod"
+        return "Providers", "Vast"
     if name in {
         "civitai_token",
         "comfy_ui_password",

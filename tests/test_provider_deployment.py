@@ -172,7 +172,7 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         response = await deploy_provider(
             client,
-            provider("runpod-serverless"),
+            provider("runpod"),
             preferences(),
             settings(tmp_path),
         )
@@ -231,7 +231,7 @@ async def test_deploys_and_terminates_vast_serverless(tmp_path, monkeypatch):
             )
         return httpx.Response(200, json={"success": True})
 
-    managed = provider("vast-serverless", "comfy")
+    managed = provider("vast", "comfy")
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         deployed = await deploy_provider(
             client, managed, preferences(), settings(tmp_path)

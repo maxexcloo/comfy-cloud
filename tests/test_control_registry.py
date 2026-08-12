@@ -6,7 +6,6 @@ def environment() -> dict[str, str]:
         "CLIPROXY_API_KEY": "cliproxy-key",
         "CLIPROXY_MANAGEMENT_KEY": "management-key",
         "CLIPROXY_URL": "http://cliproxy",
-        "LOCAL_POD_URL": "http://local-worker",
         "MODAL_TOKEN_ID": "modal-id",
         "RUNPOD_API_KEY": "runpod-key",
         "SALAD_API_KEY": "salad-key",
@@ -28,12 +27,7 @@ def test_registry_contains_all_supported_providers_and_routes():
 
 
 def test_registry_omits_unconfigured_providers_and_empty_routes():
-    configured = control_file(
-        {"LOCAL_POD_URL": "http://local-worker", "WORKER_API_KEY": "worker-key"}
-    )
+    configured = control_file({"WORKER_API_KEY": "worker-key"})
 
-    assert [provider.id for provider in configured.providers] == ["local-pod"]
-    assert [model.id for model in configured.models] == [
-        "image-edit",
-        "image-generation",
-    ]
+    assert configured.providers == []
+    assert configured.models == []

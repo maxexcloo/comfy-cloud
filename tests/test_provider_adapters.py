@@ -8,11 +8,11 @@ from comfy_control.provider_adapters import provider_adapter, provider_panel_url
     ("kind", "resource", "state"),
     [
         ("runpod-pod", {"desiredStatus": "RUNNING"}, "running"),
-        ("runpod-serverless", {"workers": {"ready": 0}}, "scaled-down"),
-        ("runpod-serverless", {"workers": {"running": 1}}, "ready"),
+        ("runpod", {"workers": {"ready": 0}}, "scaled-down"),
+        ("runpod", {"workers": {"running": 1}}, "ready"),
         ("salad", {"current_state": {"status": "RUNNING"}}, "running"),
         ("vast-pod", {"actual_status": "running"}, "running"),
-        ("vast-serverless", {"endpoint_state": "ready"}, "ready"),
+        ("vast", {"endpoint_state": "ready"}, "ready"),
     ],
 )
 def test_provider_adapters_normalise_state(kind, resource, state):

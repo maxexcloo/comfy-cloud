@@ -44,8 +44,7 @@ docker compose ps
 
 Pull requests build both images and smoke-test their packaged commands.
 
-Compose starts only `comfy-control control`. An externally managed local Pod is
-enabled when `LOCAL_POD_URL` is set. Managed providers are enabled by their Modal,
+Compose starts only `comfy-control control`. Managed providers are enabled by their Modal,
 RunPod, SaladCloud or Vast.ai management credential. The controller discovers
 resources by their configured stable name and refreshes provider-assigned worker
 URLs at runtime; do not store those URLs in deployment configuration. Add
