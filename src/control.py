@@ -24,7 +24,6 @@ from jinja2 import Environment, select_autoescape
 
 from .control_config import ControlSettings
 from .control_contracts import (
-    OperationsStatus,
     ProviderActionResult,
     ProviderTestRequest,
     ProviderTestResult,
@@ -51,6 +50,7 @@ from .control_operations_history import router as history_operations_router
 from .control_operations_media import router as media_operations_router
 from .control_operations_providers import router as provider_operations_router
 from .control_operations_settings import router as settings_operations_router
+from .control_operations_status import router as status_operations_router
 from .control_preferences import ConfigurationConflict
 from .controller import (
     Controller,
@@ -106,6 +106,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     app.include_router(media_operations_router)
     app.include_router(settings_operations_router)
     app.include_router(provider_operations_router)
+    app.include_router(status_operations_router)
 
     @app.get("/health/live")
     async def live() -> dict[str, str]:
@@ -445,114 +446,6 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         response = RedirectResponse("/login", status_code=303)
         response.delete_cookie(SESSION_COOKIE, path="/")
         return response
-
-    @app.get(
-        "/ops/status",
-        tags=["operations"],
-        operation_id="operations_status",
-        response_model=OperationsStatus,
-    )
-    async def status(request: Request) -> Response:
-        if not (
-            ui_authorised(request, settings) or bearer_authorised(request, settings)
-        ):
-            return Response(status_code=401)
-        try:
-            event_page = max(1, int(request.query_params.get("event_page", "1")))
-            history_page = max(1, int(request.query_params.get("history_page", "1")))
-        except ValueError:
-            return error("page must be a number", 400, "invalid_request")
-        event_count = controller.store.event_count()
-        history_count = controller.store.history_count()
-        async with controller.configuration_lock:
-            usage, provider_statuses = await asyncio.gather(
-                controller.usage(), controller.provider_statuses()
-            )
-        return JSONResponse(
-            {
-                "providers": [
-                    {
-                        "id": runtime.config.id,
-                        "configured": True,
-                        "platform": runtime.config.platform,
-                        "type": runtime.config.type,
-                        "usage": usage[runtime.config.id],
-                        "details": provider_statuses[runtime.config.id]["details"],
-                        "error": provider_statuses[runtime.config.id].get("error"),
-                        "panel_url": provider_statuses[runtime.config.id]["panel_url"],
-                        "resource_id": controller.resource_id(runtime.config.id),
-                        "state": runtime.state,
-                        "active_requests": runtime.active_requests,
-                        "actions": [
-                            {
-                                "name": name,
-                                "confirmation": action.confirmation,
-                            }
-                            for name, action in controller.available_actions(
-                                runtime.config.id
-                            ).items()
-                        ],
-                        "idle_seconds": runtime.config.idle_seconds,
-                        "models": sorted(
-                            model.id
-                            for model in controller.config.models
-                            if model.operation == "image_generation"
-                            and any(
-                                target.provider == runtime.config.id
-                                for target in model.targets
-                            )
-                        ),
-                    }
-                    for runtime in controller.providers.values()
-                ]
-                + [
-                    {
-                        "actions": [],
-                        "active_requests": 0,
-                        "configured": False,
-                        "details": {},
-                        "error": None,
-                        "id": provider["id"],
-                        "idle_seconds": 0,
-                        "models": [],
-                        "panel_url": None,
-                        "platform": provider["platform"],
-                        "resource_id": None,
-                        "state": "not-configured",
-                        "type": provider["type"],
-                        "usage": {"status": "unconfigured"},
-                    }
-                    for provider in controller.available_providers
-                    if provider["id"] not in controller.providers
-                ],
-                "history": controller.store.histories(
-                    DASHBOARD_PAGE_SIZE,
-                    (history_page - 1) * DASHBOARD_PAGE_SIZE,
-                ),
-                "history_pagination": {
-                    "count": history_count,
-                    "page": history_page,
-                    "pages": max(
-                        1,
-                        (history_count + DASHBOARD_PAGE_SIZE - 1)
-                        // DASHBOARD_PAGE_SIZE,
-                    ),
-                },
-                "jobs": controller.store.jobs(50),
-                "events": controller.store.events(
-                    DASHBOARD_PAGE_SIZE,
-                    (event_page - 1) * DASHBOARD_PAGE_SIZE,
-                ),
-                "event_pagination": {
-                    "count": event_count,
-                    "page": event_page,
-                    "pages": max(
-                        1,
-                        (event_count + DASHBOARD_PAGE_SIZE - 1) // DASHBOARD_PAGE_SIZE,
-                    ),
-                },
-            }
-        )
 
     @app.post(
         "/ops/providers/{provider_id}/actions/{action_name}",
