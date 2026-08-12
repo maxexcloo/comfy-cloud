@@ -1,34 +1,25 @@
 from __future__ import annotations
 
-import time
-from importlib import resources
 from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import (
     FileResponse,
-    HTMLResponse,
     JSONResponse,
     RedirectResponse,
     Response,
 )
-from jinja2 import Environment, select_autoescape
 
 from .control_dashboard import (
-    SESSION_SECONDS,
     bearer_authorised,
-    csrf_token,
     ui_authorised,
     valid_csrf,
 )
+from .control_dashboard_templates import pagination_context, render_dashboard
 from .control_http import error
 
-MEDIA_LIBRARY_HTML = (
-    resources.files("comfy_control").joinpath("media_library.html").read_text()
-)
 PAGE_SIZE = 20
-TEMPLATES = Environment(autoescape=select_autoescape(("html", "xml")))
 
 router = APIRouter(prefix="/media", tags=["dashboard"])
 
@@ -73,32 +64,20 @@ async def media_library(request: Request) -> Response:
         limit=PAGE_SIZE,
         offset=(page - 1) * PAGE_SIZE,
     )
-    pages = max(1, (int(result["count"]) + PAGE_SIZE - 1) // PAGE_SIZE)
-    template = TEMPLATES.from_string(MEDIA_LIBRARY_HTML)
-    return HTMLResponse(
-        template.render(
-            active_filters=request.query_params.getlist("filter"),
-            facets=controller.store.media_facets(),
-            include_inputs=include_inputs,
-            items=result["data"],
-            page=page,
-            pages=pages,
-            query=query,
-            query_string=urlencode(
-                [
-                    (key, value)
-                    for key, value in request.query_params.multi_items()
-                    if key != "page"
-                ]
-            ),
-            selections={
-                name: request.query_params.get(name, "")
-                for name in ("model", "operation", "provider", "status")
-            },
-            sort=sort,
-            csrf_token=csrf_token(settings, int(time.time()) + SESSION_SECONDS),
-        ),
-        headers={"Cache-Control": "no-store"},
+    return render_dashboard(
+        request,
+        "media_library.html",
+        "media",
+        active_filters=request.query_params.getlist("filter"),
+        facets=controller.store.media_facets(),
+        include_inputs=include_inputs,
+        media=pagination_context(request, result, page, PAGE_SIZE),
+        query=query,
+        selections={
+            name: request.query_params.get(name, "")
+            for name in ("model", "operation", "provider", "status")
+        },
+        sort=sort,
     )
 
 

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>
+      {% block title %}{{ page | title }}{% endblock %} · Comfy Control
+    </title>
+    <link rel="stylesheet" href="/assets/dashboard.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip To Content</a>
+    <header>
+      <a href="/media"
+        ><small>GPU Orchestration</small>
+        <h1>Comfy Control</h1></a
+      >
+    </header>
+    {% include "dashboard_navigation.html" %}
+    <main id="content">
+      {% if message %}
+      <p class="notice" role="status">{{ message }}</p>
+      {% endif %} {% block content %}{% endblock %}
+    </main>
+    {% block dialogs %}{% endblock %}
+    <script src="/assets/dashboard.js"></script>
+  </body>
+</html>

@@ -124,6 +124,10 @@ class ControlStore:
                     provider TEXT,
                     request_id TEXT
                 );
+                CREATE INDEX IF NOT EXISTS events_level
+                    ON events (level, id DESC);
+                CREATE INDEX IF NOT EXISTS events_provider
+                    ON events (provider, id DESC);
                 CREATE TABLE IF NOT EXISTS jobs (
                     id TEXT PRIMARY KEY,
                     model TEXT NOT NULL,
@@ -147,6 +151,12 @@ class ControlStore:
                     parameters_json TEXT NOT NULL,
                     error TEXT
                 );
+                CREATE INDEX IF NOT EXISTS history_operation
+                    ON history (operation, created_at DESC);
+                CREATE INDEX IF NOT EXISTS history_provider
+                    ON history (provider, created_at DESC);
+                CREATE INDEX IF NOT EXISTS history_status
+                    ON history (status, created_at DESC);
                 CREATE TABLE IF NOT EXISTS media (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     history_id TEXT NOT NULL REFERENCES history(id) ON DELETE CASCADE,
@@ -486,29 +496,31 @@ class ControlStore:
                 """,
                 (limit, offset),
             ).fetchall()
+        return self._history_rows(rows)
+
+    def _history_rows(self, rows: list[sqlite3.Row]) -> list[dict[str, object]]:
+        history_ids = [str(row["id"]) for row in rows]
+        if not history_ids:
+            return []
+        placeholders = ",".join("?" for _ in history_ids)
+        with self.lock:
             media_rows = self.connection.execute(
-                """
+                f"""
                 SELECT id, history_id, content_type, filename, size
                 FROM media
-                WHERE history_id IN (
-                    SELECT id FROM history
-                    ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?
-                )
+                WHERE history_id IN ({placeholders})
                 ORDER BY id
                 """,
-                (limit, offset),
+                history_ids,
             ).fetchall()
             attempt_rows = self.connection.execute(
-                """
+                f"""
                 SELECT id, history_id, provider, started_at, finished_at, status, error
                 FROM provider_attempts
-                WHERE history_id IN (
-                    SELECT id FROM history
-                    ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?
-                )
+                WHERE history_id IN ({placeholders})
                 ORDER BY id
                 """,
-                (limit, offset),
+                history_ids,
             ).fetchall()
         media_by_history: dict[str, list[dict[str, object]]] = {}
         for row in media_rows:
@@ -528,6 +540,61 @@ class ControlStore:
             item["attempts"] = attempts_by_history.get(str(item["id"]), [])
             histories.append(item)
         return histories
+
+    def history_page(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        operation: str = "",
+        provider: str = "",
+        query: str = "",
+        status: str = "",
+    ) -> dict[str, object]:
+        clauses = ["1 = 1"]
+        values: list[object] = []
+        for column, value in (
+            ("operation", operation),
+            ("provider", provider),
+            ("status", status),
+        ):
+            if value:
+                clauses.append(f"{column} = ?")
+                values.append(value)
+        searchable = "LOWER(id || ' ' || operation || ' ' || model || ' ' || provider || ' ' || status || ' ' || parameters_json || ' ' || COALESCE(error, ''))"
+        for term in query.casefold().split():
+            clauses.append(f"INSTR({searchable}, ?) > 0")
+            values.append(term)
+        where = " AND ".join(clauses)
+        with self.lock:
+            count = int(
+                self.connection.execute(
+                    f"SELECT COUNT(*) AS count FROM history WHERE {where}", values
+                ).fetchone()["count"]
+            )
+            rows = self.connection.execute(
+                f"""
+                SELECT id, operation, model, provider, status, created_at, updated_at,
+                       parameters_json, error
+                FROM history WHERE {where}
+                ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?
+                """,
+                [*values, limit, offset],
+            ).fetchall()
+        return {"count": count, "data": self._history_rows(rows)}
+
+    def history_facets(self) -> dict[str, list[str]]:
+        with self.lock:
+            return {
+                column: [
+                    str(row["value"])
+                    for row in self.connection.execute(
+                        f"SELECT DISTINCT {column} AS value FROM history "
+                        f"WHERE {column} != '' ORDER BY {column}"
+                    ).fetchall()
+                ]
+                for column in ("operation", "provider", "status")
+            }
 
     def history_count(self) -> int:
         with self.lock:
@@ -1030,6 +1097,55 @@ class ControlStore:
                 (limit, offset),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def event_page(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        level: str = "",
+        provider: str = "",
+        query: str = "",
+    ) -> dict[str, object]:
+        clauses = ["1 = 1"]
+        values: list[object] = []
+        for column, value in (("level", level), ("provider", provider)):
+            if value:
+                clauses.append(f"{column} = ?")
+                values.append(value)
+        searchable = "LOWER(level || ' ' || message || ' ' || COALESCE(provider, '') || ' ' || COALESCE(request_id, ''))"
+        for term in query.casefold().split():
+            clauses.append(f"INSTR({searchable}, ?) > 0")
+            values.append(term)
+        where = " AND ".join(clauses)
+        with self.lock:
+            count = int(
+                self.connection.execute(
+                    f"SELECT COUNT(*) AS count FROM events WHERE {where}", values
+                ).fetchone()["count"]
+            )
+            rows = self.connection.execute(
+                f"""
+                SELECT created_at, level, message, provider, request_id
+                FROM events WHERE {where}
+                ORDER BY id DESC LIMIT ? OFFSET ?
+                """,
+                [*values, limit, offset],
+            ).fetchall()
+        return {"count": count, "data": [dict(row) for row in rows]}
+
+    def event_facets(self) -> dict[str, list[str]]:
+        with self.lock:
+            return {
+                column: [
+                    str(row["value"])
+                    for row in self.connection.execute(
+                        f"SELECT DISTINCT {column} AS value FROM events "
+                        f"WHERE {column} IS NOT NULL AND {column} != '' ORDER BY {column}"
+                    ).fetchall()
+                ]
+                for column in ("level", "provider")
+            }
 
     def provider_resource(self, provider: str) -> str | None:
         with self.lock:

@@ -103,7 +103,7 @@ if (mediaDialog) {
   const detailRoot = document.getElementById("media-detail");
   const openMedia = async (assetId, updateAddress = true) => {
     detailRoot.replaceChildren(element("p", "", "Loading…"));
-    mediaDialog.showModal();
+    if (!mediaDialog.open) mediaDialog.showModal();
     const response = await fetch(`/media/${assetId}`);
     if (!response.ok) {
       detailRoot.replaceChildren(
@@ -167,16 +167,19 @@ if (mediaDialog) {
       section.append(parameters);
       body.append(section);
     }
-    const related = [...item.lineage.sources, ...item.lineage.derivatives];
+    const related = [
+      ...item.lineage.sources.map((entry) => ["Source", entry]),
+      ...item.lineage.derivatives.map((entry) => ["Derivative", entry]),
+    ];
     if (related.length) {
       const section = element("section", "detail-section");
       section.append(element("h3", "", "Related Media"));
       const list = element("div", "related-media");
-      for (const entry of related) {
+      for (const [relationship, entry] of related) {
         const button = element(
           "button",
           "related-item",
-          entry.filename || `Media ${entry.id}`,
+          `${relationship}: ${entry.filename || `Media ${entry.id}`}`,
         );
         button.type = "button";
         button.dataset.mediaId = entry.id;

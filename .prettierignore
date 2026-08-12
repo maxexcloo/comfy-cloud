@@ -1,4 +1,3 @@
 .venv/
-src/dashboard.html
-src/media_detail.html
+src/dashboard_*.html
 src/media_library.html

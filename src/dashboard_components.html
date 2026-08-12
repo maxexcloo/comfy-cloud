@@ -1,0 +1,17 @@
+{% macro badge(value) -%}
+<span class="badge {{ value }}"
+  >{{ value.replace("_", " ").replace("-", " ") | title }}</span
+>
+{%- endmacro %} {% macro pagination(data) -%}
+<nav class="pagination" aria-label="Pagination">
+  {% if data.page > 1 %}<a
+    href="?page={{ data.page - 1 }}{{ data.query_suffix }}"
+    >Previous</a
+  >{% endif %}
+  <span>Page {{ data.page }} Of {{ data.pages }}</span>
+  {% if data.page < data.pages %}<a
+    href="?page={{ data.page + 1 }}{{ data.query_suffix }}"
+    >Next</a
+  >{% endif %}
+</nav>
+{%- endmacro %}

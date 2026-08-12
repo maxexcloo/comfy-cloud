@@ -45,7 +45,7 @@ button.danger {
   color: #ffb1ac;
 }
 header,
-nav,
+body > nav,
 main {
   margin: auto;
   max-width: 1400px;
@@ -74,25 +74,25 @@ h2 {
 h3 {
   margin: 0.2rem 0 0.8rem;
 }
-nav {
+body > nav {
   align-items: center;
   border-bottom: 1px solid var(--border);
   display: flex;
   gap: 1.15rem;
   padding-bottom: 0.8rem;
 }
-nav a,
-nav button {
+body > nav a,
+body > nav button {
   background: none;
   border: 0;
   color: var(--muted);
   padding: 0.2rem 0;
   text-decoration: none;
 }
-nav .active {
+body > nav .active {
   color: #fff;
 }
-nav .end {
+body > nav .end {
   margin-left: auto;
 }
 main {
@@ -199,13 +199,20 @@ tr:last-child td {
 }
 .pagination {
   align-items: center;
+  border: 0;
   display: flex;
   gap: 1rem;
   justify-content: center;
+  margin: 0;
   padding: 1rem;
+  width: auto;
 }
 .settings-category {
   margin-bottom: 1.4rem;
+}
+.section-title {
+  border-bottom: 1px solid var(--border);
+  padding: 1rem;
 }
 .settings-groups {
   display: grid;
@@ -422,13 +429,31 @@ code {
 .error {
   color: #ffb1ac;
 }
+.notice {
+  background: #12251f;
+  border: 1px solid #2e755f;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+.skip-link {
+  background: var(--accent);
+  color: #06100d;
+  left: 1rem;
+  padding: 0.6rem;
+  position: fixed;
+  top: -5rem;
+  z-index: 10;
+}
+.skip-link:focus {
+  top: 1rem;
+}
 @media (max-width: 760px) {
   header,
-  nav,
+  body > nav,
   main {
     width: calc(100% - 1.4rem);
   }
-  nav {
+  body > nav {
     gap: 0.75rem;
     overflow: auto;
   }

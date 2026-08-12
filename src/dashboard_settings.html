@@ -1,0 +1,92 @@
+{% extends "dashboard_base.html" %} {% block content %}
+<div class="page-head">
+  <div>
+    <h2>Settings</h2>
+    <small>Environment-controlled values are locked.</small>
+  </div>
+</div>
+<form method="post" action="/settings">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <input type="hidden" name="revision" value="{{ settings.revision }}" />
+  {% for category, groups in settings.categories.items() %}
+  <section class="settings-category">
+    <div class="section-title"><h2>{{ category }}</h2></div>
+    <div class="settings-groups">
+      {% for group, fields in groups.items() %}
+      <fieldset>
+        <legend>{{ group }}</legend>
+        {% for field in fields %}<label
+          >{{ field.label }}{% if field.locked %}<small class="field-note"
+            >Controlled By Environment</small
+          >{% endif %} {% if field.options %}<select
+            name="{{ field.name }}"
+            {%
+            if
+            field.locked
+            %}disabled{%
+            endif
+            %}
+          >
+            {% for option in field.options %}
+            <option value="{{ option }}"{% if field.value == option %} selected{% endif %}>
+              {{ option }}
+            </option>
+            {% endfor %}
+          </select>
+          {% elif field.type == "routes" %}<textarea
+            name="{{ field.name }}"
+            {%
+            if
+            field.locked
+            %}disabled{%
+            endif
+            %}
+          >
+{{ field.value | tojson(indent=2) }}</textarea>
+          {% elif field.type == "list" %}<input
+            name="{{ field.name }}"
+            value="{{ field.value | join(', ') }}"
+            {%
+            if
+            field.locked
+            %}disabled{%
+            endif
+            %}
+          />
+          {% else %}<input
+            name="{{ field.name }}"
+            type="{% if field.secret %}password{% elif field.type == 'number' %}number{% elif field.type == 'url' %}url{% else %}text{% endif %}"
+            value="{% if not field.secret %}{{ field.value }}{% endif %}"
+            {%
+            if
+            field.secret
+            %}placeholder="{% if field.configured %}Configured{% endif %}"
+            autocomplete="new-password"
+            {%
+            endif
+            %}
+            {%
+            if
+            field.minimum
+            is
+            defined
+            %}min="{{ field.minimum }}"
+            {%
+            endif
+            %}
+            {%
+            if
+            field.locked
+            %}disabled{%
+            endif
+            %}
+          />{% endif %} </label
+        >{% endfor %}
+      </fieldset>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+  <button>Save Settings</button>
+</form>
+{% endblock %}

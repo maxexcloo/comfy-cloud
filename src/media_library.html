@@ -1,66 +1,27 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width" />
-    <title>Media · Comfy Control</title>
-    <link rel="stylesheet" href="/assets/dashboard.css" />
-  </head>
-  <body>
-    <header>
-      <a href="/media"><small>GPU Orchestration</small><h1>Comfy Control</h1></a>
-    </header>
-    <nav>
-      <a class="active" href="/media">Media</a>
-      <a href="/providers">Providers</a>
-      <a href="/events">Events</a>
-      <a href="/history">History</a>
-      <a class="end" href="/settings">Settings</a>
-      <form method="post" action="/logout"><button>Log Out</button></form>
-    </nav>
-    <main>
-      <div class="page-head">
-        <div><h2>Media</h2><small>Generated images, videos, prompts, and lineage.</small></div>
-      </div>
-      <form class="filters media-filters" method="post" action="/media/search" id="media-search">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <label class="search">Search
-          <input name="q" value="{{ query }}" placeholder="Fuzzy Search Prompts And Parameters" autofocus />
-        </label>
-        <label>Sort
-          <select name="sort" data-current="{{ sort }}">
-            {% for value, label in [('relevance', 'Relevance'), ('newest', 'Newest'), ('oldest', 'Oldest'), ('model', 'Model'), ('provider', 'Provider'), ('content_type', 'Media Type')] %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-            <optgroup label="Parameter">{% for value in facets.parameters %}<option value="parameter:{{ value }}">{{ value }}</option>{% endfor %}</optgroup>
-          </select>
-        </label>
-        {% for name in ['model', 'provider', 'operation', 'status'] %}
-        <label>{{ name | title }}
-          <select name="{{ name }}" data-current="{{ selections[name] }}"><option value="">All {{ name | title }}{% if name != 'status' %}s{% endif %}</option>{% for value in facets[name] %}<option value="{{ value }}">{{ value.replace('_', ' ') | title }}</option>{% endfor %}</select>
-        </label>
-        {% endfor %}
-        <label class="checkbox"><input type="checkbox" name="include_inputs" value="true" data-current="{{ include_inputs }}" /> Include Source Media</label>
-        <details class="custom-filter"><summary>Add Parameter Filter</summary><div class="filter-row">
-          <select id="filter-path" aria-label="Parameter"><option value="">Choose Parameter</option>{% for value in facets.parameters %}<option value="{{ value }}">{{ value }}</option>{% endfor %}</select>
-          <select id="filter-operator" aria-label="Operator"><option value="equals">Equals</option><option value="contains">Contains</option><option value="greater_than">Greater Than</option><option value="less_than">Less Than</option><option value="not_equals">Does Not Equal</option></select>
-          <input id="filter-value" placeholder="Value" aria-label="Value" /><button id="add-filter" type="button">Add Filter</button>
-        </div></details>
-        <div class="filter-chips" id="filter-chips">{% for value in active_filters %}<span class="filter-chip"><input type="hidden" name="filter" value="{{ value }}" />{{ value.replace('|', ' ').replace('_', ' ') | title }} <button type="button" data-remove-filter aria-label="Remove Filter">×</button></span>{% endfor %}</div>
-        <div class="filter-actions"><button>Apply Filters</button><a class="button" href="/media">Clear</a></div>
-      </form>
-      <div class="media-grid">
-        {% for item in items %}
-        <button class="media-card" type="button" data-media-id="{{ item.asset_id }}">
-          <span class="media-thumb">{% if item.content_type.startswith('video/') %}<video preload="metadata" muted src="/media/{{ item.asset_id }}/content"></video>{% else %}<img loading="lazy" src="/media/{{ item.asset_id }}/content" alt="" />{% endif %}<span class="badge media-role">{{ item.role | title }}</span></span>
-          <span class="media-summary"><strong>{{ item.model }}</strong><small>{{ item.operation.replace('_', ' ') | title }} · {{ item.provider or 'No Provider' }}</small><span class="prompt-clamp">{{ item.prompt or 'No Prompt' }}</span><small><time data-timestamp="{{ item.created_at }}">{{ item.created_at }}</time> · {{ item.filename }}</small></span>
-        </button>
-        {% else %}<section class="empty-state"><h3>No Media Found</h3><p>Adjust the filters or search words and try again.</p></section>{% endfor %}
-      </div>
-      <div class="pagination">{% if page > 1 %}<a href="?page={{ page - 1 }}{% if query_string %}&{{ query_string }}{% endif %}">Previous</a>{% endif %}<span>Page {{ page }} Of {{ pages }}</span>{% if page < pages %}<a href="?page={{ page + 1 }}{% if query_string %}&{{ query_string }}{% endif %}">Next</a>{% endif %}</div>
-    </main>
-    <dialog id="media-dialog">
-      <div class="dialog-head"><div><small id="media-kind">Media</small><h2 id="media-title">Media Details</h2></div><button type="button" data-close>Close</button></div>
-      <div class="dialog-body" id="media-detail"><p>Loading…</p></div>
-    </dialog>
-    <script src="/assets/dashboard.js"></script>
-  </body>
-</html>
+{% extends "dashboard_base.html" %}
+{% import "dashboard_components.html" as ui %}
+
+{% block title %}Media{% endblock %}
+
+{% block content %}
+<div class="page-head"><div><h2>Media</h2><small>Generated images, videos, prompts, and lineage.</small></div></div>
+<form class="filters media-filters" method="post" action="/media/search" id="media-search">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <label class="search">Search<input name="q" value="{{ query }}" placeholder="Fuzzy Search Prompts And Parameters" autofocus /></label>
+  <label>Sort<select name="sort" data-current="{{ sort }}">{% for value, label in [("relevance", "Relevance"), ("newest", "Newest"), ("oldest", "Oldest"), ("model", "Model"), ("provider", "Provider"), ("content_type", "Media Type")] %}<option value="{{ value }}">{{ label }}</option>{% endfor %}<optgroup label="Parameter">{% for value in facets.parameters %}<option value="parameter:{{ value }}">{{ value }}</option>{% endfor %}</optgroup></select></label>
+  {% for name in ["model", "provider", "operation", "status"] %}<label>{{ name | title }}<select name="{{ name }}" data-current="{{ selections[name] }}"><option value="">All {{ name | title }}{% if name != "status" %}s{% endif %}</option>{% for value in facets[name] %}<option value="{{ value }}">{{ value.replace("_", " ") | title }}</option>{% endfor %}</select></label>{% endfor %}
+  <label class="checkbox"><input type="checkbox" name="include_inputs" value="true" data-current="{{ include_inputs }}" /> Include Source Media</label>
+  <details class="custom-filter"><summary>Add Parameter Filter</summary><div class="filter-row"><select id="filter-path" aria-label="Parameter"><option value="">Choose Parameter</option>{% for value in facets.parameters %}<option value="{{ value }}">{{ value }}</option>{% endfor %}</select><select id="filter-operator" aria-label="Operator"><option value="equals">Equals</option><option value="contains">Contains</option><option value="greater_than">Greater Than</option><option value="less_than">Less Than</option><option value="not_equals">Does Not Equal</option></select><input id="filter-value" placeholder="Value" aria-label="Value" /><button id="add-filter" type="button">Add Filter</button></div></details>
+  <div class="filter-chips" id="filter-chips">{% for value in active_filters %}<span class="filter-chip"><input type="hidden" name="filter" value="{{ value }}" />{{ value.replace("|", " ").replace("_", " ") | title }} <button type="button" data-remove-filter aria-label="Remove Filter">×</button></span>{% endfor %}</div>
+  <div class="filter-actions"><button>Apply Filters</button><a class="button" href="/media">Clear</a></div>
+</form>
+<div class="media-grid">
+  {% for item in media["items"] %}<button class="media-card" type="button" data-media-id="{{ item.asset_id }}" aria-label="Open {{ item.model }} Media Details"><span class="media-thumb">{% if item.content_type.startswith("video/") %}<video preload="metadata" muted src="/media/{{ item.asset_id }}/content"></video>{% else %}<img loading="lazy" src="/media/{{ item.asset_id }}/content" alt="" />{% endif %}<span class="badge media-role">{{ item.role | title }}</span></span><span class="media-summary"><strong>{{ item.model }}</strong><small>{{ item.operation.replace("_", " ") | title }} · {{ item.provider or "No Provider" }}</small><span class="prompt-clamp">{{ item.prompt or "No Prompt" }}</span><small><time data-timestamp="{{ item.created_at }}">{{ item.created_at }}</time> · {{ item.filename }}</small></span></button>
+  {% else %}<section class="empty-state"><h3>No Media Found</h3><p>Adjust the filters or search words and try again.</p></section>{% endfor %}
+</div>
+{{ ui.pagination(media) }}
+{% endblock %}
+
+{% block dialogs %}
+<dialog id="media-dialog" aria-labelledby="media-title"><div class="dialog-head"><div><small id="media-kind">Media</small><h2 id="media-title">Media Details</h2></div><button type="button" data-close>Close</button></div><div class="dialog-body" id="media-detail"><p>Loading…</p></div></dialog>
+{% endblock %}

@@ -2,30 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 import uuid
 from importlib import resources
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import (
-    HTMLResponse,
     RedirectResponse,
     Response,
     StreamingResponse,
 )
-from jinja2 import Environment, select_autoescape
 
-from .control_dashboard import SESSION_SECONDS, csrf_token, ui_authorised, valid_csrf
+from .control_dashboard import ui_authorised, valid_csrf
+from .control_dashboard_templates import pagination_context, render_dashboard
 from .control_http import error
 from .control_preferences import ConfigurationConflict
 
-DASHBOARD_HTML = resources.files("comfy_control").joinpath("dashboard.html").read_text()
 DASHBOARD_CSS = resources.files("comfy_control").joinpath("dashboard.css").read_text()
 DASHBOARD_JS = resources.files("comfy_control").joinpath("dashboard.js").read_text()
 PAGE_SIZE = 25
-TEMPLATES = Environment(autoescape=select_autoescape(("html", "xml")))
 
 router = APIRouter(tags=["dashboard"])
 
@@ -46,37 +42,6 @@ async def dashboard_js() -> Response:
         media_type="text/javascript",
         headers={"Cache-Control": "public, max-age=3600"},
     )
-
-
-def page_context(request: Request, page: str) -> dict[str, object]:
-    settings = request.app.state.settings
-    return {
-        "csrf_token": csrf_token(settings, int(time.time()) + SESSION_SECONDS),
-        "message": request.query_params.get("message", ""),
-        "page": page,
-    }
-
-
-def paginate(
-    request: Request, items: list[dict[str, object]], page: int
-) -> dict[str, object]:
-    pages = max(1, (len(items) + PAGE_SIZE - 1) // PAGE_SIZE)
-    query = [
-        (key, value)
-        for key, value in request.query_params.multi_items()
-        if key != "page"
-    ]
-    suffix = f"&{urlencode(query)}" if query else ""
-    return {
-        "items": items[(page - 1) * PAGE_SIZE : page * PAGE_SIZE],
-        "page": page,
-        "pages": pages,
-        "query_suffix": suffix,
-    }
-
-
-def matches(item: dict[str, object], query: str) -> bool:
-    return not query or query in json.dumps(item, default=str).casefold()
 
 
 def settings_group(name: str) -> tuple[str, str]:
@@ -124,14 +89,6 @@ def title_label(value: object) -> str:
     return label
 
 
-def render(request: Request, page: str, **context: object) -> HTMLResponse:
-    template = TEMPLATES.from_string(DASHBOARD_HTML)
-    return HTMLResponse(
-        template.render(**page_context(request, page), **context),
-        headers={"Cache-Control": "no-store"},
-    )
-
-
 @router.get("/", include_in_schema=False)
 async def home(request: Request) -> Response:
     if not ui_authorised(request, request.app.state.settings):
@@ -177,7 +134,9 @@ async def providers(request: Request) -> Response:
         for provider in controller.available_providers
         if provider["id"] not in controller.providers
     ]
-    return render(request, "providers", providers=items)
+    return render_dashboard(
+        request, "dashboard_providers.html", "providers", providers=items
+    )
 
 
 @router.get("/events", include_in_schema=False)
@@ -189,30 +148,29 @@ async def events(request: Request) -> Response:
         page = max(1, int(request.query_params.get("page", "1")))
     except ValueError:
         return error("page must be a number", 400, "invalid_request")
-    query = request.query_params.get("q", "").strip().casefold()
+    query = request.query_params.get("q", "").strip()
     level = request.query_params.get("level", "")
     provider = request.query_params.get("provider", "")
-    all_items = controller.store.events(2000)
-    items = [
-        item
-        for item in all_items
-        if matches(item, query)
-        and (not level or item["level"] == level)
-        and (not provider or item["provider"] == provider)
-    ]
-    return render(
+    result = controller.store.event_page(
+        limit=PAGE_SIZE,
+        offset=(page - 1) * PAGE_SIZE,
+        level=level,
+        provider=provider,
+        query=query,
+    )
+    facets = controller.store.event_facets()
+    return render_dashboard(
         request,
+        "dashboard_events.html",
         "events",
-        events=paginate(request, items, page),
+        events=pagination_context(request, result, page, PAGE_SIZE),
         filters={
             "level": level,
             "provider": provider,
-            "q": request.query_params.get("q", ""),
+            "q": query,
         },
-        levels=sorted({str(item["level"]) for item in all_items}),
-        providers=sorted(
-            {str(item["provider"]) for item in all_items if item["provider"]}
-        ),
+        levels=facets["level"],
+        providers=facets["provider"],
     )
 
 
@@ -225,34 +183,33 @@ async def history(request: Request) -> Response:
         page = max(1, int(request.query_params.get("page", "1")))
     except ValueError:
         return error("page must be a number", 400, "invalid_request")
-    query = request.query_params.get("q", "").strip().casefold()
+    query = request.query_params.get("q", "").strip()
     operation = request.query_params.get("operation", "")
     provider = request.query_params.get("provider", "")
     status = request.query_params.get("status", "")
-    all_items = controller.store.histories(5000)
-    items = [
-        item
-        for item in all_items
-        if matches(item, query)
-        and (not operation or item["operation"] == operation)
-        and (not provider or item["provider"] == provider)
-        and (not status or item["status"] == status)
-    ]
-    return render(
+    result = controller.store.history_page(
+        limit=PAGE_SIZE,
+        offset=(page - 1) * PAGE_SIZE,
+        operation=operation,
+        provider=provider,
+        query=query,
+        status=status,
+    )
+    facets = controller.store.history_facets()
+    return render_dashboard(
         request,
+        "dashboard_history.html",
         "history",
         filters={
             "operation": operation,
             "provider": provider,
-            "q": request.query_params.get("q", ""),
+            "q": query,
             "status": status,
         },
-        history=paginate(request, items, page),
-        operations=sorted({str(item["operation"]) for item in all_items}),
-        providers=sorted(
-            {str(item["provider"]) for item in all_items if item["provider"]}
-        ),
-        statuses=sorted({str(item["status"]) for item in all_items}),
+        history=pagination_context(request, result, page, PAGE_SIZE),
+        operations=facets["operation"],
+        providers=facets["provider"],
+        statuses=facets["status"],
     )
 
 
@@ -269,8 +226,9 @@ async def settings_page(request: Request) -> Response:
         if field["name"] == "modal_gpu":
             field["options"] = ["A100", "H100", "L40S"]
         categories.setdefault(category, {}).setdefault(group, []).append(field)
-    return render(
+    return render_dashboard(
         request,
+        "dashboard_settings.html",
         "settings",
         settings={"categories": categories, "revision": description["revision"]},
     )

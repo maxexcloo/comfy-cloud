@@ -14,6 +14,9 @@ from fastapi.responses import JSONResponse, Response
 from comfy_control.cliproxy import CliproxyClient
 from comfy_control.control import create_app
 from comfy_control.control_config import ControlFile, ControlSettings
+from comfy_control.control_dashboard_routes import (
+    provider_logs as dashboard_provider_logs,
+)
 from comfy_control.control_inference import normalise_grok_image_options
 from comfy_control.control_registry import control_file as registry_control_file
 from comfy_control.control_store import ControlStore
@@ -844,6 +847,119 @@ async def test_dashboard_paginates_persisted_history_and_events(tmp_path):
         "page": 2,
         "pages": 2,
     }
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
+    app = create_app(settings(tmp_path))
+    store = app.state.controller.store
+    for index in range(30):
+        store.save_history(
+            f"other-{index}",
+            "video_generation",
+            "public/video",
+            json.dumps({"prompt": f"Unrelated Prompt {index}"}),
+        )
+        store.event("info", f"Unrelated Event {index}", provider="other")
+    history_id = "image-wombat"
+    store.save_history(
+        history_id,
+        "image_generation",
+        "public/image",
+        '{"prompt":"Wombat Needle Portrait","seed":42}',
+    )
+    store.update_history(history_id, "completed", provider="worker")
+    output = tmp_path / "wombat.png"
+    output.write_bytes(b"image")
+    store.save_media(
+        history_id,
+        "image/png",
+        "wombat.png",
+        output,
+        output.stat().st_size,
+    )
+    store.event(
+        "warning",
+        "Wombat Needle Event",
+        provider="worker",
+        request_id=history_id,
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        await sign_in(client)
+        providers = await client.get("/providers")
+        events = await client.get(
+            "/events",
+            params={"level": "warning", "provider": "worker", "q": "wombat needle"},
+        )
+        history = await client.get(
+            "/history",
+            params={
+                "operation": "image_generation",
+                "provider": "worker",
+                "q": "wombat needle",
+                "status": "completed",
+            },
+        )
+        media = await client.get(
+            "/media", params={"filter": f"history_id|equals|{history_id}"}
+        )
+        detail = await client.get(
+            f"/media/{store.media_library()['data'][0]['asset_id']}"
+        )
+        stylesheet = await client.get("/assets/dashboard.css")
+        javascript = await client.get("/assets/dashboard.js")
+
+        cookie = "; ".join(f"{name}={value}" for name, value in client.cookies.items())
+        request = Request(
+            {
+                "app": app,
+                "headers": [(b"cookie", cookie.encode())],
+                "method": "GET",
+                "path": "/providers/worker/logs",
+                "query_string": b"",
+                "scheme": "http",
+                "server": ("control", 80),
+                "type": "http",
+            }
+        )
+        log_stream = await dashboard_provider_logs("worker", request)
+        first_log_update = await anext(log_stream.body_iterator)
+        await log_stream.body_iterator.aclose()
+
+    assert providers.status_code == 200
+    assert (
+        providers.text.index('href="/media"')
+        < providers.text.index('href="/providers"')
+        < providers.text.index('href="/events"')
+        < providers.text.index('href="/history"')
+        < providers.text.index('href="/settings"')
+    )
+    assert 'aria-current="page">Providers' in providers.text
+    assert 'class="skip-link"' in providers.text
+    assert 'data-log-url="/providers/worker/logs"' in providers.text
+    assert events.text.count("Wombat Needle Event") == 1
+    assert "Unrelated Event" not in events.text
+    assert f"/history?q={history_id}" in events.text
+    assert history.text.count(history_id) >= 1
+    assert "Unrelated Prompt" not in history.text
+    assert "history_id%7Cequals%7Cimage-wombat" in history.text
+    assert 'id="media-dialog"' in media.text
+    assert 'aria-labelledby="media-title"' in media.text
+    assert 'data-media-id="' in media.text
+    assert detail.status_code == 200
+    assert detail.json()["uses"][0]["prompt"] == "Wombat Needle Portrait"
+    assert "path" not in detail.json()
+    assert stylesheet.headers["content-type"].startswith("text/css")
+    assert "@media (max-width: 760px)" in stylesheet.text
+    assert "body > nav" in stylesheet.text
+    assert javascript.headers["content-type"].startswith("text/javascript")
+    assert "if (!mediaDialog.open) mediaDialog.showModal()" in javascript.text
+    assert log_stream.media_type == "text/event-stream"
+    assert str(first_log_update).startswith("data:")
     await app.state.controller.close()
 
 

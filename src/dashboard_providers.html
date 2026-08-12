@@ -1,0 +1,87 @@
+{% extends "dashboard_base.html" %} {% import "dashboard_components.html" as ui
+%} {% block content %}
+<div class="page-head">
+  <div>
+    <h2>Providers</h2>
+    <small>Compute availability and lifecycle controls.</small>
+  </div>
+</div>
+<section class="table-wrap" aria-label="Providers">
+  <table>
+    <thead>
+      <tr>
+        <th>Provider</th>
+        <th>Type</th>
+        <th>State</th>
+        <th>Resource</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for provider in providers %}
+      <tr id="{{ provider.id }}">
+        <td>
+          <div class="provider-name">
+            <span class="provider-icon" aria-hidden="true"
+              >{{ provider.platform[:2] | upper }}</span
+            >
+            <div>
+              <strong>{{ provider.platform }}</strong><br /><small
+                >{{ provider.id }}</small
+              >
+            </div>
+          </div>
+        </td>
+        <td>{{ provider.type.replace("-", " ") | title }}</td>
+        <td>
+          {{ ui.badge(provider.state) }}{% if not provider.configured %}<br /><small
+            >Configure In Settings</small
+          >{% endif %}
+        </td>
+        <td><code>{{ provider.resource_id or "—" }}</code></td>
+        <td>
+          <div class="actions">
+            {% for action in provider.actions %}
+            <form
+              method="post"
+              action="/providers/{{ provider.id }}/actions/{{ action.name }}"
+            >
+              <input
+                type="hidden"
+                name="csrf_token"
+                value="{{ csrf_token }}"
+              /><button
+                class="{% if action.name in ['delete', 'destroy', 'terminate'] %}danger{% endif %}"
+                {%
+                if
+                action.confirmation
+                %}data-confirmation="{{ action.confirmation }}"
+                {%
+                endif
+                %}
+              >
+                {{ action.name.replace("-", " ") | title }}
+              </button>
+            </form>
+            {% endfor %} {% if provider.configured %}<button
+              type="button"
+              data-log-provider="{{ provider.id }}"
+              data-log-url="/providers/{{ provider.id }}/logs"
+            >
+              Logs</button
+            >{% endif %} {% if provider.panel_url %}<a
+              class="button"
+              href="{{ provider.panel_url }}"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Open Panel</a
+            >{% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %} {% block dialogs %}{% include "dashboard_log_dialog.html" %}{%
+endblock %}

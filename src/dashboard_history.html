@@ -1,0 +1,74 @@
+{% extends "dashboard_base.html" %} {% import "dashboard_components.html" as ui
+%} {% block content %}
+<div class="page-head">
+  <div>
+    <h2>History</h2>
+    <small>Generation requests, attempts, and outputs.</small>
+  </div>
+</div>
+<form class="filters" method="get">
+  <label class="search"
+    >Search<input
+      name="q"
+      value="{{ filters.q }}"
+      placeholder="Prompt, Model, Provider, Or Request ID"
+  /></label>
+  {% for name, values in [("operation", operations), ("provider", providers),
+  ("status", statuses)] %}<label
+    >{{ name | title }}<select name="{{ name }}">
+      <option value="">All {{ name | title }}</option>
+      {% for value in values %}
+      <option value="{{ value }}"{% if filters[name] == value %} selected{% endif %}>
+        {{ value.replace("_", " ") | title }}
+      </option>
+      {% endfor %}
+    </select></label
+  >{% endfor %} <button>Apply Filters</button
+  ><a class="button" href="/history">Clear</a>
+</form>
+<section class="table-wrap" aria-label="History">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Operation</th>
+        <th>Model</th>
+        <th>Provider</th>
+        <th>Status</th>
+        <th>Media</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in history["items"] %}
+      <tr>
+        <td>
+          <time data-timestamp="{{ item.created_at }}"
+            >{{ item.created_at }}</time
+          ><br /><small><code>{{ item.id }}</code></small>
+        </td>
+        <td>{{ item.operation.replace("_", " ") | title }}</td>
+        <td>{{ item.model }}</td>
+        <td>
+          {% if item.provider %}<a href="/providers#{{ item.provider }}"
+            >{{ item.provider }}</a
+          >{% else %}—{% endif %}
+        </td>
+        <td>{{ ui.badge(item.status) }}</td>
+        <td>
+          {% if item.media %}<a
+            href="/media?filter={{ ('history_id|equals|' ~ item.id) | urlencode }}"
+            >View {{ item.media | length }} Item{% if item.media | length != 1
+            %}s{% endif %}</a
+          >{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6">No History Matches These Filters.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.pagination(history) }}
+</section>
+{% endblock %}

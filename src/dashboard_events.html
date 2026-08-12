@@ -1,0 +1,80 @@
+{% extends "dashboard_base.html" %} {% import "dashboard_components.html" as ui
+%} {% block content %}
+<div class="page-head">
+  <div>
+    <h2>Events</h2>
+    <small>Controller and provider activity.</small>
+  </div>
+</div>
+<form class="filters" method="get">
+  <label class="search"
+    >Search<input
+      name="q"
+      value="{{ filters.q }}"
+      placeholder="Message, Provider, Or Request ID"
+  /></label>
+  <label
+    >Level<select name="level">
+      <option value="">All Levels</option>
+      {% for value in levels %}
+      <option value="{{ value }}"{% if filters.level == value %} selected{% endif %}>
+        {{ value | title }}
+      </option>
+      {% endfor %}
+    </select></label
+  >
+  <label
+    >Provider<select name="provider">
+      <option value="">All Providers</option>
+      {% for value in providers %}
+      <option value="{{ value }}"{% if filters.provider == value %} selected{% endif %}>
+        {{ value }}
+      </option>
+      {% endfor %}
+    </select></label
+  >
+  <button>Apply Filters</button><a class="button" href="/events">Clear</a>
+</form>
+<section class="table-wrap" aria-label="Events">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Level</th>
+        <th>Provider</th>
+        <th>Message</th>
+        <th>Request</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in events["items"] %}
+      <tr>
+        <td>
+          <time data-timestamp="{{ item.created_at }}"
+            >{{ item.created_at }}</time
+          >
+        </td>
+        <td>{{ ui.badge(item.level) }}</td>
+        <td>
+          {% if item.provider %}<a href="/providers#{{ item.provider }}"
+            >{{ item.provider }}</a
+          >{% else %}—{% endif %}
+        </td>
+        <td>{{ item.message }}</td>
+        <td>
+          {% if item.request_id %}<a
+            href="/history?q={{ item.request_id | urlencode }}"
+            ><code>{{ item.request_id }}</code></a
+          >{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5">No Events Match These Filters.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ ui.pagination(events) }}
+</section>
+{% endblock %}

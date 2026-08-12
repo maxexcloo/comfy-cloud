@@ -1,0 +1,7 @@
+<nav aria-label="Primary Navigation">
+  {% for name in ["media", "providers", "events", "history"] %}
+  <a href="/{{ name }}"{% if page == name %} class="active" aria-current="page"{% endif %}>{{ name | title }}</a>
+  {% endfor %}
+  <a class="end{% if page == 'settings' %} active{% endif %}" href="/settings"{% if page == "settings" %} aria-current="page"{% endif %}>Settings</a>
+  <form method="post" action="/logout"><button>Log Out</button></form>
+</nav>
