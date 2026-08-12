@@ -253,7 +253,8 @@ async def test_controller_lists_and_routes_models(tmp_path):
             "/login", data={"password": "incorrect", "username": "comfy"}
         )
         await sign_in(client)
-        dashboard = await client.get("/")
+        home = await client.get("/", follow_redirects=False)
+        dashboard = await client.get("/providers")
         models = await client.get(
             "/v1/models", headers={"Authorization": "Bearer control-key"}
         )
@@ -283,10 +284,12 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert login_page.status_code == 200
     assert 'autocomplete="current-password"' in login_page.text
     assert invalid_login.status_code == 401
+    assert home.status_code == 303
+    assert home.headers["location"] == "/media"
     assert dashboard.status_code == 200
-    assert 'class="provider-grid"' in dashboard.text
-    assert 'href="/?view=history"' in dashboard.text
-    assert 'href="/?view=settings"' in dashboard.text
+    assert "<table>" in dashboard.text
+    assert 'href="/history"' in dashboard.text
+    assert 'href="/settings"' in dashboard.text
     assert 'href="/media"' in dashboard.text
     assert 'action="/logout"' in dashboard.text
     assert "setInterval" not in dashboard.text
@@ -413,7 +416,7 @@ async def test_environment_overrides_database_and_locks_settings(tmp_path, monke
                 "values": {"public_base_url": "https://control.example"},
             },
         )
-        page = await client.get("/?view=settings")
+        page = await client.get("/settings")
 
     assert fields["hf_token"]["configured"] is True
     assert fields["hf_token"]["locked"] is True
@@ -422,8 +425,9 @@ async def test_environment_overrides_database_and_locks_settings(tmp_path, monke
     assert rejected.status_code == 400
     assert "environment-controlled" in rejected.text
     assert updated.status_code == 200
-    assert "Worker image (environment)" in page.text
-    assert 'disabled title="Controlled by environment"' in page.text
+    assert "Worker Image" in page.text
+    assert "Controlled By Environment" in page.text
+    assert "disabled" in page.text
     assert (
         app.state.controller.store.connection.execute(
             "SELECT encrypted_value FROM control_secrets WHERE name = 'hf_token'"
@@ -461,7 +465,7 @@ async def test_server_rendered_settings_require_csrf(tmp_path):
         transport=httpx.ASGITransport(app=app), base_url="http://control"
     ) as client:
         await sign_in(client)
-        page = await client.get("/?view=settings")
+        page = await client.get("/settings")
         rejected = await client.post(
             "/settings", data={"csrf_token": "invalid", "revision": "1"}
         )
@@ -1466,10 +1470,14 @@ def test_media_library_fuzzy_search_filters_and_lineage(tmp_path: Path):
         query="wombt GPU",
         filters=[{"path": "seed", "operator": "equals", "value": 42}],
     )
+    history_result = store.media_library(
+        filters=[{"path": "history_id", "operator": "equals", "value": "image_1"}]
+    )
     lineage = store.media_lineage(source_id)
 
     assert result["count"] == 1
     assert result["data"][0]["parameters"]["steps"] == 8
+    assert history_result["count"] == 1
     assert [item["filename"] for item in lineage["derivatives"]] == ["output.png"]
     store.close()
 

@@ -793,8 +793,15 @@ class ControlStore:
             path = str(item.get("path", ""))
             operator = str(item.get("operator", "equals"))
             value = item.get("value")
-            if path in {"model", "operation", "provider", "status"}:
-                column = f"history.{path}"
+            history_columns = {
+                "history_id": "history.id",
+                "model": "history.model",
+                "operation": "history.operation",
+                "provider": "history.provider",
+                "status": "history.status",
+            }
+            if path in history_columns:
+                column = history_columns[path]
                 if operator == "equals":
                     clauses.append(f"{column} = ?")
                     values.append(value)
@@ -908,9 +915,11 @@ class ControlStore:
                 SELECT generation_media.history_id, generation_media.role,
                        generation_media.field_name, generation_media.filename,
                        history.model, history.operation, history.provider,
-                       history.status, history.created_at, history.parameters_json
+                       history.status, history.created_at, history.parameters_json,
+                       generation_search.prompt
                 FROM generation_media
                 JOIN history ON history.id = generation_media.history_id
+                JOIN generation_search ON generation_search.history_id = history.id
                 WHERE generation_media.asset_id = ?
                 ORDER BY history.created_at DESC, generation_media.position
                 """,

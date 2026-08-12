@@ -3,79 +3,40 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
-    <title>Comfy Control</title>
-    <style>
-      :root { color-scheme: dark; font: 15px system-ui; --accent: #5ee0c2; --bg: #080d12; --border: #24313b; --muted: #96a4ae; --surface: #10171e; background: var(--bg); color: #edf3f6; }
-      * { box-sizing: border-box; }
-      body { margin: 0; }
-      header, main, nav { margin: auto; max-width: 1280px; width: calc(100% - 3rem); }
-      header { align-items: center; display: flex; justify-content: space-between; padding: 2rem 0 1rem; }
-      h1, h2, h3, p { margin-top: 0; }
-      a { color: var(--accent); }
-      nav { border-bottom: 1px solid var(--border); display: flex; gap: 1.2rem; padding-bottom: .8rem; }
-      nav a { color: var(--muted); text-decoration: none; }
-      nav a.active { color: #fff; }
-      main { padding: 1.2rem 0 3rem; }
-      section, article, fieldset { background: var(--surface); border: 1px solid var(--border); border-radius: 11px; }
-      section { padding: 1rem; }
-      .provider-grid { display: grid; gap: .9rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-      article { display: flex; flex-direction: column; min-height: 220px; padding: 1rem; }
-      .provider-head { display: flex; justify-content: space-between; }
-      .badge { border: 1px solid #42515d; border-radius: 999px; font-size: .75rem; padding: .2rem .5rem; }
-      .badge.ready, .badge.completed { border-color: #2b735c; color: #7de2bf; }
-      .badge.unavailable, .badge.failed { border-color: #73404a; color: #ffaaa5; }
-      .actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: auto; padding-top: 1rem; }
-      button, input, select, textarea { background: #111a21; border: 1px solid #3a4b58; border-radius: 6px; color: inherit; padding: .6rem; }
-      button { cursor: pointer; }
-      .danger { border-color: #743d45; color: #ffaaa5; }
-      .settings-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      fieldset { display: grid; gap: .7rem; min-width: 0; padding: 1rem; }
-      legend { color: var(--accent); }
-      label { color: var(--muted); display: grid; gap: .3rem; }
-      textarea { min-height: 8rem; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border-bottom: 1px solid var(--border); padding: .7rem; text-align: left; }
-      th, small { color: var(--muted); }
-      pre { overflow: auto; white-space: pre-wrap; }
-      .pagination { display: flex; gap: 1rem; justify-content: center; padding-top: 1rem; }
-      @media (max-width: 750px) { .settings-grid { grid-template-columns: 1fr; } table, tbody, tr, td { display: block; } thead { display: none; } }
-    </style>
+    <title>{{ page | title }} · Comfy Control</title>
+    <link rel="stylesheet" href="/assets/dashboard.css" />
   </head>
   <body>
-    <header>
-      <div><small>GPU ORCHESTRATION</small><h1>Comfy Control</h1></div>
-      <form method="post" action="/logout"><button>Log out</button></form>
-    </header>
+    <header><a href="/media"><small>GPU Orchestration</small><h1>Comfy Control</h1></a></header>
     <nav>
-      {% for name, label in [('providers', 'Providers'), ('history', 'History'), ('events', 'Events'), ('settings', 'Settings')] %}<a href="/?view={{ name }}" class="{% if view == name %}active{% endif %}">{{ label }}</a>{% endfor %}<a href="/media">Media</a>
+      {% for name in ['media', 'providers', 'events', 'history'] %}<a href="/{{ name }}" class="{% if page == name %}active{% endif %}">{{ name | title }}</a>{% endfor %}
+      <a class="end {% if page == 'settings' %}active{% endif %}" href="/settings">Settings</a>
+      <form method="post" action="/logout"><button>Log Out</button></form>
     </nav>
     <main>
       {% if message %}<p role="status">{{ message }}</p>{% endif %}
-      {% if view == 'providers' %}
-      <div class="provider-grid">
-        {% for provider in providers %}
-        <article>
-          <div class="provider-head"><div><h2>{{ provider.platform }}</h2><small>{{ provider.id }} · {{ provider.type }}</small></div><span class="badge {{ provider.state }}">{{ provider.state }}</span></div>
-          {% if provider.resource_id %}<p><small>{{ provider.resource_id }}</small></p>{% endif %}
-          {% if not provider.configured %}<p>Configure credentials in Settings.</p>{% endif %}
-          <div class="actions">
-            {% for action in provider.actions %}<form method="post" action="/providers/{{ provider.id }}/actions/{{ action.name }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><button class="{% if action.name in ['delete', 'destroy', 'terminate'] %}danger{% endif %}" {% if action.confirmation %}data-confirmation="{{ action.confirmation }}"{% endif %}>{{ action.name.replace('-', ' ').title() }}</button></form>{% endfor %}
-            {% if provider.configured %}<a href="/providers/{{ provider.id }}/logs">Logs</a>{% endif %}
-            {% if provider.panel_url %}<a href="{{ provider.panel_url }}" target="_blank" rel="noopener noreferrer">Panel ↗</a>{% endif %}
-          </div>
-        </article>
-        {% endfor %}
-      </div>
-      {% elif view == 'history' %}
-      <section><h2>History</h2><table><thead><tr><th>Time</th><th>Operation</th><th>Model</th><th>Provider</th><th>Status</th><th>Media</th></tr></thead><tbody>{% for item in history %}<tr><td>{{ item.created_at }}</td><td>{{ item.operation }}</td><td>{{ item.model }}</td><td>{{ item.provider or '—' }}</td><td>{{ item.status }}</td><td>{% for media in item.media %}<a href="/ops/history/{{ item.id }}/media/{{ media.id }}">{{ media.filename }}</a> {% endfor %}</td></tr>{% endfor %}</tbody></table>{{ pagination | safe }}</section>
-      {% elif view == 'events' %}
-      <section><h2>Events</h2><table><thead><tr><th>Time</th><th>Level</th><th>Provider</th><th>Message</th></tr></thead><tbody>{% for item in events %}<tr><td>{{ item.created_at }}</td><td>{{ item.level }}</td><td>{{ item.provider or '—' }}</td><td>{{ item.message }}</td></tr>{% endfor %}</tbody></table>{{ pagination | safe }}</section>
-      {% elif view == 'settings' %}
-      <section><h2>Settings</h2><form method="post" action="/settings"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="revision" value="{{ settings.revision }}" /><div class="settings-grid">{% for section, fields in settings.sections.items() %}<fieldset><legend>{{ section }}</legend>{% for field in fields %}<label>{{ field.label }}{% if field.locked %} (environment){% endif %}{% if field.type == 'routes' %}<textarea name="{{ field.name }}" {% if field.locked %}disabled title="Controlled by environment"{% endif %}>{{ field.value | tojson(indent=2) }}</textarea>{% elif field.type == 'list' %}<input name="{{ field.name }}" value="{{ field.value | join(', ') }}" {% if field.locked %}disabled title="Controlled by environment"{% endif %}/>{% else %}<input name="{{ field.name }}" type="{% if field.secret %}password{% elif field.type == 'number' %}number{% elif field.type == 'url' %}url{% else %}text{% endif %}" value="{% if not field.secret %}{{ field.value }}{% endif %}" {% if field.secret %}placeholder="{% if field.configured %}Configured{% if not field.locked %} — leave blank to keep{% endif %}{% endif %}" autocomplete="new-password"{% endif %} {% if field.locked %}disabled title="Controlled by environment"{% endif %}/>{% endif %}</label>{% endfor %}</fieldset>{% endfor %}</div><p><button>Save settings</button></p></form></section>
+      {% if page == 'providers' %}
+      <div class="page-head"><div><h2>Providers</h2><small>Compute availability and lifecycle controls.</small></div></div>
+      <section class="table-wrap"><table><thead><tr><th>Provider</th><th>Type</th><th>State</th><th>Resource</th><th>Actions</th></tr></thead><tbody>
+        {% for provider in providers %}<tr id="{{ provider.id }}"><td><div class="provider-name"><span class="provider-icon">{{ provider.platform[:2] | upper }}</span><div><strong>{{ provider.platform }}</strong><br /><small>{{ provider.id }}</small></div></div></td><td>{{ provider.type.replace('-', ' ') | title }}</td><td><span class="badge {{ provider.state }}">{{ provider.state.replace('-', ' ') | title }}</span>{% if not provider.configured %}<br /><small>Configure In Settings</small>{% endif %}</td><td><code>{{ provider.resource_id or '—' }}</code></td><td><div class="actions">
+          {% for action in provider.actions %}<form method="post" action="/providers/{{ provider.id }}/actions/{{ action.name }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><button class="{% if action.name in ['delete','destroy','terminate'] %}danger{% endif %}" {% if action.confirmation %}data-confirmation="{{ action.confirmation }}"{% endif %}>{{ action.name.replace('-', ' ') | title }}</button></form>{% endfor %}
+          {% if provider.configured %}<button type="button" data-log-provider="{{ provider.id }}" data-log-url="/providers/{{ provider.id }}/logs">Logs</button>{% endif %}{% if provider.panel_url %}<a class="button" href="{{ provider.panel_url }}" target="_blank" rel="noopener noreferrer">Open Panel</a>{% endif %}
+        </div></td></tr>{% endfor %}
+      </tbody></table></section>
+      {% elif page == 'events' %}
+      <div class="page-head"><div><h2>Events</h2><small>Controller and provider activity.</small></div></div>
+      <form class="filters" method="get"><label class="search">Search<input name="q" value="{{ filters.q }}" placeholder="Message, provider, or request ID" /></label><label>Level<select name="level"><option value="">All Levels</option>{% for value in levels %}<option {% if filters.level == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label><label>Provider<select name="provider"><option value="">All Providers</option>{% for value in providers %}<option {% if filters.provider == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label><button>Filter</button></form>
+      <section class="table-wrap"><table><thead><tr><th>Date</th><th>Level</th><th>Provider</th><th>Message</th><th>Request</th></tr></thead><tbody>{% for item in events.items %}<tr><td><time data-timestamp="{{ item.created_at }}">{{ item.created_at }}</time></td><td><span class="badge {{ item.level }}">{{ item.level | title }}</span></td><td>{% if item.provider %}<a href="/providers#{{ item.provider }}">{{ item.provider }}</a>{% else %}—{% endif %}</td><td>{{ item.message }}</td><td>{% if item.request_id %}<a href="/history?q={{ item.request_id }}"><code>{{ item.request_id }}</code></a>{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="5">No Events Match These Filters.</td></tr>{% endfor %}</tbody></table><div class="pagination">{% if events.page > 1 %}<a href="?page={{ events.page - 1 }}{{ events.query_suffix }}">Previous</a>{% endif %}<span>Page {{ events.page }} Of {{ events.pages }}</span>{% if events.page < events.pages %}<a href="?page={{ events.page + 1 }}{{ events.query_suffix }}">Next</a>{% endif %}</div></section>
+      {% elif page == 'history' %}
+      <div class="page-head"><div><h2>History</h2><small>Generation requests, attempts, and outputs.</small></div></div>
+      <form class="filters" method="get"><label class="search">Search<input name="q" value="{{ filters.q }}" placeholder="Prompt, model, provider, or request ID" /></label>{% for name, values in [('operation', operations), ('provider', providers), ('status', statuses)] %}<label>{{ name | title }}<select name="{{ name }}"><option value="">All {{ name | title }}</option>{% for value in values %}<option {% if filters[name] == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>{% endfor %}<button>Filter</button></form>
+      <section class="table-wrap"><table><thead><tr><th>Date</th><th>Operation</th><th>Model</th><th>Provider</th><th>Status</th><th>Media</th></tr></thead><tbody>{% for item in history.items %}<tr><td><time data-timestamp="{{ item.created_at }}">{{ item.created_at }}</time><br /><small><code>{{ item.id }}</code></small></td><td>{{ item.operation.replace('_',' ') | title }}</td><td>{{ item.model }}</td><td>{% if item.provider %}<a href="/providers#{{ item.provider }}">{{ item.provider }}</a>{% else %}—{% endif %}</td><td><span class="badge {{ item.status }}">{{ item.status.replace('_',' ') | title }}</span></td><td>{% if item.media %}<a href="/media?filter=history_id|equals|{{ item.id }}">View {{ item.media | length }} Item{% if item.media | length != 1 %}s{% endif %}</a>{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="6">No History Matches These Filters.</td></tr>{% endfor %}</tbody></table><div class="pagination">{% if history.page > 1 %}<a href="?page={{ history.page - 1 }}{{ history.query_suffix }}">Previous</a>{% endif %}<span>Page {{ history.page }} Of {{ history.pages }}</span>{% if history.page < history.pages %}<a href="?page={{ history.page + 1 }}{{ history.query_suffix }}">Next</a>{% endif %}</div></section>
+      {% elif page == 'settings' %}
+      <div class="page-head"><div><h2>Settings</h2><small>Environment-controlled values are locked.</small></div></div><form method="post" action="/settings"><input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="revision" value="{{ settings.revision }}" />
+      {% for category, groups in settings.categories.items() %}<section class="settings-category"><div class="dialog-head"><h2>{{ category }}</h2></div><div class="settings-groups">{% for group, fields in groups.items() %}<fieldset><legend>{{ group }}</legend>{% for field in fields %}<label>{{ field.label }}{% if field.locked %}<small class="field-note">Controlled By Environment</small>{% endif %}{% if field.options %}<select name="{{ field.name }}" {% if field.locked %}disabled{% endif %}>{% for option in field.options %}<option {% if field.value == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select>{% elif field.type == 'routes' %}<textarea name="{{ field.name }}" {% if field.locked %}disabled{% endif %}>{{ field.value | tojson(indent=2) }}</textarea>{% elif field.type == 'list' %}<input name="{{ field.name }}" value="{{ field.value | join(', ') }}" {% if field.locked %}disabled{% endif %}/>{% else %}<input name="{{ field.name }}" type="{% if field.secret %}password{% elif field.type == 'number' %}number{% elif field.type == 'url' %}url{% else %}text{% endif %}" value="{% if not field.secret %}{{ field.value }}{% endif %}" {% if field.secret %}placeholder="{% if field.configured %}Configured{% endif %}" autocomplete="new-password"{% endif %} {% if field.minimum is defined %}min="{{ field.minimum }}"{% endif %} {% if field.locked %}disabled{% endif %}/>{% endif %}</label>{% endfor %}</fieldset>{% endfor %}</div></section>{% endfor %}<button>Save Settings</button></form>
       {% endif %}
     </main>
-    <script>
-      for (const button of document.querySelectorAll("[data-confirmation]")) button.closest("form").addEventListener("submit", event => { if (!confirm(button.dataset.confirmation)) event.preventDefault(); });
-    </script>
+    <dialog id="log-dialog"><div class="dialog-head"><h2 id="log-title">Provider Logs</h2><button type="button" data-close>Close</button></div><div class="dialog-body"><pre id="log-output">Connecting…</pre></div></dialog>
+    <script src="/assets/dashboard.js"></script>
   </body>
 </html>

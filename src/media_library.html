@@ -4,237 +4,63 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
     <title>Media · Comfy Control</title>
-    <style>
-      :root {
-        color-scheme: dark;
-        font: 15px system-ui;
-        background: #080d12;
-        color: #edf3f6;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-      }
-      header,
-      main {
-        margin: auto;
-        max-width: 1280px;
-        width: calc(100% - 3rem);
-      }
-      header {
-        align-items: center;
-        display: flex;
-        justify-content: space-between;
-        padding: 2rem 0 1rem;
-      }
-      a {
-        color: #79dfc5;
-      }
-      form {
-        background: #10171e;
-        border: 1px solid #24313b;
-        border-radius: 12px;
-        display: grid;
-        gap: 0.8rem;
-        grid-template-columns: 2fr repeat(3, 1fr);
-        padding: 1rem;
-      }
-      input,
-      select,
-      button {
-        background: #0c1319;
-        border: 1px solid #354955;
-        border-radius: 6px;
-        color: inherit;
-        padding: 0.65rem;
-      }
-      .wide {
-        grid-column: span 2;
-      }
-      .grid {
-        display: grid;
-        gap: 1rem;
-        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-        margin: 1.2rem 0;
-      }
-      article {
-        background: #10171e;
-        border: 1px solid #24313b;
-        border-radius: 10px;
-        overflow: hidden;
-      }
-      article img,
-      article video {
-        aspect-ratio: 1;
-        background: #030609;
-        display: block;
-        object-fit: contain;
-        width: 100%;
-      }
-      article div {
-        padding: 0.8rem;
-      }
-      small {
-        color: #9aa8b2;
-        display: block;
-        overflow-wrap: anywhere;
-      }
-      .prompt {
-        color: #dce8ec;
-        margin: 0.5rem 0;
-      }
-      nav {
-        display: flex;
-        gap: 0.8rem;
-        justify-content: center;
-        padding: 1rem;
-      }
-      @media (max-width: 800px) {
-        form {
-          grid-template-columns: 1fr 1fr;
-        }
-      }
-    </style>
+    <link rel="stylesheet" href="/assets/dashboard.css" />
   </head>
   <body>
     <header>
-      <div>
-        <small>COMFY CONTROL</small>
-        <h1>Media library</h1>
-      </div>
-      <a href="/">Dashboard</a>
+      <a href="/media"><small>GPU Orchestration</small><h1>Comfy Control</h1></a>
     </header>
+    <nav>
+      <a class="active" href="/media">Media</a>
+      <a href="/providers">Providers</a>
+      <a href="/events">Events</a>
+      <a href="/history">History</a>
+      <a class="end" href="/settings">Settings</a>
+      <form method="post" action="/logout"><button>Log Out</button></form>
+    </nav>
     <main>
-      <form method="post" action="/media/search">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <input
-          class="wide"
-          name="q"
-          value="{{ query }}"
-          placeholder="Fuzzy search prompts and parameters"
-          autofocus
-        />
-        <select name="sort" data-current="{{ sort }}">
-          {% for value, label in [('relevance', 'Relevance'), ('newest',
-          'Newest'), ('oldest', 'Oldest'), ('model', 'Model'), ('provider',
-          'Provider'), ('content_type', 'Media type')] %}
-          <option value="{{ value }}">{{ label }}</option>
-          {% endfor %}
-          <optgroup label="Parameter">
-            {% for value in facets.parameters %}<option value="parameter:{{ value }}">{{ value }}</option>{% endfor %}
-          </optgroup>
-        </select>
-        <label
-          ><input
-            type="checkbox"
-            name="include_inputs"
-            value="true"
-            data-current="{{ include_inputs }}"
-          />
-          Include source media</label
-        >
-        {% for name in ['model', 'provider', 'operation', 'status'] %}
-        <select name="{{ name }}" data-current="{{ selections[name] }}">
-          <option value="">All {{ name }}s</option>
-          {% for value in facets[name] %}
-          <option>{{ value }}</option>
-          {% endfor %}
-        </select>
-        {% endfor %}
-        <select id="filterPath">
-          <option value="">Custom parameter…</option>
-          {% for value in facets.parameters %}
-          <option>{{ value }}</option>
-          {% endfor %}
-        </select>
-        <select id="filterOperator">
-          <option value="equals">equals</option>
-          <option value="contains">contains</option>
-          <option value="greater_than">greater than</option>
-          <option value="less_than">less than</option>
-          <option value="not_equals">does not equal</option>
-        </select>
-        <input id="filterValue" placeholder="Filter value" />
-        <button id="addFilter" type="button">Add filter</button>
-        <button>Search</button>
-        {% for value in active_filters %}<input type="hidden" name="filter" value="{{ value }}" /><small>{{ value.replace('|', ' ') }}</small>{% endfor %}
-      </form>
-      <div class="grid">
-        {% for item in items %}
-        <article data-asset="{{ item.asset_id }}">
-          <a href="/media/{{ item.asset_id }}"
-            >{% if item.content_type.startswith('video/') %}<video
-            controls
-            preload="metadata"
-            src="/media/{{ item.asset_id }}/content"
-          ></video
-          >{% else %}<img
-            loading="lazy"
-            src="/media/{{ item.asset_id }}/content"
-            alt="{{ item.prompt }}"
-          />{% endif %}</a>
-          <div>
-            <strong>{{ item.model }}</strong
-            ><small
-              >{{ item.operation }} · {{ item.provider or '—' }} · {{ item.role
-              }}</small
-            >
-            <p class="prompt">{{ item.prompt }}</p>
-            <small>{{ item.filename }} · {{ item.size }} bytes</small>
-            <div class="lineage"></div>
-          </div>
-        </article>
-        {% else %}
-        <p>No media matches the current search.</p>
-        {% endfor %}
+      <div class="page-head">
+        <div><h2>Media</h2><small>Generated images, videos, prompts, and lineage.</small></div>
       </div>
-      <nav>
-        {% if page > 1 %}<a href="?page={{ page - 1 }}{% if query_string %}&{{ query_string }}{% endif %}"
-          >Previous</a
-        >{% endif %}<span>Page {{ page }} of {{ pages }}</span>{% if page <
-        pages %}<a href="?page={{ page + 1 }}{% if query_string %}&{{ query_string }}{% endif %}">Next</a>{%
-        endif %}
-      </nav>
+      <form class="filters media-filters" method="post" action="/media/search" id="media-search">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <label class="search">Search
+          <input name="q" value="{{ query }}" placeholder="Fuzzy Search Prompts And Parameters" autofocus />
+        </label>
+        <label>Sort
+          <select name="sort" data-current="{{ sort }}">
+            {% for value, label in [('relevance', 'Relevance'), ('newest', 'Newest'), ('oldest', 'Oldest'), ('model', 'Model'), ('provider', 'Provider'), ('content_type', 'Media Type')] %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            <optgroup label="Parameter">{% for value in facets.parameters %}<option value="parameter:{{ value }}">{{ value }}</option>{% endfor %}</optgroup>
+          </select>
+        </label>
+        {% for name in ['model', 'provider', 'operation', 'status'] %}
+        <label>{{ name | title }}
+          <select name="{{ name }}" data-current="{{ selections[name] }}"><option value="">All {{ name | title }}{% if name != 'status' %}s{% endif %}</option>{% for value in facets[name] %}<option value="{{ value }}">{{ value.replace('_', ' ') | title }}</option>{% endfor %}</select>
+        </label>
+        {% endfor %}
+        <label class="checkbox"><input type="checkbox" name="include_inputs" value="true" data-current="{{ include_inputs }}" /> Include Source Media</label>
+        <details class="custom-filter"><summary>Add Parameter Filter</summary><div class="filter-row">
+          <select id="filter-path" aria-label="Parameter"><option value="">Choose Parameter</option>{% for value in facets.parameters %}<option value="{{ value }}">{{ value }}</option>{% endfor %}</select>
+          <select id="filter-operator" aria-label="Operator"><option value="equals">Equals</option><option value="contains">Contains</option><option value="greater_than">Greater Than</option><option value="less_than">Less Than</option><option value="not_equals">Does Not Equal</option></select>
+          <input id="filter-value" placeholder="Value" aria-label="Value" /><button id="add-filter" type="button">Add Filter</button>
+        </div></details>
+        <div class="filter-chips" id="filter-chips">{% for value in active_filters %}<span class="filter-chip"><input type="hidden" name="filter" value="{{ value }}" />{{ value.replace('|', ' ').replace('_', ' ') | title }} <button type="button" data-remove-filter aria-label="Remove Filter">×</button></span>{% endfor %}</div>
+        <div class="filter-actions"><button>Apply Filters</button><a class="button" href="/media">Clear</a></div>
+      </form>
+      <div class="media-grid">
+        {% for item in items %}
+        <button class="media-card" type="button" data-media-id="{{ item.asset_id }}">
+          <span class="media-thumb">{% if item.content_type.startswith('video/') %}<video preload="metadata" muted src="/media/{{ item.asset_id }}/content"></video>{% else %}<img loading="lazy" src="/media/{{ item.asset_id }}/content" alt="" />{% endif %}<span class="badge media-role">{{ item.role | title }}</span></span>
+          <span class="media-summary"><strong>{{ item.model }}</strong><small>{{ item.operation.replace('_', ' ') | title }} · {{ item.provider or 'No Provider' }}</small><span class="prompt-clamp">{{ item.prompt or 'No Prompt' }}</span><small><time data-timestamp="{{ item.created_at }}">{{ item.created_at }}</time> · {{ item.filename }}</small></span>
+        </button>
+        {% else %}<section class="empty-state"><h3>No Media Found</h3><p>Adjust the filters or search words and try again.</p></section>{% endfor %}
+      </div>
+      <div class="pagination">{% if page > 1 %}<a href="?page={{ page - 1 }}{% if query_string %}&{{ query_string }}{% endif %}">Previous</a>{% endif %}<span>Page {{ page }} Of {{ pages }}</span>{% if page < pages %}<a href="?page={{ page + 1 }}{% if query_string %}&{{ query_string }}{% endif %}">Next</a>{% endif %}</div>
     </main>
-    <script>
-      for (const control of document.querySelectorAll("[data-current]")) {
-        if (control.type === "checkbox") control.checked = control.dataset.current === "True";
-        else control.value = control.dataset.current;
-      }
-      document.getElementById("addFilter").onclick = () => {
-        const path = document.getElementById("filterPath").value;
-        const operator = document.getElementById("filterOperator").value;
-        const value = document.getElementById("filterValue").value;
-        if (!path || !value) return;
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = "filter";
-        input.value = `${path}|${operator}|${value}`;
-        document.querySelector("form").append(input);
-        input.insertAdjacentHTML(
-          "beforebegin",
-          `<small>${path} ${operator.replaceAll("_", " ")} ${value}</small>`,
-        );
-      };
-      for (const card of document.querySelectorAll("[data-asset]")) {
-        fetch(`/media/${card.dataset.asset}/lineage`)
-          .then((r) => (r.ok ? r.json() : null))
-          .then((data) => {
-            if (!data) return;
-            const parts = [];
-            if (data.sources.length)
-              parts.push(
-                `${data.sources.length} source${data.sources.length === 1 ? "" : "s"}`,
-              );
-            if (data.derivatives.length)
-              parts.push(
-                `${data.derivatives.length} derivative${data.derivatives.length === 1 ? "" : "s"}`,
-              );
-            card.querySelector(".lineage").textContent = parts.join(" · ");
-          });
-      }
-    </script>
+    <dialog id="media-dialog">
+      <div class="dialog-head"><div><small id="media-kind">Media</small><h2 id="media-title">Media Details</h2></div><button type="button" data-close>Close</button></div>
+      <div class="dialog-body" id="media-detail"><p>Loading…</p></div>
+    </dialog>
+    <script src="/assets/dashboard.js"></script>
   </body>
 </html>

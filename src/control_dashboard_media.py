@@ -148,16 +148,12 @@ async def media_detail(asset_id: int, request: Request) -> Response:
     controller = request.app.state.controller
     settings = request.app.state.settings
     if not ui_authorised(request, settings):
-        return RedirectResponse("/login", status_code=303)
+        return Response(status_code=401)
     detail = controller.store.media_detail(asset_id)
     if detail is None:
         return error("media was not found", 404, "not_found")
-    template = TEMPLATES.from_string(
-        resources.files("comfy_control").joinpath("media_detail.html").read_text()
-    )
-    return HTMLResponse(
-        template.render(item=detail), headers={"Cache-Control": "no-store"}
-    )
+    detail.pop("path", None)
+    return JSONResponse(detail, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/{asset_id}/lineage", include_in_schema=False)
