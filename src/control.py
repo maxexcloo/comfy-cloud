@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import hashlib
 import hmac
 import json
-import re
 import time
 import uuid
 from contextlib import asynccontextmanager
-from html import escape
 from importlib import resources
 from pathlib import Path
 from urllib.parse import quote, urlencode
@@ -28,6 +24,35 @@ from jinja2 import Environment, select_autoescape
 from pydantic import ValidationError
 
 from .control_config import ControlSettings
+from .control_contracts import (
+    HistoryPage,
+    MediaLineage,
+    MediaSearch,
+    OperationsStatus,
+    PreferenceDescription,
+    PreferenceUpdate,
+    ProviderActionResult,
+    ProviderLogs,
+    ProviderTestRequest,
+    ProviderTestResult,
+)
+from .control_dashboard import (
+    SESSION_COOKIE,
+    SESSION_SECONDS,
+    bearer_authorised,
+    csrf_token,
+    login_html,
+    secure_cookie,
+    session_token,
+    ui_authorised,
+    valid_csrf,
+)
+from .control_inference import (
+    archived_image_content,
+    canonical_parameters,
+    internal_image_content,
+    normalise_grok_image_options,
+)
 from .control_preferences import ConfigurationConflict
 from .controller import (
     Controller,
@@ -47,38 +72,8 @@ MEDIA_LIBRARY_HTML = (
 )
 TEMPLATES = Environment(autoescape=select_autoescape(("html", "xml")))
 DASHBOARD_PAGE_SIZE = 20
-IMAGE_ASPECT_ALIASES = {
-    "landscape": "16:9",
-    "portrait": "9:16",
-    "square": "1:1",
-}
-IMAGE_ASPECT_RE = re.compile(
-    r"(?<![\w:])(?:16:9|9:16|4:3|3:4|3:2|2:3|1:1|landscape|portrait|square)(?![\w:])",
-    re.IGNORECASE,
-)
-IMAGE_RESOLUTION_RE = re.compile(r"(?<!\w)(?:1k|2k)(?!\w)", re.IGNORECASE)
 LOGIN_MAXIMUM_BYTES = 16 * 1024
 PROVIDER_TEST_MAXIMUM_BYTES = 16 * 1024
-SESSION_COOKIE = "comfy_control_session"
-SESSION_SECONDS = 12 * 60 * 60
-
-
-def normalise_grok_image_options(values: dict[str, object]) -> dict[str, object]:
-    """Fill Grok image options from explicit prompt phrases when fields are absent."""
-    model = str(values.get("model") or "").rsplit("/", 1)[-1]
-    if model != "grok-imagine-image-quality":
-        return values
-    normalised = dict(values)
-    prompt = str(values.get("prompt") or "")
-    aspect = str(values.get("aspect_ratio") or "").casefold().strip()
-    if aspect in {"", "auto"} and (match := IMAGE_ASPECT_RE.search(prompt)):
-        selected = match.group(0).casefold()
-        normalised["aspect_ratio"] = IMAGE_ASPECT_ALIASES.get(selected, selected)
-    resolution = str(values.get("resolution") or "").casefold().strip()
-    if not resolution:
-        match = IMAGE_RESOLUTION_RE.search(prompt)
-        normalised["resolution"] = match.group(0).casefold() if match else "1k"
-    return normalised
 
 
 def error(message: str, status: int, code: str) -> JSONResponse:
@@ -92,166 +87,6 @@ def error(message: str, status: int, code: str) -> JSONResponse:
             }
         },
     )
-
-
-def archived_image_content(
-    request: Request, controller: Controller, history_id: str, response: httpx.Response
-) -> bytes:
-    try:
-        payload = response.json()
-        data = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(data, list):
-            return response.content
-        archived = iter(controller.store.media_for_history(history_id))
-        for item in data:
-            if not isinstance(item, dict):
-                continue
-            if not (item.get("b64_json") or item.get("url")):
-                continue
-            media = next(archived, None)
-            if media is not None and item.get("url"):
-                item["url"] = str(
-                    request.url_for(
-                        "history_media", history_id=history_id, media_id=media.id
-                    )
-                )
-        return json.dumps(payload, separators=(",", ":")).encode()
-    except (TypeError, ValueError):
-        return response.content
-
-
-def canonical_parameters(values: dict[str, object]) -> dict[str, object]:
-    parameters = {
-        key: value
-        for key, value in values.items()
-        if key not in {"model", "n", "provider", "response_format", "size"}
-    }
-    size = str(values.get("size", "")).strip()
-    if size and size != "auto":
-        try:
-            width, height = size.lower().split("x", 1)
-            parameters["width"] = int(width)
-            parameters["height"] = int(height)
-        except ValueError as exc:
-            raise ValueError("size must be WIDTHxHEIGHT or auto") from exc
-    for name in ("height", "length", "seed", "steps", "width"):
-        if parameters.get(name) is not None:
-            if isinstance(parameters[name], bool):
-                raise ValueError(f"{name} must be an integer")
-            parameters[name] = int(parameters[name])
-    for name in ("height", "length", "steps", "width"):
-        if parameters.get(name) is not None and int(parameters[name]) < 1:
-            raise ValueError(f"{name} must be at least 1")
-    if parameters.get("seed") is not None and int(parameters["seed"]) < 0:
-        raise ValueError("seed must be at least 0")
-    return parameters
-
-
-def internal_image_content(
-    request: Request,
-    controller: Controller,
-    history_id: str,
-    outputs: list[tuple[bytes, str, str]],
-    response_format: str,
-) -> bytes:
-    data = []
-    for content, content_type, filename in outputs:
-        media_id = controller.save_media(history_id, content, content_type, filename)
-        if response_format == "url":
-            data.append(
-                {
-                    "url": str(
-                        request.url_for(
-                            "history_media",
-                            history_id=history_id,
-                            media_id=media_id,
-                        )
-                    )
-                }
-            )
-        else:
-            data.append({"b64_json": base64.b64encode(content).decode()})
-    return json.dumps(
-        {"created": int(time.time()), "data": data}, separators=(",", ":")
-    ).encode()
-
-
-def bearer_authorised(request: Request, settings: ControlSettings) -> bool:
-    scheme, _, value = request.headers.get("authorization", "").partition(" ")
-    return scheme.lower() == "bearer" and hmac.compare_digest(value, settings.api_key)
-
-
-def session_secret(settings: ControlSettings) -> bytes:
-    return (settings.ui_password or settings.api_key).encode()
-
-
-def session_token(settings: ControlSettings, expires: int) -> str:
-    payload = str(expires)
-    signature = hmac.new(
-        session_secret(settings), payload.encode(), hashlib.sha512
-    ).hexdigest()
-    return f"{payload}.{signature}"
-
-
-def csrf_token(settings: ControlSettings, expires: int) -> str:
-    payload = f"csrf:{expires}"
-    signature = hmac.new(
-        session_secret(settings), payload.encode(), hashlib.sha512
-    ).hexdigest()
-    return f"{expires}.{signature}"
-
-
-def valid_csrf(request: Request, settings: ControlSettings, token: str) -> bool:
-    expires, separator, signature = token.partition(".")
-    if not separator:
-        return False
-    try:
-        expiry = int(expires)
-    except ValueError:
-        return False
-    expected = csrf_token(settings, expiry).partition(".")[2]
-    return (
-        ui_authorised(request, settings)
-        and expiry >= int(time.time())
-        and hmac.compare_digest(signature, expected)
-    )
-
-
-def ui_authorised(request: Request, settings: ControlSettings) -> bool:
-    token = request.cookies.get(SESSION_COOKIE, "")
-    payload, separator, signature = token.partition(".")
-    if not separator:
-        return False
-    try:
-        expires = int(payload)
-    except ValueError:
-        return False
-    expected = session_token(settings, expires).partition(".")[2]
-    return expires >= int(time.time()) and hmac.compare_digest(signature, expected)
-
-
-def secure_cookie(request: Request) -> bool:
-    forwarded = request.headers.get("x-forwarded-proto", "").partition(",")[0].strip()
-    return request.url.scheme == "https" or forwarded == "https"
-
-
-def login_html(settings: ControlSettings, invalid: bool = False) -> str:
-    message = (
-        '<p class="error" role="alert">Incorrect username or password.</p>'
-        if invalid
-        else ""
-    )
-    return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>Sign in · Comfy Control</title><style>
-:root{{color-scheme:dark;font:15px system-ui;background:#101418;color:#e8edf2}}
-body{{display:grid;margin:0;min-height:100vh;place-items:center}}main{{background:#181e24;border:1px solid #2c3640;border-radius:10px;padding:2rem;width:min(320px,calc(100vw - 4rem))}}
-h1{{font-size:1.5rem;margin-top:0}}label{{display:grid;gap:.35rem;margin:1rem 0}}input{{background:#101418;border:1px solid #42576b;border-radius:5px;color:#e8edf2;padding:.65rem}}
-button{{background:#263442;border:1px solid #42576b;border-radius:5px;color:#e8edf2;padding:.65rem;width:100%;cursor:pointer}}.error{{color:#ff7b72}}
-</style></head><body><main><h1>Comfy Control</h1>{message}<form method="post" action="/login">
-<label>Username<input name="username" value="{escape(settings.ui_username)}" autocomplete="username" required></label>
-<label>Password<input name="password" type="password" autocomplete="current-password" required autofocus></label>
-<button type="submit">Sign in</button></form></main></body></html>"""
 
 
 async def limited_body(request: Request, maximum_bytes: int) -> bytes:
@@ -594,7 +429,12 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             return error("media was not found", 404, "not_found")
         return JSONResponse(controller.store.media_lineage(asset_id))
 
-    @app.get("/ops/media", tags=["operations"], operation_id="search_media")
+    @app.get(
+        "/ops/media",
+        tags=["operations"],
+        operation_id="search_media",
+        response_model=MediaSearch,
+    )
     async def operations_media(request: Request) -> Response:
         if not bearer_authorised(request, settings):
             return Response(status_code=401)
@@ -636,6 +476,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         "/ops/media/{asset_id}/lineage",
         tags=["operations"],
         operation_id="media_lineage",
+        response_model=MediaLineage,
     )
     async def operations_media_lineage(asset_id: int, request: Request) -> Response:
         if not bearer_authorised(request, settings):
@@ -722,7 +563,12 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         response.delete_cookie(SESSION_COOKIE, path="/")
         return response
 
-    @app.get("/ops/status", tags=["operations"], operation_id="operations_status")
+    @app.get(
+        "/ops/status",
+        tags=["operations"],
+        operation_id="operations_status",
+        response_model=OperationsStatus,
+    )
     async def status(request: Request) -> Response:
         if not (
             ui_authorised(request, settings) or bearer_authorised(request, settings)
@@ -829,6 +675,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         "/ops/providers/{provider_id}/logs",
         tags=["operations"],
         operation_id="provider_logs",
+        response_model=ProviderLogs,
     )
     async def provider_logs(provider_id: str, request: Request) -> Response:
         if not (
@@ -843,13 +690,31 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         except KeyError as exc:
             return error(str(exc), 404, "provider_not_found")
 
-    @app.get("/ops/settings", tags=["operations"], operation_id="get_preferences")
+    @app.get(
+        "/ops/settings",
+        tags=["operations"],
+        operation_id="get_preferences",
+        response_model=PreferenceDescription,
+    )
     async def get_settings(request: Request) -> Response:
         if not ui_authorised(request, settings):
             return Response(status_code=401)
         return JSONResponse(controller.describe_configuration())
 
-    @app.patch("/ops/settings", tags=["operations"], operation_id="update_preferences")
+    @app.patch(
+        "/ops/settings",
+        tags=["operations"],
+        operation_id="update_preferences",
+        response_model=PreferenceDescription,
+        openapi_extra={
+            "requestBody": {
+                "content": {
+                    "application/json": {"schema": PreferenceUpdate.model_json_schema()}
+                },
+                "required": True,
+            }
+        },
+    )
     async def update_settings(request: Request) -> Response:
         if not ui_authorised(request, settings):
             return Response(status_code=401)
@@ -884,7 +749,12 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         controller.store.event("info", "control configuration updated")
         return JSONResponse(controller.describe_configuration())
 
-    @app.get("/ops/history", tags=["operations"], operation_id="generation_history")
+    @app.get(
+        "/ops/history",
+        tags=["operations"],
+        operation_id="generation_history",
+        response_model=HistoryPage,
+    )
     async def history(request: Request) -> Response:
         if not ui_authorised(request, settings):
             return Response(status_code=401)
@@ -939,6 +809,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         "/ops/providers/{provider_id}/actions/{action_name}",
         tags=["operations"],
         operation_id="provider_action",
+        response_model=ProviderActionResult,
     )
     async def provider_action(
         provider_id: str, action_name: str, request: Request
@@ -987,6 +858,17 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         "/ops/providers/{provider_id}/test",
         tags=["operations"],
         operation_id="test_provider",
+        response_model=ProviderTestResult,
+        openapi_extra={
+            "requestBody": {
+                "content": {
+                    "application/json": {
+                        "schema": ProviderTestRequest.model_json_schema()
+                    }
+                },
+                "required": True,
+            }
+        },
     )
     async def provider_test(provider_id: str, request: Request) -> Response:
         if not (

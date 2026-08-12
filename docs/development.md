@@ -33,6 +33,8 @@ The container workflow separately builds and smoke-tests the Comfy Control image
 - Keep provider-specific deployment assets in `deploy/`.
 - Keep built-in provider capabilities, lifecycle and telemetry in the provider
   registry and adapters.
+- Keep each provider's API discovery, status and telemetry in its own
+  `provider_<name>.py` module.
 - Keep safe user-editable preferences in `ControlPreferences` and SQLite.
 - Keep OpenAI-compatible routing in the controller and canonical execution in workers.
 

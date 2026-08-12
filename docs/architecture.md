@@ -18,6 +18,11 @@ serving URLs are discovered through provider APIs and kept in controller runtime
 state, so provider-assigned addresses can change across starts without changing
 deployment configuration.
 
+Provider integrations are isolated by platform. Modal, RunPod, SaladCloud, Vast.ai
+and CLI Proxy each own their discovery, status, lifecycle additions and telemetry in
+separate modules behind a small common adapter contract. The controller coordinates
+adapters without containing provider API URLs or response-shape branching.
+
 ## Configuration
 
 The control plane has a deliberately small bootstrap environment:
@@ -109,6 +114,7 @@ in front of the normal Serverless worker.
 Control and worker publish their live OpenAPI documents at `/openapi.json` and
 interactive documentation at `/docs`. Controller operations are under `/ops`,
 worker execution is under `/internal`, and both are unversioned current contracts.
+Operations publish named request and response schemas for generated clients.
 
 ## Provider Telemetry
 

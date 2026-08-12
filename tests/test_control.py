@@ -16,11 +16,8 @@ from comfy_control.control import create_app, normalise_grok_image_options
 from comfy_control.control_config import ControlFile, ControlSettings
 from comfy_control.control_registry import control_file as registry_control_file
 from comfy_control.control_store import ControlStore
-from comfy_control.controller import (
-    history_parameters,
-    normalise_usage,
-    normalise_xai_quota,
-)
+from comfy_control.controller import history_parameters
+from comfy_control.provider_telemetry import normalise_usage, normalise_xai_quota
 
 ROOT = Path(__file__).parents[1]
 
@@ -1438,3 +1435,19 @@ def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):
     assert "/ops/media" in schema["paths"]
     assert not any(path.startswith("/api/") for path in schema["paths"])
     assert schema["components"]["securitySchemes"]["bearerAuth"]["scheme"] == "bearer"
+    status_schema = schema["paths"]["/ops/status"]["get"]["responses"]["200"]
+    settings_body = schema["paths"]["/ops/settings"]["patch"]["requestBody"]
+    test_body = schema["paths"]["/ops/providers/{provider_id}/test"]["post"][
+        "requestBody"
+    ]
+    assert status_schema["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/OperationsStatus"
+    )
+    assert settings_body["content"]["application/json"]["schema"]["required"] == [
+        "revision",
+        "values",
+    ]
+    assert test_body["content"]["application/json"]["schema"]["required"] == [
+        "model",
+        "prompt",
+    ]

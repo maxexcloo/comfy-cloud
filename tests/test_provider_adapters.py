@@ -45,3 +45,31 @@ def test_proxy_panel_url_is_derived_without_an_adapter():
     assert provider_panel_url(provider, {}, provider.base_url) == (
         "https://proxy.example/management.html"
     )
+
+
+@pytest.mark.parametrize(
+    ("kind", "module"),
+    [
+        ("modal", "comfy_control.provider_modal"),
+        ("runpod-pod", "comfy_control.provider_runpod"),
+        ("salad", "comfy_control.provider_salad"),
+        ("vast-pod", "comfy_control.provider_vast"),
+    ],
+)
+def test_provider_implementations_are_isolated_by_provider(kind, module):
+    provider = Provider.model_validate(
+        {
+            "api_key": "key",
+            "id": "provider",
+            "management": {
+                "function": "serve" if kind == "modal" else None,
+                "kind": kind,
+                "name": "comfy-control",
+            },
+        }
+    )
+
+    adapter = provider_adapter(provider)
+
+    assert adapter is not None
+    assert adapter.__class__.__module__ == module

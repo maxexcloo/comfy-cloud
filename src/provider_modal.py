@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
 
 from .control_config import ControlSettings, Provider
 from .control_preferences import ControlPreferences
+from .provider_adapter import BaseAdapter, Discovery, ProviderNotDeployed
 
 
 def provider_action(
@@ -93,3 +96,52 @@ def web_url(app_name: str, function_name: str) -> str:
     if not url:
         raise RuntimeError(f"Modal web function has no URL: {app_name}/{function_name}")
     return url.rstrip("/")
+
+
+class ModalAdapter(BaseAdapter):
+    async def discover(
+        self,
+        client: httpx.AsyncClient,
+        provider: Provider,
+        preferences: ControlPreferences,
+        resource_id: str | None,
+        *,
+        route: bool,
+    ) -> Discovery:
+        del client, preferences, route
+        management = provider.management
+        assert management is not None
+        try:
+            base_url = await asyncio.to_thread(
+                web_url, management.name, management.function or ""
+            )
+        except Exception as exc:
+            if resource_id is None:
+                raise ProviderNotDeployed(
+                    f"provider resource not found: {management.name}"
+                ) from exc
+            raise
+        return Discovery(base_url, {}, management.name)
+
+    async def live_status(self, provider: Provider) -> tuple[str, dict[str, object]]:
+        management = provider.management
+        assert management is not None
+        details = await asyncio.to_thread(
+            status, management.name, management.function or ""
+        )
+        return str(details.pop("state")), details
+
+    def panel_url(
+        self, provider: Provider, details: dict[str, object], base_url: str | None
+    ) -> str | None:
+        return str(details.get("panel_url") or self.panel)
+
+    async def usage(
+        self,
+        client: httpx.AsyncClient,
+        provider: Provider,
+        preferences: ControlPreferences,
+        history_usage: Callable[[str], dict[str, int]],
+    ) -> list[dict[str, object]]:
+        del client, provider, preferences, history_usage
+        return await asyncio.to_thread(usage)

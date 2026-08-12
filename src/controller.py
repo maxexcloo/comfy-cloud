@@ -23,7 +23,6 @@ from .control_config import (
     ProviderAction,
     RoutedModel,
     Target,
-    UsageProbe,
 )
 from .control_preferences import ConfigurationManager, ControlPreferences
 from .control_store import ControlStore, Job
@@ -34,27 +33,13 @@ from .media import (
     safe_filename,
 )
 from .provider_adapters import (
+    ProviderNotDeployed,
     available_provider_actions,
     provider_adapter,
     provider_panel_url,
 )
 from .provider_modal import (
     provider_action as modal_provider_action,
-)
-from .provider_modal import (
-    status as modal_status,
-)
-from .provider_modal import (
-    usage as modal_usage,
-)
-from .provider_modal import (
-    web_url as modal_web_url,
-)
-from .provider_telemetry import (
-    deduplicate_metrics,
-    normalise_usage,
-    normalise_xai_quota,
-    xai_user_id,
 )
 
 SENSITIVE_FIELD_PARTS = (
@@ -66,10 +51,6 @@ SENSITIVE_FIELD_PARTS = (
     "secret",
     "token",
 )
-
-
-class ProviderNotDeployed(RuntimeError):
-    pass
 
 
 def exception_message(exc: Exception) -> str:
@@ -102,36 +83,6 @@ def redacted(value: object) -> object:
     if isinstance(value, list):
         return [redacted(item) for item in value]
     return value
-
-
-def required_mapping_value(value: object, key: str) -> object:
-    if not isinstance(value, dict) or key not in value or value[key] in (None, ""):
-        raise RuntimeError(f"provider response has no {key}")
-    return value[key]
-
-
-def named_resource(
-    value: object, name: str, name_key: str, resource_id: str | None
-) -> dict[str, object]:
-    if not isinstance(value, list):
-        raise RuntimeError(  # noqa: TRY004 - provider boundary failure
-            "provider returned an invalid resource list"
-        )
-    resources = [item for item in value if isinstance(item, dict)]
-    if resource_id is not None:
-        matches = [
-            item
-            for item in resources
-            if str(item.get("id")) == resource_id and item.get(name_key) == name
-        ]
-        if len(matches) == 1:
-            return matches[0]
-    matches = [item for item in resources if item.get(name_key) == name]
-    if not matches:
-        raise ProviderNotDeployed(f"provider resource not found: {name}")
-    if len(matches) > 1:
-        raise RuntimeError(f"provider resource name is ambiguous: {name}")
-    return matches[0]
 
 
 def history_parameters(value: object, key: str = "") -> object:
@@ -272,12 +223,6 @@ class Controller:
             if isinstance(model, dict) and model.get("id")
         }
 
-    def required_preference(self, name: str) -> str:
-        value = self.preferences.environment().get(name)
-        if not value:
-            raise RuntimeError(f"{name} is required to manage this provider")
-        return value
-
     def describe_configuration(self) -> dict[str, object]:
         description = self.configuration.describe()
         fields = description.get("fields")
@@ -352,35 +297,17 @@ class Controller:
             ):
                 return runtime.usage
             try:
-                if probe.kind == "modal":
-                    metrics = await asyncio.to_thread(modal_usage)
-                else:
-                    url = probe.url
-                    headers = probe.headers
-                    if probe.kind == "salad" and url is None:
-                        organisation = self.required_preference("SALAD_ORGANISATION")
-                        url = (
-                            "https://api.salad.com/api/public/organizations/"
-                            f"{quote(organisation, safe='')}/quotas"
-                        )
-                        headers = {
-                            "Salad-Api-Key": self.required_preference("SALAD_API_KEY")
-                        }
-                    response = await self.lifecycle_client.get(url, headers=headers)
-                    response.raise_for_status()
-                    if probe.kind == "cliproxyapi":
-                        metrics = normalise_usage(
-                            probe.kind,
-                            self.store.history_usage(runtime.config.id),
-                        )
-                        try:
-                            metrics.extend(await self.cliproxy_xai_quotas(probe))
-                        except Exception:  # noqa: BLE001 - optional quota telemetry
-                            metrics.append(
-                                {"label": "Grok allowances", "value": "unavailable"}
-                            )
-                    else:
-                        metrics = normalise_usage(probe.kind, response.json())
+                adapter = provider_adapter(runtime.config)
+                if adapter is None:
+                    raise RuntimeError(
+                        f"provider adapter is missing: {runtime.config.id}"
+                    )
+                metrics = await adapter.usage(
+                    self.lifecycle_client,
+                    runtime.config,
+                    self.preferences,
+                    self.store.history_usage,
+                )
                 runtime.usage = {"metrics": metrics, "status": "ok"}
             except Exception as exc:  # noqa: BLE001 - optional account telemetry
                 runtime.usage = {
@@ -389,94 +316,6 @@ class Controller:
                 }
             runtime.usage_checked_at = time.monotonic()
             return runtime.usage
-
-    async def cliproxy_xai_quotas(self, probe: UsageProbe) -> list[dict[str, object]]:
-        management_url = str(probe.url).rsplit("/", 1)[0]
-        response = await self.lifecycle_client.get(
-            f"{management_url}/auth-files", headers=probe.headers
-        )
-        response.raise_for_status()
-        payload = response.json()
-        files = payload.get("files", []) if isinstance(payload, dict) else []
-        accounts = [
-            item
-            for item in files
-            if isinstance(item, dict)
-            and str(item.get("type", "")).casefold() == "xai"
-            and item.get("disabled") is not True
-            and (item.get("auth_index") or item.get("authIndex"))
-        ]
-        results = await asyncio.gather(
-            *(
-                self.cliproxy_xai_quota_account(
-                    management_url, probe.headers, account, index
-                )
-                for index, account in enumerate(accounts, 1)
-            ),
-            return_exceptions=True,
-        )
-        return [
-            metric
-            for result in results
-            if isinstance(result, list)
-            for metric in result
-        ]
-
-    async def cliproxy_xai_quota_account(
-        self,
-        management_url: str,
-        headers: dict[str, str],
-        account: dict[str, object],
-        index: int,
-    ) -> list[dict[str, object]]:
-        auth_index = str(account.get("auth_index") or account.get("authIndex"))
-        request_headers = {
-            "Authorization": "Bearer $TOKEN$",
-            "accept": "*/*",
-            "user-agent": "grok-pager/0.2.91 grok-shell/0.2.91 (macos; aarch64)",
-            "x-grok-client-version": "0.2.91",
-            "x-xai-token-auth": "xai-grok-cli",
-        }
-        user_id = xai_user_id(account)
-        if user_id:
-            request_headers["x-userid"] = user_id
-        calls = await asyncio.gather(
-            *(
-                self.lifecycle_client.post(
-                    f"{management_url}/api-call",
-                    headers=headers,
-                    json={
-                        "authIndex": auth_index,
-                        "method": "GET",
-                        "url": url,
-                        "header": request_headers,
-                    },
-                )
-                for url in (
-                    "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
-                    "https://cli-chat-proxy.grok.com/v1/billing",
-                )
-            ),
-            return_exceptions=True,
-        )
-        metrics: list[dict[str, object]] = []
-        for response in calls:
-            if not isinstance(response, httpx.Response) or not response.is_success:
-                continue
-            result = response.json()
-            if (
-                not isinstance(result, dict)
-                or not 200 <= int(result.get("status_code", 0)) < 300
-            ):
-                continue
-            body = result.get("body")
-            if isinstance(body, str):
-                try:
-                    body = json.loads(body)
-                except json.JSONDecodeError:
-                    continue
-            metrics.extend(normalise_xai_quota(body, index))
-        return deduplicate_metrics(metrics)
 
     async def usage(self) -> dict[str, dict[str, object]]:
         values = await asyncio.gather(
@@ -533,10 +372,10 @@ class Controller:
                 runtime.ready = response.is_success
                 runtime.state = "ready" if runtime.ready else "unavailable"
             elif management.kind == "modal":
-                details = await asyncio.to_thread(
-                    modal_status, management.name, management.function or ""
-                )
-                runtime.state = str(details.pop("state"))
+                adapter = provider_adapter(runtime.config)
+                if adapter is None:
+                    raise RuntimeError("Modal provider adapter is missing")
+                runtime.state, details = await adapter.live_status(runtime.config)
             else:
                 adapter = provider_adapter(runtime.config)
                 if adapter is None:
@@ -608,136 +447,20 @@ class Controller:
         management = runtime.config.management
         if management is None:
             return {}
-        if management.kind == "modal":
-            try:
-                runtime.base_url = await asyncio.to_thread(
-                    modal_web_url, management.name, management.function or ""
-                )
-            except Exception as exc:
-                if self.resource_id(runtime.config.id) is None:
-                    raise ProviderNotDeployed(
-                        f"provider resource not found: {management.name}"
-                    ) from exc
-                raise
-            self.store.save_provider_resource(runtime.config.id, management.name)
-            return {}
-
-        if management.kind.startswith("runpod-"):
-            api_key = self.required_preference("RUNPOD_API_KEY")
-            collection = "pods" if management.kind == "runpod-pod" else "endpoints"
-            response = await self.lifecycle_client.get(
-                f"https://rest.runpod.io/v1/{collection}",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            if response.status_code == 404:
-                raise ProviderNotDeployed(
-                    f"provider resource not found: {management.name}"
-                )
-            response.raise_for_status()
-            resource = named_resource(
-                response.json(),
-                management.name,
-                "name",
-                self.resource_id(runtime.config.id),
-            )
-            resource_id = required_mapping_value(resource, "id")
-            self.store.save_provider_resource(runtime.config.id, str(resource_id))
-            if management.kind == "runpod-serverless":
-                runtime.base_url = f"https://{resource_id}.api.runpod.ai"
-            else:
-                runtime.base_url = (
-                    f"https://{resource_id}-{management.port}.proxy.runpod.net"
-                )
-            return resource
-
-        if management.kind == "salad":
-            api_key = self.required_preference("SALAD_API_KEY")
-            organisation = management.organisation or self.required_preference(
-                "SALAD_ORGANISATION"
-            )
-            project = management.project or self.required_preference("SALAD_PROJECT")
-            response = await self.lifecycle_client.get(
-                "https://api.salad.com/api/public/organizations/"
-                f"{quote(organisation, safe='')}/projects/{quote(project, safe='')}"
-                f"/containers/{quote(management.name, safe='')}",
-                headers={"Salad-Api-Key": api_key},
-            )
-            if response.status_code == 404:
-                raise ProviderNotDeployed(
-                    f"provider resource not found: {management.name}"
-                )
-            response.raise_for_status()
-            resource = response.json()
-            self.store.save_provider_resource(
-                runtime.config.id, str(required_mapping_value(resource, "id"))
-            )
-            networking = required_mapping_value(resource, "networking")
-            if not isinstance(networking, dict):
-                raise RuntimeError("SaladCloud provider has invalid networking data")
-            dns = str(required_mapping_value(networking, "dns"))
-            runtime.base_url = dns if "://" in dns else f"https://{dns}"
-            return resource if isinstance(resource, dict) else {}
-
-        api_key = self.required_preference("VAST_API_KEY")
-        headers = {"Authorization": f"Bearer {api_key}"}
-        if management.kind == "vast-serverless":
-            response = await self.lifecycle_client.get(
-                "https://console.vast.ai/api/v0/endptjobs/", headers=headers
-            )
-            response.raise_for_status()
-            payload = response.json()
-            resources = required_mapping_value(payload, "results")
-            resource = named_resource(
-                resources,
-                management.name,
-                "endpoint_name",
-                self.resource_id(runtime.config.id),
-            )
-            self.store.save_provider_resource(
-                runtime.config.id, str(required_mapping_value(resource, "id"))
-            )
-            if route:
-                route_response = await self.lifecycle_client.post(
-                    "https://run.vast.ai/route/",
-                    headers=headers,
-                    json={"cost": 100, "endpoint": management.name},
-                )
-                route_response.raise_for_status()
-                runtime.base_url = str(
-                    required_mapping_value(route_response.json(), "url")
-                ).rstrip("/")
-            return resource
-
-        response = await self.lifecycle_client.get(
-            "https://console.vast.ai/api/v1/instances/", headers=headers
-        )
-        response.raise_for_status()
-        payload = response.json()
-        resources = required_mapping_value(payload, "instances")
-        resource = named_resource(
-            resources,
-            management.name,
-            "label",
+        adapter = provider_adapter(runtime.config)
+        if adapter is None:
+            raise RuntimeError(f"provider adapter is missing: {management.kind}")
+        discovery = await adapter.discover(
+            self.lifecycle_client,
+            runtime.config,
+            self.preferences,
             self.resource_id(runtime.config.id),
+            route=route,
         )
-        resource_id = required_mapping_value(resource, "id")
-        self.store.save_provider_resource(runtime.config.id, str(resource_id))
-        address = required_mapping_value(resource, "public_ipaddr")
-        ports = required_mapping_value(resource, "ports")
-        mapping = (
-            ports.get(f"{management.port}/tcp") if isinstance(ports, dict) else None
-        )
-        if (
-            not isinstance(mapping, list)
-            or not mapping
-            or not isinstance(mapping[0], dict)
-        ):
-            raise RuntimeError(
-                f"Vast.ai provider has no public mapping for port {management.port}"
-            )
-        port = required_mapping_value(mapping[0], "HostPort")
-        runtime.base_url = f"http://{address}:{port}"
-        return resource
+        if discovery.base_url is not None:
+            runtime.base_url = discovery.base_url
+        self.store.save_provider_resource(runtime.config.id, discovery.resource_id)
+        return discovery.resource
 
     def save_media(
         self,
