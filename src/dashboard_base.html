@@ -6,7 +6,7 @@
     <title>
       {% block title %}{{ page | title }}{% endblock %} · Comfy Control
     </title>
-    <link rel="stylesheet" href="/assets/dashboard.css" />
+    <link rel="stylesheet" href="/assets/dashboard.css?current" />
   </head>
   <body>
     <a class="skip-link" href="#content">Skip To Content</a>
@@ -32,6 +32,6 @@
       </div>
       <div class="dialog-body" id="media-detail"><p>Loading…</p></div>
     </dialog>
-    <script src="/assets/dashboard.js"></script>
+    <script src="/assets/dashboard.js?current"></script>
   </body>
 </html>

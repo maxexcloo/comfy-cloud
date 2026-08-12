@@ -978,6 +978,8 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     )
     assert 'aria-current="page">Providers' in providers.text
     assert 'class="skip-link"' in providers.text
+    assert 'href="/assets/dashboard.css?current"' in providers.text
+    assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text
     assert events.text.count("Wombat Needle Event") == 1
     assert "Unrelated Event" not in events.text
@@ -992,9 +994,11 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert detail.json()["uses"][0]["prompt"] == "Wombat Needle Portrait"
     assert "path" not in detail.json()
     assert stylesheet.headers["content-type"].startswith("text/css")
+    assert stylesheet.headers["cache-control"] == "no-store"
     assert "@media (max-width: 760px)" in stylesheet.text
     assert "body > nav" in stylesheet.text
     assert javascript.headers["content-type"].startswith("text/javascript")
+    assert javascript.headers["cache-control"] == "no-store"
     assert "if (!mediaDialog.open) mediaDialog.showModal()" in javascript.text
     assert 'labelledValue("Generation Time"' in javascript.text
     assert '["KiB", "MiB", "GiB"]' in javascript.text

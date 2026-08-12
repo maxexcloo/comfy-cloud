@@ -30,7 +30,7 @@ async def dashboard_css() -> Response:
     return Response(
         DASHBOARD_CSS,
         media_type="text/css",
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -39,7 +39,7 @@ async def dashboard_js() -> Response:
     return Response(
         DASHBOARD_JS,
         media_type="text/javascript",
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={"Cache-Control": "no-store"},
     )
 
 
