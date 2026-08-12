@@ -115,8 +115,8 @@ Control and worker publish their live OpenAPI documents at `/openapi.json` and
 interactive documentation at `/docs`. Controller operations are under `/ops`,
 worker execution is under `/internal`, and both are unversioned current contracts.
 Operations publish named request and response schemas for generated clients.
-Route groups are registered as focused routers; history, media and settings
-operations are independent from dashboard pages and inference request handling.
+Route groups are registered as focused routers; history, media, provider logs and
+settings operations are independent from dashboard pages and inference handling.
 
 ## Provider Telemetry
 

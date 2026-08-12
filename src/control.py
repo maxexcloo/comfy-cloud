@@ -26,7 +26,6 @@ from .control_config import ControlSettings
 from .control_contracts import (
     OperationsStatus,
     ProviderActionResult,
-    ProviderLogs,
     ProviderTestRequest,
     ProviderTestResult,
 )
@@ -49,6 +48,7 @@ from .control_inference import (
 )
 from .control_operations_history import router as history_operations_router
 from .control_operations_media import router as media_operations_router
+from .control_operations_providers import router as provider_operations_router
 from .control_operations_settings import router as settings_operations_router
 from .control_preferences import ConfigurationConflict
 from .controller import (
@@ -138,6 +138,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     app.include_router(history_operations_router)
     app.include_router(media_operations_router)
     app.include_router(settings_operations_router)
+    app.include_router(provider_operations_router)
 
     @app.get("/health/live")
     async def live() -> dict[str, str]:
@@ -585,25 +586,6 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 },
             }
         )
-
-    @app.get(
-        "/ops/providers/{provider_id}/logs",
-        tags=["operations"],
-        operation_id="provider_logs",
-        response_model=ProviderLogs,
-    )
-    async def provider_logs(provider_id: str, request: Request) -> Response:
-        if not (
-            ui_authorised(request, settings) or bearer_authorised(request, settings)
-        ):
-            return Response(status_code=401)
-        try:
-            limit = min(max(int(request.query_params.get("limit", "200")), 1), 500)
-            return JSONResponse(controller.provider_logs(provider_id, limit))
-        except ValueError:
-            return error("log limit must be a number", 400, "invalid_request")
-        except KeyError as exc:
-            return error(str(exc), 404, "provider_not_found")
 
     @app.post(
         "/ops/providers/{provider_id}/actions/{action_name}",
