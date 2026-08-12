@@ -1,11 +1,12 @@
 [build-system]
-requires = ["hatchling==1.32.0"]
 build-backend = "hatchling.build"
+requires = ["hatchling==1.32.0"]
 
 [project]
-name = "comfy-control"
-version = "0.1.0"
 description = "An OpenAI-compatible gateway for ComfyUI"
+dynamic = ["version"]
+license = "AGPL-3.0-only"
+name = "comfy-control"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -34,10 +35,13 @@ only-include = ["src"]
 [tool.hatch.build.targets.wheel.sources]
 "src" = "comfy_control"
 
+[tool.hatch.version]
+path = "src/__init__.py"
+
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests"]
-asyncio_mode = "auto"
 
 [tool.ruff.lint.isort]
 known-first-party = ["comfy_control"]

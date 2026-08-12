@@ -10,7 +10,11 @@ from comfy_control.control_config import (
     Provider,
     ProviderManagement,
 )
-from comfy_control.provider_deployment import deploy_provider, terminate_provider
+from comfy_control.provider_deployment import (
+    configured_environment,
+    deploy_provider,
+    terminate_provider,
+)
 
 ROOT = Path(__file__).parents[1]
 
@@ -58,6 +62,17 @@ async def test_deploys_runpod_pod_from_credentials(tmp_path, monkeypatch):
         )
 
     assert response.json()["id"] == "pod-1"
+
+
+def test_worker_ui_credentials_fall_back_when_compose_values_are_empty(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("COMFY_UI_PASSWORD", "")
+    monkeypatch.setenv("COMFY_UI_USERNAME", "")
+    environment = configured_environment({}, provider("runpod-pod"), settings(tmp_path))
+
+    assert environment["COMFY_UI_PASSWORD"] == "ui-password"
+    assert environment["COMFY_UI_USERNAME"] == "comfy"
 
 
 @pytest.mark.asyncio

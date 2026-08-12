@@ -42,8 +42,10 @@ def deployment_asset(*parts: str) -> dict[str, Any]:
 def worker_environment(provider: Provider, settings: ControlSettings) -> dict[str, str]:
     environment = {
         "API_KEY": provider.api_key,
-        "COMFY_UI_PASSWORD": os.getenv("COMFY_UI_PASSWORD", settings.ui_password),
-        "COMFY_UI_USERNAME": os.getenv("COMFY_UI_USERNAME", settings.ui_username),
+        "COMFY_UI_PASSWORD": os.getenv("COMFY_UI_PASSWORD", "").strip()
+        or settings.ui_password,
+        "COMFY_UI_USERNAME": os.getenv("COMFY_UI_USERNAME", "").strip()
+        or settings.ui_username,
     }
     for name in (
         "CIVITAI_TOKEN",
@@ -52,6 +54,8 @@ def worker_environment(provider: Provider, settings: ControlSettings) -> dict[st
         "MAXIMUM_REQUEST_BYTES",
         "MODEL_PROFILES",
         "PUBLIC_BASE_URL",
+        "REQUEST_TIMEOUT",
+        "WORKFLOW_TIMEOUT",
     ):
         if value := os.getenv(name):
             environment[name] = value

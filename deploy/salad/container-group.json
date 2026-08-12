@@ -13,7 +13,6 @@
       "API_KEY": "CHANGE_ME",
       "COMFY_UI_PASSWORD": "CHANGE_ME",
       "COMFY_UI_USERNAME": "comfy",
-      "HF_TOKEN": "CHANGE_ME",
       "JOBS_DIR": "/opt/ComfyUI/models/.comfy-control/jobs",
       "MAXIMUM_PENDING_GENERATIONS": "8",
       "MAXIMUM_REQUEST_BYTES": "104857600"

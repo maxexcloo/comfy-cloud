@@ -17,7 +17,7 @@ lint and bytecode caches.
 
 `mise run check` runs repository hygiene, structured-file validation, GitHub
 Actions linting, Dockerfile linting, formatting, Python linting and the pytest
-suite. Run it before handoff.
+suite on the latest Python version pinned by Mise. Run it before handoff.
 
 The container workflow separately builds and smoke-tests the Comfy Control image.
 

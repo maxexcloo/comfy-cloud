@@ -62,6 +62,11 @@ configured idle policy. Provider resource identifiers are saved in the controlle
 database; serving URLs are rediscovered because they may change after a start or scale
 event.
 
+Compose forwards every setting in `.env.example` to the control plane. Settings such
+as `HF_TOKEN`, `MODEL_PROFILES` and `WORKER_IMAGE` are then applied when it creates a
+managed worker. Set `WORKER_IMAGE` to a full release or SHA tag to pin provider
+deployments instead of following the moving `worker` tag.
+
 SaladCloud also requires `SALAD_ORGANISATION` and `SALAD_PROJECT` because its public API
 uses both slugs as security boundaries. Comfy Control discovers a suitable current GPU
 class for SaladCloud. RunPod and Vast.ai select suitable available GPU capacity through

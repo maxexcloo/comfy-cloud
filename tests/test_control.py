@@ -227,10 +227,10 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert "Actions continue if this window is closed" in dashboard.text
     assert 'class="provider-grid"' in dashboard.text
     assert 'data-tab="historyPageSection"' in dashboard.text
-    assert "if(refresh.running)return" in dashboard.text
-    assert ".join('\\n')" in dashboard.text
+    assert "if (refresh.running) return" in dashboard.text
+    assert '.join("\\n")' in dashboard.text
     assert "Previous media (Left arrow)" in dashboard.text
-    assert "event.clientX<bounds.left" in dashboard.text
+    assert "event.clientX < bounds.left" in dashboard.text
     assert "Send test request" in dashboard.text
     assert "Log Out" in dashboard.text
     assert [model["id"] for model in models.json()["data"]] == [
@@ -942,7 +942,11 @@ def test_compose_forwards_control_provider_environment():
     }
 
     assert required <= forwarded
-    assert required <= env_example
+    assert env_example <= forwarded
+    for name in env_example:
+        assert str(
+            compose["services"]["comfy-control"]["environment"][name]
+        ).startswith(f"${{{name}")
 
 
 def test_control_file_enables_configured_providers(monkeypatch):

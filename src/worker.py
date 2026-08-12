@@ -18,6 +18,7 @@ from prometheus_client import generate_latest
 from prometheus_client.exposition import CONTENT_TYPE_LATEST
 from starlette.background import BackgroundTask
 
+from . import __version__
 from .auth import request_authorised, websocket_authorised
 from .catalogue import WorkflowModel
 from .comfy import OutputRef
@@ -118,7 +119,7 @@ def create_app(settings: Settings) -> FastAPI:
             await asyncio.gather(*runtime.background_tasks, return_exceptions=True)
         await runtime.close()
 
-    app = FastAPI(title="Comfy Control", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Comfy Control", version=__version__, lifespan=lifespan)
     app.state.runtime = runtime
 
     def require(request: Request) -> JSONResponse | None:

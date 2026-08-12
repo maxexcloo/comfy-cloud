@@ -38,7 +38,7 @@ repos:
       - id: prettier
         name: Check formatting
         entry: mise exec -- prettier --check
-        files: \.(json|md|ya?ml)$
+        files: \.(html|json|md|ya?ml)$
         language: system
       - id: ruff-check
         name: Lint Python

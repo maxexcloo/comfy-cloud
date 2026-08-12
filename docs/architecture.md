@@ -2,7 +2,7 @@
 
 ## Runtime
 
-Comfy Control runs two supervised processes in one container:
+Each Comfy Control worker runs two supervised processes in one container:
 
 - **Comfy Control gateway** exposes authenticated OpenAI-compatible and native
   ComfyUI routes on port 8000.
