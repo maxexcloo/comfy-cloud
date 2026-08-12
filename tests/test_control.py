@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -13,6 +14,7 @@ from fastapi.responses import JSONResponse, Response
 from comfy_control.cliproxy import CliproxyClient
 from comfy_control.control import create_app, normalise_grok_image_options
 from comfy_control.control_config import ControlFile, ControlSettings
+from comfy_control.control_registry import control_file as registry_control_file
 from comfy_control.control_store import ControlStore
 from comfy_control.controller import (
     history_parameters,
@@ -1048,6 +1050,15 @@ def test_control_settings_reject_non_positive_request_limit(monkeypatch):
         ControlSettings.from_env()
 
 
+def test_control_settings_use_packaged_registry_by_default(monkeypatch):
+    monkeypatch.setenv("CONTROL_API_KEY", "secure-key")
+    monkeypatch.setenv("CONTROL_SECRET_KEY", "secure-secret-key-at-least-32-characters")
+    monkeypatch.setenv("CONTROL_UI_PASSWORD", "secure-password")
+    monkeypatch.delenv("CONTROL_CONFIG", raising=False)
+
+    assert ControlSettings.from_env().config_file is None
+
+
 def test_compose_forwards_only_bootstrap_environment():
     compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
     assert set(compose["services"]) == {"comfy-control"}
@@ -1077,7 +1088,7 @@ def test_control_file_enables_configured_providers(monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "provider-key")
     monkeypatch.setenv("WORKER_API_KEY", "worker-key")
 
-    loaded = ControlFile.load(ROOT / "config/control.yaml")
+    loaded = registry_control_file(os.environ)
 
     assert [model.id for model in loaded.models] == [
         "image-edit",
@@ -1107,7 +1118,7 @@ def test_control_file_enables_managed_providers_from_credentials(monkeypatch):
     monkeypatch.setenv("VAST_API_KEY", "vast-key")
     monkeypatch.setenv("WORKER_API_KEY", "worker-key")
 
-    loaded = ControlFile.load(ROOT / "config/control.yaml")
+    loaded = registry_control_file(os.environ)
 
     assert [provider.id for provider in loaded.providers] == [
         "cliproxyapi",

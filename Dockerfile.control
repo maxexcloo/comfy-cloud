@@ -12,7 +12,6 @@ RUN uv venv "${VIRTUAL_ENV}"
 WORKDIR /opt/comfy-control
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
-COPY config ./config
 COPY deploy ./deploy
 RUN uv export --frozen --no-dev --extra modal --no-emit-project \
       --no-hashes --output-file /tmp/requirements.txt \

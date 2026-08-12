@@ -11,8 +11,8 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
-import yaml
 
+from . import control_registry
 from .cliproxy import CliproxyClient
 from .control_config import (
     ControlFile,
@@ -169,21 +169,11 @@ class Controller:
         self.settings = settings
         self.store = ControlStore(settings.database_path)
         initial_preferences = ControlPreferences.from_environment()
-        raw_configuration = yaml.safe_load(settings.config_file.read_text())
-        raw_models = (
-            raw_configuration.get("models", [])
-            if isinstance(raw_configuration, dict)
-            else []
+        initial_preferences.routes = (
+            self.file_routes(settings.config_file)
+            if settings.config_file is not None
+            else control_registry.routes()
         )
-        initial_preferences.routes = {
-            str(model["id"]): [
-                str(target["provider"])
-                for target in model.get("targets", [])
-                if isinstance(target, dict) and target.get("provider")
-            ]
-            for model in raw_models
-            if isinstance(model, dict) and model.get("id")
-        }
         if "CONTROL_MAXIMUM_REQUEST_BYTES" not in os.environ:
             initial_preferences.control_maximum_request_bytes = (
                 settings.maximum_request_bytes
@@ -219,6 +209,10 @@ class Controller:
         }
 
     def load_provider_catalogue(self) -> list[dict[str, str]]:
+        if self.settings.config_file is None:
+            return [dict(provider) for provider in control_registry.PROVIDER_CATALOGUE]
+        import yaml
+
         value = yaml.safe_load(self.settings.config_file.read_text())
         providers = value.get("providers", []) if isinstance(value, dict) else []
         return [
@@ -239,7 +233,11 @@ class Controller:
         }
 
     def load_control_file(self, preferences: ControlPreferences) -> ControlFile:
-        config = ControlFile.load(self.settings.config_file, preferences.environment())
+        config = (
+            ControlFile.load(self.settings.config_file, preferences.environment())
+            if self.settings.config_file is not None
+            else control_registry.control_file(preferences.environment())
+        )
         models = []
         for model in config.models:
             route = preferences.routes.get(model.id)
@@ -251,6 +249,22 @@ class Controller:
             if selected:
                 models.append(model.model_copy(update={"targets": selected}))
         return config.model_copy(update={"models": models})
+
+    @staticmethod
+    def file_routes(path: Path) -> dict[str, list[str]]:
+        import yaml
+
+        raw = yaml.safe_load(path.read_text())
+        models = raw.get("models", []) if isinstance(raw, dict) else []
+        return {
+            str(model["id"]): [
+                str(target["provider"])
+                for target in model.get("targets", [])
+                if isinstance(target, dict) and target.get("provider")
+            ]
+            for model in models
+            if isinstance(model, dict) and model.get("id")
+        }
 
     def required_preference(self, name: str) -> str:
         value = self.preferences.environment().get(name)

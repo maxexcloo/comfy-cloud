@@ -31,7 +31,8 @@ The container workflow separately builds and smoke-tests the Comfy Control image
 - Keep pinned weight sources in `profiles/`.
 - Keep portable API behaviour directly in `src/`.
 - Keep provider-specific deployment assets in `deploy/`.
-- Keep lifecycle and telemetry configuration in `config/control.yaml`.
+- Keep built-in provider capabilities, lifecycle and telemetry in the provider
+  registry and adapters.
 - Keep safe user-editable preferences in `ControlPreferences` and SQLite.
 - Keep ComfyUI workers primary and the fixed CLI Proxy API fallback last.
 

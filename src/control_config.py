@@ -246,7 +246,7 @@ def expand_environment(value: Any, environment: Mapping[str, str] | None = None)
 @dataclass(frozen=True)
 class ControlSettings:
     api_key: str
-    config_file: Path
+    config_file: Path | None
     database_path: Path
     maximum_request_bytes: int
     ui_password: str
@@ -266,8 +266,10 @@ class ControlSettings:
             raise ValueError("CONTROL_SECRET_KEY must contain at least 32 characters")
         return cls(
             api_key=api_key,
-            config_file=Path(
-                os.getenv("CONTROL_CONFIG", "/opt/comfy-control/config/control.yaml")
+            config_file=(
+                Path(os.environ["CONTROL_CONFIG"])
+                if os.getenv("CONTROL_CONFIG")
+                else None
             ),
             database_path=Path(os.getenv("CONTROL_DATABASE", "/data/comfy-control.db")),
             maximum_request_bytes=maximum_request_bytes,

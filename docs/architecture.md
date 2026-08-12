@@ -31,10 +31,11 @@ are versioned in SQLite. Secrets use authenticated encryption and are never retu
 by the settings API. The administrator dashboard applies a validated configuration
 snapshot atomically; updates are rejected while inference requests are active.
 
-`config/control.yaml` remains the trusted provider and model catalogue. It defines
-provider capabilities and safe control-plane requests, while the UI exposes only
-known typed values. Arbitrary provider URLs, headers and request bodies are not
-editable through the dashboard.
+The packaged Python registry defines provider capabilities, public models and safe
+control-plane requests. SQLite stores enabled routes and operator preferences,
+while the UI exposes only known typed values. Arbitrary provider URLs, headers and
+request bodies are not editable through the dashboard. `CONTROL_CONFIG` remains an
+advanced explicit override for development and private provider catalogues.
 
 ## Request Flow
 
