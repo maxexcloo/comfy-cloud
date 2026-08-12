@@ -162,7 +162,19 @@ class Controller:
                     requested_provider or None,
                 )
             except (KeyError, ValueError):
-                continue
+                targets = [
+                    target
+                    for candidate in self.config.models
+                    if candidate.operation == str(row["operation"])
+                    and any(
+                        candidate_target.model == requested_model
+                        for candidate_target in candidate.targets
+                    )
+                    for target in candidate.targets
+                    if target.provider in {requested_provider, str(row["provider"])}
+                ]
+                if not targets:
+                    continue
             selected = next(
                 (
                     target
@@ -961,10 +973,6 @@ class Controller:
                 provider_id = self.provider_ids[provider]
             except KeyError as exc:
                 raise ValueError(f"unknown provider: {provider}") from exc
-        if provider_id and "/" in model_id:
-            provider_name, qualified_model = model_id.split("/", 1)
-            if self.provider_ids.get(provider_name) == provider_id:
-                model_id = qualified_model
         try:
             model = self.model(model_id, operation)
         except KeyError:
@@ -983,6 +991,17 @@ class Controller:
                 for target in candidate.targets
                 if target.provider == provider_id and target.model == model_id
             ]
+            if not matches and "/" in model_id:
+                provider_name, qualified_model = model_id.split("/", 1)
+                if self.provider_ids.get(provider_name) == provider_id:
+                    matches = [
+                        (candidate, target)
+                        for candidate in self.config.models
+                        if candidate.operation == operation
+                        for target in candidate.targets
+                        if target.provider == provider_id
+                        and target.model == qualified_model
+                    ]
             if not matches:
                 raise KeyError(f"unknown {provider}/{model_id} route for {operation}")
             model, target = matches[0]

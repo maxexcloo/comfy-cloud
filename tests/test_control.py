@@ -1784,6 +1784,52 @@ def test_historical_routes_and_unique_input_lineage_are_reconciled(tmp_path: Pat
     second.state.controller.store.close()
 
 
+def test_historical_worker_model_maps_to_selected_fallback_provider(tmp_path: Path):
+    configured = settings(tmp_path)
+    configured.config_file.write_text(
+        """
+models:
+  - id: public/video
+    operation: video_generation
+    targets:
+      - { model: local/minimax, provider: local }
+      - { model: proxy/grok, provider: proxy }
+providers:
+  - id: local
+    api_key: local-key
+    base_url: http://local
+  - id: proxy
+    api_key: proxy-key
+    base_url: http://proxy
+    type: proxy
+""".lstrip()
+    )
+    first = create_app(configured)
+    first.state.controller.store.save_history(
+        "legacy-video",
+        "video_generation",
+        "local/minimax",
+        '{"model":"local/minimax","provider":"proxy"}',
+    )
+    first.state.controller.store.update_history(
+        "legacy-video", "completed", provider="proxy"
+    )
+    first.state.controller.store.close()
+
+    second = create_app(configured)
+    history = second.state.controller.store.histories()[0]
+    _, direct_targets = second.state.controller.resolve_model(
+        "proxy/grok", "video_generation", "proxy"
+    )
+
+    assert history["model"] == "local/minimax"
+    assert history["provider"] == "proxy"
+    assert history["provider_model"] == "proxy/grok"
+    assert history["attempts"][0]["model"] == "proxy/grok"
+    assert direct_targets[0].model == "proxy/grok"
+    second.state.controller.store.close()
+
+
 def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):
     app = create_app(settings(tmp_path))
     schema = app.openapi()
