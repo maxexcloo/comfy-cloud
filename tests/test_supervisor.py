@@ -1,8 +1,11 @@
+from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
 from comfy_control.supervisor import _comfy_arguments, _prepare_models
+from comfy_control.worker_logs import capture_process_logs, entries
 
 
 def test_external_models_directory_is_added_to_comfy(monkeypatch, tmp_path):
@@ -37,3 +40,31 @@ def test_configured_model_profile_is_prepared(monkeypatch, tmp_path):
     _prepare_models()
 
     assert calls == [(profile, tmp_path / "models")]
+
+
+def test_comfyui_output_is_captured_as_worker_logs(monkeypatch, tmp_path):
+    monkeypatch.setenv("WORKER_LOG_PATH", str(tmp_path / "worker.jsonl"))
+    output = StringIO()
+    process = SimpleNamespace(
+        stdout=StringIO("\x1b[31mERROR failed to compile\x1b[0m\nINFO ready\n")
+    )
+
+    thread = capture_process_logs(process, output)
+    thread.join(timeout=1)
+    captured = entries(10)
+
+    assert captured == [
+        {
+            "created_at": captured[0]["created_at"],
+            "level": "error",
+            "message": "ERROR failed to compile",
+            "source": "Worker",
+        },
+        {
+            "created_at": captured[1]["created_at"],
+            "level": "info",
+            "message": "INFO ready",
+            "source": "Worker",
+        },
+    ]
+    assert output.getvalue() == "ERROR failed to compile\nINFO ready\n"

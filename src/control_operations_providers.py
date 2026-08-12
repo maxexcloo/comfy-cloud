@@ -78,7 +78,7 @@ async def provider_logs(provider_id: str, request: Request) -> Response:
         return Response(status_code=401)
     try:
         limit = min(max(int(request.query_params.get("limit", "200")), 1), 500)
-        return JSONResponse(controller.provider_logs(provider_id, limit))
+        return JSONResponse(await controller.provider_logs(provider_id, limit))
     except ValueError:
         return error("log limit must be a number", 400, "invalid_request")
     except KeyError as exc:

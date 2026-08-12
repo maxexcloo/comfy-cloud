@@ -36,12 +36,14 @@ if (logDialog) {
       logSource = new EventSource(button.dataset.logUrl);
       logSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        logOutput.textContent = data.entries
+        const lines = data.entries
           .map(
             (item) =>
-              `${formatDate(item.created_at)} ${item.level.toUpperCase()} ${item.message}${item.request_id ? ` [${item.request_id}]` : ""}`,
-          )
-          .join("\n");
+              `${formatDate(item.created_at)} ${item.source || "Provider"} ${item.level.toUpperCase()} ${item.message}${item.request_id ? ` [${item.request_id}]` : ""}`,
+          );
+        if (data.worker_error)
+          lines.push(`Worker Logs Unavailable: ${data.worker_error}`);
+        logOutput.textContent = lines.join("\n");
       };
       logSource.onerror = () => {
         if (!logOutput.textContent) logOutput.textContent = "Waiting For Logs…";

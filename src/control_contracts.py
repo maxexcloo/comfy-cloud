@@ -48,6 +48,7 @@ class ProviderLogs(BaseModel):
     entries: list[dict[str, Any]]
     provider: str
     source: str
+    worker_error: str | None = None
 
 
 class PreferenceDescription(BaseModel):

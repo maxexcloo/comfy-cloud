@@ -116,6 +116,20 @@ def worker_app() -> FastAPI:
     async def ready() -> dict[str, str]:
         return {"status": "ready"}
 
+    @app.get("/internal/logs")
+    async def logs() -> dict[str, object]:
+        return {
+            "entries": [
+                {
+                    "created_at": 1,
+                    "level": "error",
+                    "message": "ComfyUI worker traceback",
+                    "source": "Worker",
+                }
+            ],
+            "source": "Worker",
+        }
+
     @app.post("/internal/executions")
     async def execute(request: Request) -> dict[str, object]:
         form = await request.form()
@@ -539,8 +553,12 @@ async def test_dashboard_tests_provider_and_shows_control_logs(tmp_path):
     assert tested.json()["provider"] == "worker"
     assert tested.json()["status"] == "completed"
     assert logs.status_code == 200
-    assert logs.json()["source"] == "Comfy Control"
+    assert logs.json()["source"] == "Controller and Worker"
     assert logs.json()["entries"][0]["message"] == "dashboard test completed"
+    assert any(
+        entry["message"] == "ComfyUI worker traceback" and entry["source"] == "Worker"
+        for entry in logs.json()["entries"]
+    )
     assert media.content == b"image"
     await app.state.controller.close()
 
@@ -1158,7 +1176,7 @@ providers:
     assert deployed.json()["body"] == {"api_key": "***", "status": "deployed"}
     messages = [
         entry["message"]
-        for entry in app.state.controller.provider_logs("worker")["entries"]
+        for entry in (await app.state.controller.provider_logs("worker"))["entries"]
     ]
     assert messages == [
         "provider action deploy succeeded",

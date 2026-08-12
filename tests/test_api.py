@@ -67,6 +67,36 @@ async def test_internal_info_requires_auth_and_lists_models():
 
 
 @pytest.mark.asyncio
+async def test_internal_logs_require_auth(monkeypatch, tmp_path):
+    log_path = tmp_path / "worker.jsonl"
+    log_path.write_text(
+        '{"created_at":1,"level":"error","message":"ComfyUI failed","source":"Worker"}\n'
+    )
+    monkeypatch.setenv("WORKER_LOG_PATH", str(log_path))
+    app = create_app(settings())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        denied = await client.get("/internal/logs")
+        response = await client.get(
+            "/internal/logs", headers={"Authorization": "Bearer test-key"}
+        )
+
+    assert denied.status_code == 401
+    assert response.json() == {
+        "entries": [
+            {
+                "created_at": 1,
+                "level": "error",
+                "message": "ComfyUI failed",
+                "source": "Worker",
+            }
+        ],
+        "source": "Worker",
+    }
+
+
+@pytest.mark.asyncio
 async def test_internal_execution_returns_and_streams_manifest_output():
     app = create_app(settings())
     app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])

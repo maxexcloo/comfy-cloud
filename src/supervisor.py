@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -13,6 +14,7 @@ import yaml
 
 from .config import DeploymentType
 from .fetch import fetch_profile
+from .worker_logs import capture_process_logs
 
 MODEL_DIRECTORY_KEYS = ("checkpoints", "diffusion_models", "text_encoders", "vae")
 SHUTDOWN_TIMEOUT = 10
@@ -79,8 +81,14 @@ def run(
     comfy_dir = Path(os.getenv("COMFYUI_DIR", "/opt/ComfyUI"))
     _prepare_models()
     comfy = subprocess.Popen(
-        [sys.executable, "main.py", *_comfy_arguments(comfy_dir)], cwd=comfy_dir
+        [sys.executable, "main.py", *_comfy_arguments(comfy_dir)],
+        bufsize=1,
+        cwd=comfy_dir,
+        stderr=subprocess.STDOUT,
+        stdout=subprocess.PIPE,
+        text=True,
     )
+    log_thread: threading.Thread = capture_process_logs(comfy, sys.stdout)
     gateway = subprocess.Popen(
         [
             sys.executable,
@@ -115,3 +123,4 @@ def run(
             time.sleep(0.5)
     finally:
         stop()
+        log_thread.join(timeout=1)

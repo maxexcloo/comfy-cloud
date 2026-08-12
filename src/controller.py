@@ -401,18 +401,43 @@ class Controller:
                 "status": "unavailable",
             }
 
-    def provider_logs(self, provider: str, limit: int = 200) -> dict[str, object]:
+    async def provider_logs(self, provider: str, limit: int = 200) -> dict[str, object]:
         if provider not in self.providers:
             raise KeyError(f"unknown provider: {provider}")
-        entries = [
-            event
+        maximum = min(max(limit, 1), 500)
+        entries: list[dict[str, object]] = [
+            {**event, "source": "Controller"}
             for event in self.store.events(min(max(limit, 1), 500) * 10)
             if event.get("provider") == provider
-        ][: min(max(limit, 1), 500)]
+        ][:maximum]
+        runtime = self.providers[provider]
+        worker_error: str | None = None
+        try:
+            if runtime.base_url is None:
+                await self.refresh_endpoint(runtime)
+            response = await runtime.client.get(
+                self.worker_url(runtime, "/internal/logs"),
+                headers={"Authorization": f"Bearer {runtime.config.api_key}"},
+                params={"limit": maximum},
+                timeout=5,
+            )
+            response.raise_for_status()
+            worker = response.json()
+            worker_entries = worker.get("entries") if isinstance(worker, dict) else None
+            if isinstance(worker_entries, list):
+                entries.extend(
+                    entry
+                    for entry in worker_entries
+                    if isinstance(entry, dict) and isinstance(entry.get("message"), str)
+                )
+        except Exception as exc:  # noqa: BLE001 - provider diagnostics boundary
+            worker_error = exception_message(exc)
+        entries.sort(key=lambda entry: int(entry.get("created_at", 0)), reverse=True)
         return {
-            "entries": redacted(entries),
+            "entries": redacted(entries[:maximum]),
             "provider": provider,
-            "source": "Comfy Control",
+            "source": "Controller and Worker",
+            "worker_error": worker_error,
         }
 
     async def close(self) -> None:

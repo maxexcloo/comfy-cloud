@@ -19,6 +19,7 @@ from .auth import request_authorised, websocket_authorised
 from .config import Settings
 from .execution import ExecutionOutput, ExecutionRequest, ExecutionResult
 from .runtime import GenerationQueueFull, Runtime
+from .worker_logs import entries as worker_log_entries
 
 HOP_HEADERS = {
     "connection",
@@ -182,6 +183,17 @@ def create_app(settings: Settings) -> FastAPI:
                 "deployment_type": settings.deployment_type,
                 "models": [model.id for model in runtime.available_models(object_info)],
                 "ready": object_info is not None,
+            }
+        )
+
+    @app.get("/internal/logs", tags=["internal"], operation_id="worker_logs")
+    async def internal_logs(request: Request, limit: int = 200) -> Response:
+        if denied := require(request):
+            return denied
+        return JSONResponse(
+            {
+                "entries": worker_log_entries(min(max(limit, 1), 500)),
+                "source": "Worker",
             }
         )
 

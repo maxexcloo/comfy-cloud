@@ -295,7 +295,7 @@ async def provider_logs(provider_id: str, request: Request) -> Response:
     if not ui_authorised(request, settings):
         return Response(status_code=401)
     try:
-        controller.provider_logs(provider_id, 1)
+        await controller.provider_logs(provider_id, 1)
     except KeyError as exc:
         return error(str(exc), 404, "provider_not_found")
 
@@ -303,7 +303,8 @@ async def provider_logs(provider_id: str, request: Request) -> Response:
         previous = ""
         while True:
             payload = json.dumps(
-                controller.provider_logs(provider_id, 500), separators=(",", ":")
+                await controller.provider_logs(provider_id, 500),
+                separators=(",", ":"),
             )
             if payload != previous:
                 yield f"data: {payload}\n\n"
