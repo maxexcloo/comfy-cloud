@@ -17,3 +17,4 @@ def test_runtime_images_use_the_packaged_commands():
     )
     assert 'CMD ["comfy-control", "pod"]' in worker
     assert 'uv pip install --python "${VIRTUAL_ENV}/bin/python" pip' in worker
+    assert 'uv venv --system-site-packages "${VIRTUAL_ENV}"' in worker
