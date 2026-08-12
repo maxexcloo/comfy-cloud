@@ -1,4 +1,5 @@
 import asyncio
+import json
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -12,6 +13,7 @@ from fastapi.responses import JSONResponse, Response
 from comfy_control.cliproxy import CliproxyClient
 from comfy_control.control import create_app, normalise_grok_image_options
 from comfy_control.control_config import ControlFile, ControlSettings
+from comfy_control.control_store import ControlStore
 from comfy_control.controller import (
     history_parameters,
     normalise_usage,
@@ -162,6 +164,63 @@ async def attach_worker(app: FastAPI) -> None:
     runtime.client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=worker_app()), base_url="http://worker"
     )
+
+
+@pytest.mark.asyncio
+async def test_controller_prefers_internal_execution_contract(tmp_path: Path):
+    provider = FastAPI()
+
+    @provider.get("/health/ready")
+    async def ready() -> dict[str, str]:
+        return {"status": "ready"}
+
+    @provider.post("/internal/executions")
+    async def execute(request: Request) -> dict[str, object]:
+        form = await request.form()
+        spec = json.loads(str(form["spec"]))
+        assert spec["model"] == "worker/image"
+        assert spec["operation"] == "image_generation"
+        assert spec["parameters"]["prompt"] == "internal contract"
+        return {
+            "execution_id": spec["execution_id"],
+            "outputs": [
+                {
+                    "content_type": "image/png",
+                    "filename": "internal.png",
+                    "index": 0,
+                    "url": "http://worker/internal/executions/output",
+                }
+            ],
+            "status": "completed",
+        }
+
+    @provider.get("/internal/executions/output")
+    async def output() -> Response:
+        return Response(b"internal-image", media_type="image/png")
+
+    app = create_app(settings(tmp_path))
+    runtime = app.state.controller.providers["worker"]
+    await runtime.client.aclose()
+    runtime.client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=provider), base_url="http://worker"
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://control"
+    ) as client:
+        response = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer control-key"},
+            json={"model": "public/image", "prompt": "internal contract"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"] == [{"b64_json": "aW50ZXJuYWwtaW1hZ2U="}]
+    assert (
+        app.state.controller.store.histories()[0]["media"][0]["filename"]
+        == "internal.png"
+    )
+    await app.state.controller.close()
 
 
 async def sign_in(client: httpx.AsyncClient) -> httpx.Response:
@@ -1259,3 +1318,43 @@ def test_history_parameters_omit_embedded_media_and_secrets():
         "image": "<embedded media omitted: 30 characters>",
         "prompt": "test",
     }
+
+
+def test_media_library_fuzzy_search_filters_and_lineage(tmp_path: Path):
+    store = ControlStore(tmp_path / "control.db")
+    store.save_history(
+        "image_1",
+        "image_generation",
+        "public/image",
+        '{"prompt":"A wombat operating a GPU server","seed":42,"steps":8}',
+    )
+    source = tmp_path / "source.png"
+    source.write_bytes(b"source-image")
+    output = tmp_path / "output.png"
+    output.write_bytes(b"output-image")
+    source_id = store.save_input_media(
+        "image_1",
+        "image/png",
+        "source.png",
+        source,
+        source.stat().st_size,
+        field_name="image",
+    )
+    store.save_media(
+        "image_1",
+        "image/png",
+        "output.png",
+        output,
+        output.stat().st_size,
+    )
+
+    result = store.media_library(
+        query="wombt GPU",
+        filters=[{"path": "seed", "operator": "equals", "value": 42}],
+    )
+    lineage = store.media_lineage(source_id)
+
+    assert result["count"] == 1
+    assert result["data"][0]["parameters"]["steps"] == 8
+    assert [item["filename"] for item in lineage["derivatives"]] == ["output.png"]
+    store.close()

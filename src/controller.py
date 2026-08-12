@@ -31,7 +31,7 @@ from .media import (
     media_type_from_filename,
     safe_filename,
 )
-from .provider_deployment import deploy_provider, terminate_provider
+from .provider_adapters import provider_adapter, provider_panel_url
 from .provider_modal import (
     provider_action as modal_provider_action,
 )
@@ -46,10 +46,8 @@ from .provider_modal import (
 )
 from .provider_telemetry import (
     deduplicate_metrics,
-    first_number,
     normalise_usage,
     normalise_xai_quota,
-    selected_fields,
     xai_user_id,
 )
 
@@ -496,7 +494,7 @@ class Controller:
             return {
                 "details": {},
                 "error": "provider status check timed out",
-                "panel_url": provider_panel_url(runtime, {}),
+                "panel_url": provider_panel_url(runtime.config, {}, runtime.base_url),
                 "state": runtime.state,
                 "status": "unavailable",
             }
@@ -519,68 +517,18 @@ class Controller:
                     modal_status, management.name, management.function or ""
                 )
                 runtime.state = str(details.pop("state"))
-            elif management.kind == "runpod-pod":
-                runtime.state = str(resource.get("desiredStatus", "unknown")).lower()
-                details = selected_fields(
-                    resource,
-                    "costPerHr",
-                    "desiredStatus",
-                    "gpuCount",
-                    "gpuTypeId",
-                    "lastStartedAt",
-                    "machineId",
-                    "vcpuCount",
-                )
-            elif management.kind == "runpod-serverless":
-                workers = resource.get("workers")
-                details = selected_fields(
-                    resource,
-                    "executionTimeoutMs",
-                    "gpuIds",
-                    "idleTimeout",
-                    "maxWorkers",
-                    "minWorkers",
-                    "workers",
-                )
-                active = first_number(workers, "running", "ready")
-                runtime.state = "ready" if active else "scaled-down"
-            elif management.kind == "salad":
-                current = resource.get("current_state")
-                runtime.state = str(
-                    (current.get("status") if isinstance(current, dict) else None)
-                    or "unknown"
-                ).lower()
-                details = selected_fields(
-                    resource,
-                    "autostart_policy",
-                    "current_state",
-                    "display_name",
-                    "replicas",
-                )
-            elif management.kind == "vast-serverless":
-                runtime.state = str(resource.get("endpoint_state", "unknown")).lower()
-                details = selected_fields(
-                    resource,
-                    "endpoint_state",
-                    "max_workers",
-                    "min_load",
-                    "num_workers",
-                    "target_util",
-                )
             else:
-                runtime.state = str(resource.get("actual_status", "unknown")).lower()
-                details = selected_fields(
-                    resource,
-                    "actual_status",
-                    "cur_state",
-                    "dph_total",
-                    "gpu_name",
-                    "gpu_util",
-                    "num_gpus",
-                )
+                adapter = provider_adapter(runtime.config)
+                if adapter is None:
+                    raise RuntimeError(
+                        f"provider adapter is missing: {management.kind}"
+                    )
+                runtime.state, details = adapter.status(resource)
             return {
                 "details": redacted(details),
-                "panel_url": provider_panel_url(runtime, details),
+                "panel_url": provider_panel_url(
+                    runtime.config, details, runtime.base_url
+                ),
                 "state": runtime.state,
                 "status": "ok",
             }
@@ -591,7 +539,9 @@ class Controller:
             runtime.state = "not-deployed"
             return {
                 "details": {},
-                "panel_url": provider_panel_url(runtime, details),
+                "panel_url": provider_panel_url(
+                    runtime.config, details, runtime.base_url
+                ),
                 "state": runtime.state,
                 "status": "ok",
             }
@@ -600,7 +550,9 @@ class Controller:
             return {
                 "details": {},
                 "error": exception_message(exc),
-                "panel_url": provider_panel_url(runtime, details),
+                "panel_url": provider_panel_url(
+                    runtime.config, details, runtime.base_url
+                ),
                 "state": runtime.state,
                 "status": "unavailable",
             }
@@ -773,7 +725,7 @@ class Controller:
         content: bytes,
         content_type: str,
         filename: str,
-    ) -> None:
+    ) -> int:
         extension = media_extension(content_type)
         directory = self.media_path / history_id
         directory.mkdir(parents=True, exist_ok=True)
@@ -781,12 +733,39 @@ class Controller:
         temporary = path.with_suffix(path.suffix + ".part")
         temporary.write_bytes(content)
         temporary.replace(path)
-        self.store.save_media(
+        return self.store.save_media(
             history_id,
             content_type.split(";", 1)[0],
             safe_filename(filename, extension),
             path,
             len(content),
+        )
+
+    def save_input_media(
+        self,
+        history_id: str,
+        content: bytes,
+        content_type: str,
+        filename: str,
+        field_name: str,
+        *,
+        source_url: str | None = None,
+    ) -> int:
+        extension = media_extension(content_type)
+        directory = self.media_path / history_id
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"input-{uuid.uuid4().hex}{extension}"
+        temporary = path.with_suffix(path.suffix + ".part")
+        temporary.write_bytes(content)
+        temporary.replace(path)
+        return self.store.save_input_media(
+            history_id,
+            content_type.split(";", 1)[0],
+            safe_filename(filename, extension),
+            path,
+            len(content),
+            field_name=field_name,
+            source_url=source_url,
         )
 
     async def download_media(
@@ -910,17 +889,63 @@ class Controller:
                 self.store.update_job(job.id, "in_progress", provider=target.provider)
                 try:
                     response: httpx.Response | None = None
+                    internal_outputs: list[tuple[bytes, str, str]] | None = None
                     if target.provider == "cliproxyapi":
                         data = await self.cliproxy_video(job, target)
                     else:
-                        response = await self.forward(
+                        value = json.loads(job.request_json)
+                        multipart = value.get("_control_multipart")
+                        if multipart is None:
+                            parameters = dict(value)
+                            files = []
+                        else:
+                            parameters = dict(multipart["fields"])
+                            files = [
+                                (
+                                    item["field"],
+                                    (
+                                        item["filename"],
+                                        Path(item["path"]).read_bytes(),
+                                        item["content_type"],
+                                    ),
+                                )
+                                for item in multipart["files"]
+                            ]
+                        parameters.pop("model", None)
+                        parameters.pop("provider", None)
+                        if parameters.get("size") not in {None, "", "auto"}:
+                            width, height = str(parameters.pop("size")).split("x", 1)
+                            parameters["width"] = int(width)
+                            parameters["height"] = int(height)
+                        for name in ("height", "length", "seed", "steps", "width"):
+                            if parameters.get(name) is not None:
+                                parameters[name] = int(parameters[name])
+                        if parameters.get("seconds") is not None:
+                            seconds = float(parameters.pop("seconds"))
+                            frames = max(5, round(seconds * 24))
+                            parameters["length"] = frames + (5 - frames % 17) % 17
+                        internal_outputs = await self.execute_internal(
                             target,
-                            "POST",
-                            "/v1/videos?wait=true",
-                            *self.video_request(job, target.model),
-                            request_id,
+                            job.id,
+                            "video_generation",
+                            parameters,
+                            files,
                         )
-                        data = response.json()
+                        if internal_outputs is None:
+                            response = await self.forward(
+                                target,
+                                "POST",
+                                "/v1/videos?wait=true",
+                                *self.video_request(job, target.model),
+                                request_id,
+                            )
+                            data = response.json()
+                        else:
+                            data = {
+                                "id": job.id,
+                                "model": job.model,
+                                "status": "completed",
+                            }
                 except (httpx.HTTPError, RuntimeError, TimeoutError, ValueError) as exc:
                     message = exception_message(exc)
                     failures.append(f"{target.provider}: {message}")
@@ -955,7 +980,11 @@ class Controller:
                         request_id=request_id,
                     )
                     self.remove_uploads(job.id)
-                    await self.archive_video(job.id, target.provider, archive_data)
+                    if internal_outputs is None:
+                        await self.archive_video(job.id, target.provider, archive_data)
+                    else:
+                        for content, content_type, filename in internal_outputs:
+                            self.save_media(job.id, content, content_type, filename)
                     return
                 message = data.get("error") or (
                     f"HTTP {response.status_code}"
@@ -1061,7 +1090,10 @@ class Controller:
                 self.settings,
             )
         elif action.internal == "provider-deploy":
-            response = await deploy_provider(
+            adapter = provider_adapter(self.providers[provider].config)
+            if adapter is None:
+                raise RuntimeError(f"provider adapter is missing: {provider}")
+            response = await adapter.deploy(
                 self.lifecycle_client,
                 self.providers[provider].config,
                 self.preferences,
@@ -1071,7 +1103,10 @@ class Controller:
             resource_id = self.resource_id(provider)
             if resource_id is None:
                 raise RuntimeError(f"provider {provider} is not deployed")
-            response = await terminate_provider(
+            adapter = provider_adapter(self.providers[provider].config)
+            if adapter is None:
+                raise RuntimeError(f"provider adapter is missing: {provider}")
+            response = await adapter.terminate(
                 self.lifecycle_client,
                 self.providers[provider].config,
                 self.preferences,
@@ -1460,6 +1495,87 @@ class Controller:
                 runtime.last_used = time.monotonic()
                 runtime.state = "ready" if runtime.ready else "unknown"
 
+    async def execute_internal(
+        self,
+        target: Target,
+        execution_id: str,
+        operation: str,
+        parameters: dict[str, object],
+        files: list[tuple[str, tuple[str, bytes, str]]] | None = None,
+    ) -> list[tuple[bytes, str, str]] | None:
+        """Execute through the current worker contract.
+
+        None means the worker predates the internal contract and the caller may use
+        the temporary legacy transport. All other failures remain normal provider
+        failures and participate in configured fallback.
+        """
+        runtime = self.providers[target.provider]
+        async with runtime.lock:
+            runtime.active_requests += 1
+        try:
+            await self.ensure_ready(runtime, execution_id[:16])
+            await self.refresh_endpoint(runtime)
+            runtime.state = "busy"
+            spec = json.dumps(
+                {
+                    "execution_id": execution_id,
+                    "model": target.model,
+                    "operation": operation,
+                    "parameters": parameters,
+                },
+                separators=(",", ":"),
+            )
+            response = await runtime.client.post(
+                self.worker_url(runtime, "/internal/executions"),
+                data={"spec": spec},
+                files=files or [],
+                headers={
+                    "Authorization": f"Bearer {runtime.config.api_key}",
+                    "x-request-id": execution_id[:16],
+                },
+            )
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            value = response.json()
+            manifests = value.get("outputs") if isinstance(value, dict) else None
+            if not isinstance(manifests, list):
+                raise RuntimeError(  # noqa: TRY004 - invalid provider response
+                    "worker returned an invalid execution manifest"
+                )
+            outputs: list[tuple[bytes, str, str]] = []
+            base_url = self.worker_url(runtime, "")
+            for manifest in manifests:
+                if not isinstance(manifest, dict) or not manifest.get("url"):
+                    raise RuntimeError("worker returned an invalid output manifest")
+                url = urljoin(f"{base_url}/", str(manifest["url"]))
+                if url != base_url and not url.startswith(f"{base_url}/"):
+                    raise RuntimeError(
+                        "worker output URL is outside its serving origin"
+                    )
+                output = await runtime.client.get(
+                    url,
+                    headers={"Authorization": f"Bearer {runtime.config.api_key}"},
+                )
+                output.raise_for_status()
+                outputs.append(
+                    (
+                        output.content,
+                        output.headers.get("content-type")
+                        or str(
+                            manifest.get("content_type") or "application/octet-stream"
+                        ),
+                        str(manifest.get("filename") or "output"),
+                    )
+                )
+            runtime.ready = True
+            return outputs
+        finally:
+            async with runtime.lock:
+                runtime.active_requests -= 1
+                runtime.last_used = time.monotonic()
+                runtime.state = "ready" if runtime.ready else "unknown"
+
 
 def rewrite_json_model(body: bytes, model: str) -> bytes:
     value = json.loads(body)
@@ -1467,23 +1583,3 @@ def rewrite_json_model(body: bytes, model: str) -> bytes:
         raise TypeError("request body must be an object")
     value["model"] = model
     return json.dumps(value, separators=(",", ":")).encode()
-
-
-def provider_panel_url(
-    runtime: ProviderRuntime, details: dict[str, object]
-) -> str | None:
-    management = runtime.config.management
-    if management is None:
-        if runtime.config.type == "proxy" and runtime.base_url:
-            return f"{runtime.base_url}/management.html"
-        return runtime.base_url
-    if management.kind == "modal":
-        return str(details.get("panel_url") or "https://modal.com/apps")
-    if management.kind.startswith("runpod-"):
-        collection = "pods" if management.kind == "runpod-pod" else "serverless"
-        return f"https://console.runpod.io/{collection}"
-    if management.kind == "salad":
-        return "https://portal.salad.com/"
-    if management.kind == "vast-pod":
-        return "https://cloud.vast.ai/instances/"
-    return "https://cloud.vast.ai/serverless/"

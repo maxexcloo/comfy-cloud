@@ -94,6 +94,8 @@ class Runtime:
         self.admission_lock = asyncio.Lock()
         self.pending_generations = 0
         self.background_tasks: set[asyncio.Task[None]] = set()
+        self.execution_outputs: dict[str, list[OutputRef]] = {}
+        self.execution_tasks: dict[str, asyncio.Task[list[OutputRef]]] = {}
         self.metric_registry = CollectorRegistry()
         self.generation_duration = Histogram(
             "comfy_control_generation_seconds",

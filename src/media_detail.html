@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Media {{ item.id }} · Comfy Control</title>
+    <style>
+      :root { color-scheme: dark; font: 15px system-ui; background: #080d12; color: #edf3f6; }
+      body { margin: auto; max-width: 1100px; padding: 2rem 1.5rem; }
+      a { color: #79dfc5; }
+      .hero { background: #030609; border: 1px solid #24313b; border-radius: 12px; max-height: 70vh; object-fit: contain; width: 100%; }
+      section { background: #10171e; border: 1px solid #24313b; border-radius: 12px; margin-top: 1rem; padding: 1rem; }
+      .related { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+      .related img, .related video { aspect-ratio: 1; object-fit: cover; width: 100%; }
+      pre { overflow: auto; white-space: pre-wrap; }
+      small { color: #9aa8b2; }
+    </style>
+  </head>
+  <body>
+    <a href="/media">← Media library</a>
+    <h1>Media {{ item.id }}</h1>
+    <small>{{ item.content_type }} · {{ item.size }} bytes · SHA-256 {{ item.sha256 }}</small>
+    {% if item.content_type.startswith('video/') %}<video class="hero" controls autoplay src="/media/{{ item.id }}/content"></video>{% else %}<img class="hero" src="/media/{{ item.id }}/content" alt="Generated media" />{% endif %}
+    {% if item.lineage.sources %}<section><h2>Generated from</h2><div class="related">{% for related in item.lineage.sources %}<a href="/media/{{ related.id }}"><img src="/media/{{ related.id }}/content" alt="{{ related.filename }}" /><small>{{ related.filename }}</small></a>{% endfor %}</div></section>{% endif %}
+    {% if item.lineage.derivatives %}<section><h2>Derived outputs</h2><div class="related">{% for related in item.lineage.derivatives %}<a href="/media/{{ related.id }}">{% if related.content_type.startswith('video/') %}<video muted preload="metadata" src="/media/{{ related.id }}/content"></video>{% else %}<img src="/media/{{ related.id }}/content" alt="{{ related.filename }}" />{% endif %}<small>{{ related.filename }}</small></a>{% endfor %}</div></section>{% endif %}
+    {% for use in item.uses %}<section><h2>{{ use.operation }} · {{ use.model }}</h2><small>{{ use.provider or 'No provider' }} · {{ use.status }} · {{ use.role }}</small><pre>{{ use.parameters | tojson(indent=2) }}</pre></section>{% endfor %}
+  </body>
+</html>

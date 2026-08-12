@@ -29,6 +29,11 @@ plane. The CUDA-enabled worker image contains Comfy Control, pinned ComfyUI, the
 bundled catalogue and model profiles. Run workers on CUDA-capable hosts with
 persistent model and output storage.
 
+Deploy matching control and worker images. The controller uses the current
+unversioned internal execution contract. A temporary legacy-worker fallback exists
+only to support rolling upgrades and will be removed after managed providers have
+been redeployed.
+
 For a local GPU host:
 
 ```bash

@@ -7,22 +7,22 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from io import BytesIO
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import parse_qsl, urlencode
 
 import httpx
 import websockets
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, Form, Request, WebSocket
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from prometheus_client import generate_latest
 from prometheus_client.exposition import CONTENT_TYPE_LATEST
 from starlette.background import BackgroundTask
 
-from . import __version__
 from .auth import request_authorised, websocket_authorised
 from .catalogue import WorkflowModel
 from .comfy import OutputRef
 from .config import Settings
+from .execution import ExecutionOutput, ExecutionRequest, ExecutionResult
 from .runtime import GenerationQueueFull, Runtime, VideoJob
 
 HOP_HEADERS = {
@@ -119,7 +119,7 @@ def create_app(settings: Settings) -> FastAPI:
             await asyncio.gather(*runtime.background_tasks, return_exceptions=True)
         await runtime.close()
 
-    app = FastAPI(title="Comfy Control", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="Comfy Control Worker", version="current", lifespan=lifespan)
     app.state.runtime = runtime
 
     def require(request: Request) -> JSONResponse | None:
@@ -247,6 +247,144 @@ def create_app(settings: Settings) -> FastAPI:
             generate_latest(runtime.metric_registry),
             media_type=CONTENT_TYPE_LATEST,
         )
+
+    @app.get("/internal/info", tags=["internal"], operation_id="internal_info")
+    async def internal_info(request: Request) -> Response:
+        if denied := require(request):
+            return denied
+        object_info = await runtime.object_info()
+        return JSONResponse(
+            {
+                "capabilities": [
+                    "cancel",
+                    "image_edit",
+                    "image_generation",
+                    "video_generation",
+                ],
+                "deployment_type": settings.deployment_type,
+                "models": [model.id for model in runtime.available_models(object_info)],
+                "ready": object_info is not None,
+            }
+        )
+
+    @app.post(
+        "/internal/executions",
+        tags=["internal"],
+        operation_id="create_internal_execution",
+        response_model=ExecutionResult,
+    )
+    async def internal_execution(
+        request: Request, spec: Annotated[str, Form()]
+    ) -> Response:
+        if denied := require(request):
+            return denied
+        try:
+            form = await request.form()
+            execution = ExecutionRequest.model_validate_json(spec)
+            model = await runtime.model(execution.model)
+            if model.operation != execution.operation:
+                return openai_error(
+                    f"Model '{model.id}' does not support {execution.operation}",
+                    400,
+                    "unsupported_operation",
+                    "model",
+                )
+            values = dict(execution.parameters)
+            uploads: dict[str, list[str]] = {}
+            for field_name, value in form.multi_items():
+                if field_name == "spec" or not hasattr(value, "read"):
+                    continue
+                if (
+                    value.size is not None
+                    and value.size > settings.maximum_request_bytes
+                ):
+                    return openai_error(
+                        "input is too large", 413, "request_too_large", field_name
+                    )
+                uploaded = await runtime.comfy.upload(
+                    value.filename or "input",
+                    value.file,
+                    value.content_type or "application/octet-stream",
+                )
+                uploads.setdefault(field_name, []).append(uploaded)
+            for field_name, uploaded in uploads.items():
+                values[field_name] = uploaded[0] if len(uploaded) == 1 else uploaded
+        except ParameterError:
+            return openai_error("Request body is too large", 413, "request_too_large")
+        except (KeyError, TypeError, ValueError) as exc:
+            return openai_error(str(exc), 400, "invalid_execution")
+        outputs = runtime.execution_outputs.get(execution.execution_id)
+        if outputs is None:
+            try:
+                await runtime.reserve_generation()
+            except GenerationQueueFull as exc:
+                return openai_error(str(exc), 429, "rate_limit_exceeded")
+            task = asyncio.create_task(runtime.run(model, values))
+            runtime.execution_tasks[execution.execution_id] = task
+            try:
+                outputs = await task
+                runtime.execution_outputs[execution.execution_id] = outputs
+            except asyncio.CancelledError:
+                return openai_error("execution was cancelled", 409, "cancelled")
+            except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
+                return openai_error(str(exc), 502, "execution_failed")
+            finally:
+                runtime.execution_tasks.pop(execution.execution_id, None)
+                await runtime.release_generation()
+        result = ExecutionResult(
+            execution_id=execution.execution_id,
+            outputs=[
+                ExecutionOutput(
+                    index=index,
+                    content_type=output.media_type,
+                    filename=output.filename,
+                    url=str(
+                        request.url_for(
+                            "internal_execution_output",
+                            execution_id=execution.execution_id,
+                            index=index,
+                        )
+                    ),
+                )
+                for index, output in enumerate(outputs)
+            ],
+        )
+        return JSONResponse(result.model_dump())
+
+    @app.get(
+        "/internal/executions/{execution_id}/outputs/{index}",
+        tags=["internal"],
+        operation_id="internal_execution_output",
+    )
+    async def internal_execution_output(
+        execution_id: str, index: int, request: Request
+    ) -> Response:
+        if denied := require(request):
+            return denied
+        outputs = runtime.execution_outputs.get(execution_id, [])
+        if index < 0 or index >= len(outputs):
+            return openai_error("execution output was not found", 404, "not_found")
+        output = outputs[index]
+        return StreamingResponse(
+            runtime.comfy.stream_output(output), media_type=output.media_type
+        )
+
+    @app.delete(
+        "/internal/executions/{execution_id}",
+        tags=["internal"],
+        operation_id="cancel_internal_execution",
+    )
+    async def cancel_internal_execution(
+        execution_id: str, request: Request
+    ) -> Response:
+        if denied := require(request):
+            return denied
+        task = runtime.execution_tasks.get(execution_id)
+        if task is None:
+            return Response(status_code=204)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        return Response(status_code=204)
 
     @app.get("/ping", include_in_schema=False)
     async def ping() -> Response:

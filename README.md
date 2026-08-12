@@ -16,10 +16,16 @@ The lightweight `control` image runs the control plane. The CUDA-enabled `worker
 image runs as a Pod or Serverless worker and contains pinned ComfyUI, workflows
 and model profiles. RunPod and Vast.ai each have distinct Pod and Serverless
 targets; Modal and SaladCloud use Serverless targets. The dashboard retains job
-parameters and controller-owned output media with an authenticated popup viewer.
+parameters and controller-owned input and output media. Its media library supports
+fuzzy prompt lookup, structured parameter filters, sorting and navigable
+source-to-derivative relationships.
 The inference bearer key also authorises the sanitised status endpoint and confirmed
 provider actions for the Comfy Workers Open WebUI Tool. An action additionally
 requires the exact `x-comfy-control-action: provider/action` header.
+
+Running control and worker services publish their current API descriptions at
+`/openapi.json` and interactive documentation at `/docs`. Project-owned APIs are
+unversioned; `/v1` is retained only for the OpenAI-compatible surface.
 
 ## Quick Start
 

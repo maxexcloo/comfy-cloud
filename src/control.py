@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -11,6 +12,7 @@ from contextlib import asynccontextmanager
 from html import escape
 from importlib import resources
 from pathlib import Path
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import FastAPI, Request
@@ -22,10 +24,10 @@ from fastapi.responses import (
     Response,
     StreamingResponse,
 )
+from jinja2 import Environment, select_autoescape
 from pydantic import ValidationError
 from starlette.background import BackgroundTask
 
-from . import __version__
 from .control_config import ControlSettings
 from .control_preferences import ConfigurationConflict
 from .controller import (
@@ -41,6 +43,10 @@ class RequestBodyTooLarge(ValueError):
 
 
 DASHBOARD_HTML = resources.files("comfy_control").joinpath("dashboard.html").read_text()
+MEDIA_LIBRARY_HTML = (
+    resources.files("comfy_control").joinpath("media_library.html").read_text()
+)
+TEMPLATES = Environment(autoescape=select_autoescape(("html", "xml")))
 DASHBOARD_PAGE_SIZE = 20
 IMAGE_ASPECT_ALIASES = {
     "landscape": "16:9",
@@ -115,6 +121,62 @@ def archived_image_content(
         return response.content
 
 
+def canonical_parameters(values: dict[str, object]) -> dict[str, object]:
+    parameters = {
+        key: value
+        for key, value in values.items()
+        if key not in {"model", "n", "provider", "response_format", "size"}
+    }
+    size = str(values.get("size", "")).strip()
+    if size and size != "auto":
+        try:
+            width, height = size.lower().split("x", 1)
+            parameters["width"] = int(width)
+            parameters["height"] = int(height)
+        except ValueError as exc:
+            raise ValueError("size must be WIDTHxHEIGHT or auto") from exc
+    for name in ("height", "length", "seed", "steps", "width"):
+        if parameters.get(name) is not None:
+            if isinstance(parameters[name], bool):
+                raise ValueError(f"{name} must be an integer")
+            parameters[name] = int(parameters[name])
+    for name in ("height", "length", "steps", "width"):
+        if parameters.get(name) is not None and int(parameters[name]) < 1:
+            raise ValueError(f"{name} must be at least 1")
+    if parameters.get("seed") is not None and int(parameters["seed"]) < 0:
+        raise ValueError("seed must be at least 0")
+    return parameters
+
+
+def internal_image_content(
+    request: Request,
+    controller: Controller,
+    history_id: str,
+    outputs: list[tuple[bytes, str, str]],
+    response_format: str,
+) -> bytes:
+    data = []
+    for content, content_type, filename in outputs:
+        media_id = controller.save_media(history_id, content, content_type, filename)
+        if response_format == "url":
+            data.append(
+                {
+                    "url": str(
+                        request.url_for(
+                            "history_media",
+                            history_id=history_id,
+                            media_id=media_id,
+                        )
+                    )
+                }
+            )
+        else:
+            data.append({"b64_json": base64.b64encode(content).decode()})
+    return json.dumps(
+        {"created": int(time.time()), "data": data}, separators=(",", ":")
+    ).encode()
+
+
 def bearer_authorised(request: Request, settings: ControlSettings) -> bool:
     scheme, _, value = request.headers.get("authorization", "").partition(" ")
     return scheme.lower() == "bearer" and hmac.compare_digest(value, settings.api_key)
@@ -130,6 +192,30 @@ def session_token(settings: ControlSettings, expires: int) -> str:
         session_secret(settings), payload.encode(), hashlib.sha512
     ).hexdigest()
     return f"{payload}.{signature}"
+
+
+def csrf_token(settings: ControlSettings, expires: int) -> str:
+    payload = f"csrf:{expires}"
+    signature = hmac.new(
+        session_secret(settings), payload.encode(), hashlib.sha512
+    ).hexdigest()
+    return f"{expires}.{signature}"
+
+
+def valid_csrf(request: Request, settings: ControlSettings, token: str) -> bool:
+    expires, separator, signature = token.partition(".")
+    if not separator:
+        return False
+    try:
+        expiry = int(expires)
+    except ValueError:
+        return False
+    expected = csrf_token(settings, expiry).partition(".")[2]
+    return (
+        ui_authorised(request, settings)
+        and expiry >= int(time.time())
+        and hmac.compare_digest(signature, expected)
+    )
 
 
 def ui_authorised(request: Request, settings: ControlSettings) -> bool:
@@ -203,7 +289,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         await asyncio.gather(reaper, return_exceptions=True)
         await controller.close()
 
-    app = FastAPI(title="Comfy Control", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="Comfy Control", version="current", lifespan=lifespan)
     app.state.controller = controller
 
     @app.get("/health/live")
@@ -227,6 +313,158 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         if not ui_authorised(request, settings):
             return RedirectResponse("/login", status_code=303)
         return HTMLResponse(html(), headers={"Cache-Control": "no-store"})
+
+    @app.get("/media", include_in_schema=False)
+    async def media_library(request: Request) -> Response:
+        if not ui_authorised(request, settings):
+            return RedirectResponse("/login", status_code=303)
+        try:
+            page = max(1, int(request.query_params.get("page", "1")))
+            include_inputs = request.query_params.get("include_inputs") == "true"
+            query = request.query_params.get("q", "").strip()
+            sort = request.query_params.get("sort", "relevance" if query else "newest")
+            filters = []
+            for name in ("model", "operation", "provider", "status"):
+                if value := request.query_params.get(name):
+                    filters.append({"path": name, "operator": "equals", "value": value})
+            for value in request.query_params.getlist("filter"):
+                parts = value.split("|", 2)
+                if len(parts) == 3 and parts[0]:
+                    parameter_value: object = parts[2]
+                    try:
+                        parameter_value = float(parts[2])
+                    except ValueError:
+                        pass
+                    filters.append(
+                        {
+                            "path": parts[0],
+                            "operator": parts[1],
+                            "value": parameter_value,
+                        }
+                    )
+        except ValueError as exc:
+            return error(str(exc), 400, "invalid_filter")
+        result = controller.store.media_library(
+            query=query,
+            filters=filters,
+            include_inputs=include_inputs,
+            sort=sort,
+            limit=DASHBOARD_PAGE_SIZE,
+            offset=(page - 1) * DASHBOARD_PAGE_SIZE,
+        )
+        pages = max(
+            1, (int(result["count"]) + DASHBOARD_PAGE_SIZE - 1) // DASHBOARD_PAGE_SIZE
+        )
+        template = TEMPLATES.from_string(MEDIA_LIBRARY_HTML)
+        return HTMLResponse(
+            template.render(
+                active_filters=request.query_params.getlist("filter"),
+                facets=controller.store.media_facets(),
+                include_inputs=include_inputs,
+                items=result["data"],
+                page=page,
+                pages=pages,
+                query=query,
+                query_string=urlencode(
+                    [
+                        (key, value)
+                        for key, value in request.query_params.multi_items()
+                        if key != "page"
+                    ]
+                ),
+                selections={
+                    name: request.query_params.get(name, "")
+                    for name in ("model", "operation", "provider", "status")
+                },
+                sort=sort,
+                csrf_token=csrf_token(settings, int(time.time()) + SESSION_SECONDS),
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/media/search", include_in_schema=False)
+    async def media_search(request: Request) -> Response:
+        if not ui_authorised(request, settings):
+            return Response(status_code=401)
+        form = await request.form()
+        if not valid_csrf(request, settings, str(form.get("csrf_token", ""))):
+            return error("invalid CSRF token", 403, "invalid_csrf")
+        values: list[tuple[str, str]] = []
+        for name in (
+            "filter",
+            "include_inputs",
+            "model",
+            "operation",
+            "provider",
+            "q",
+            "sort",
+            "status",
+        ):
+            values.extend(
+                (name, str(value)) for value in form.getlist(name) if str(value).strip()
+            )
+        return RedirectResponse(f"/media?{urlencode(values)}", status_code=303)
+
+    @app.get("/media/{asset_id}/content", include_in_schema=False)
+    async def media_asset_content(asset_id: int, request: Request) -> Response:
+        if not (
+            ui_authorised(request, settings) or bearer_authorised(request, settings)
+        ):
+            return Response(status_code=401)
+        asset = controller.store.media_asset(asset_id)
+        if asset is None or not Path(asset.path).is_file():
+            return error("media was not found", 404, "not_found")
+        return FileResponse(
+            asset.path,
+            media_type=asset.content_type,
+            headers={"X-Content-Type-Options": "nosniff"},
+        )
+
+    @app.get("/media/{asset_id}", include_in_schema=False)
+    async def media_asset_detail(asset_id: int, request: Request) -> Response:
+        if not ui_authorised(request, settings):
+            return RedirectResponse("/login", status_code=303)
+        detail = controller.store.media_detail(asset_id)
+        if detail is None:
+            return error("media was not found", 404, "not_found")
+        template = TEMPLATES.from_string(
+            resources.files("comfy_control").joinpath("media_detail.html").read_text()
+        )
+        return HTMLResponse(
+            template.render(item=detail), headers={"Cache-Control": "no-store"}
+        )
+
+    @app.get("/media/{asset_id}/lineage", include_in_schema=False)
+    async def media_asset_lineage(asset_id: int, request: Request) -> Response:
+        if not ui_authorised(request, settings):
+            return Response(status_code=401)
+        if controller.store.media_asset(asset_id) is None:
+            return error("media was not found", 404, "not_found")
+        return JSONResponse(controller.store.media_lineage(asset_id))
+
+    @app.get("/ops/media", tags=["operations"], operation_id="search_media")
+    async def operations_media(request: Request) -> Response:
+        if not bearer_authorised(request, settings):
+            return Response(status_code=401)
+        result = controller.store.media_library(
+            query=request.query_params.get("q", ""),
+            include_inputs=request.query_params.get("include_inputs") == "true",
+            sort=request.query_params.get("sort", "newest"),
+            limit=min(max(int(request.query_params.get("limit", "50")), 1), 500),
+        )
+        return JSONResponse(result)
+
+    @app.get(
+        "/ops/media/{asset_id}/lineage",
+        tags=["operations"],
+        operation_id="media_lineage",
+    )
+    async def operations_media_lineage(asset_id: int, request: Request) -> Response:
+        if not bearer_authorised(request, settings):
+            return Response(status_code=401)
+        if controller.store.media_asset(asset_id) is None:
+            return error("media was not found", 404, "not_found")
+        return JSONResponse(controller.store.media_lineage(asset_id))
 
     @app.get("/login")
     async def login(request: Request) -> Response:
@@ -672,6 +910,15 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             model, targets = controller.resolve_model(
                 requested_model, operation, provider
             )
+            canonical_parameters(original)
+            count = int(original.get("n", 1))
+            if count < 1 or count > 4:
+                raise ValueError("n must be between 1 and 4")
+            if original.get("response_format", "b64_json") not in {
+                "b64_json",
+                "url",
+            }:
+                raise ValueError("response_format must be b64_json or url")
         except (AttributeError, json.JSONDecodeError, TypeError, ValueError) as exc:
             return error(str(exc), 400, "invalid_request")
         except KeyError as exc:
@@ -698,14 +945,36 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 history_id, "in_progress", provider=target.provider
             )
             try:
-                response = await controller.forward(
-                    target,
-                    request.method,
-                    path,
-                    rewrite_json_model(forwarded_body, target.model),
-                    headers,
-                    request_id,
-                )
+                outputs = None
+                if controller.providers[target.provider].config.type != "proxy":
+                    parameters = canonical_parameters(forwarded)
+                    count = int(forwarded.get("n", 1))
+                    outputs = []
+                    for index in range(count):
+                        indexed = dict(parameters)
+                        if indexed.get("seed") is not None:
+                            indexed["seed"] = int(indexed["seed"]) + index
+                        result = await controller.execute_internal(
+                            target,
+                            f"{history_id}_{index}",
+                            operation,
+                            indexed,
+                        )
+                        if result is None:
+                            outputs = None
+                            break
+                        outputs.extend(result)
+                if outputs is None:
+                    response = await controller.forward(
+                        target,
+                        request.method,
+                        path,
+                        rewrite_json_model(forwarded_body, target.model),
+                        headers,
+                        request_id,
+                    )
+                else:
+                    response = None
             except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
                 message = exception_message(exc)
                 failures.append(f"{target.provider}: {message}")
@@ -716,8 +985,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     request_id=request_id,
                 )
                 continue
-            if response.is_success:
-                await controller.archive_images(history_id, target.provider, response)
+            if response is None or response.is_success:
+                if response is not None:
+                    await controller.archive_images(
+                        history_id, target.provider, response
+                    )
                 controller.store.update_history(
                     history_id, "completed", provider=target.provider
                 )
@@ -727,18 +999,32 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     provider=target.provider,
                     request_id=request_id,
                 )
+                content = (
+                    archived_image_content(request, controller, history_id, response)
+                    if response is not None
+                    else internal_image_content(
+                        request,
+                        controller,
+                        history_id,
+                        outputs,
+                        str(forwarded.get("response_format", "b64_json")),
+                    )
+                )
                 return Response(
-                    content=archived_image_content(
-                        request, controller, history_id, response
+                    content=content,
+                    status_code=response.status_code if response is not None else 200,
+                    media_type=(
+                        response.headers.get("content-type")
+                        if response is not None
+                        else "application/json"
                     ),
-                    status_code=response.status_code,
-                    media_type=response.headers.get("content-type"),
                     headers={
                         "x-comfy-provider": target.provider,
                         "x-comfy-history-id": history_id,
                         "x-request-id": request_id,
                     },
                 )
+            assert response is not None
             failures.append(f"{target.provider}: HTTP {response.status_code}")
             if response.status_code < 500 and response.status_code != 429:
                 controller.store.update_history(
@@ -804,6 +1090,21 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             for key, value in normalised_fields.items()
             if key not in {"model", "provider"}
         ]
+        field_values = dict(fields)
+        try:
+            count = int(field_values.get("n", 1))
+            if count < 1 or count > 4:
+                raise ValueError("n must be between 1 and 4")
+            if field_values.get("response_format", "b64_json") not in {
+                "b64_json",
+                "url",
+            }:
+                raise ValueError("response_format must be b64_json or url")
+            if field_values.get("size", "") not in {"", "auto"}:
+                raise ValueError("size is not supported for image edits")
+            canonical_parameters(field_values)
+        except (TypeError, ValueError) as exc:
+            return error(str(exc), 400, "invalid_request")
         history_id = f"edit_{uuid.uuid4().hex}"
         parameters = dict(fields)
         parameters["model"] = model_id
@@ -823,6 +1124,14 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             model.id,
             json.dumps(history_parameters(parameters), separators=(",", ":")),
         )
+        for field_name, (filename, content, content_type) in files:
+            controller.save_input_media(
+                history_id,
+                content,
+                content_type,
+                filename,
+                field_name,
+            )
         failures: list[str] = []
         for target in targets:
             controller.store.update_history(
@@ -835,34 +1144,73 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 files=files,
             )
             try:
-                response = await controller.forward(
-                    target,
-                    "POST",
-                    "/v1/images/edits",
-                    encoded.read(),
-                    {"content-type": encoded.headers["content-type"]},
-                    request_id,
-                )
+                outputs = None
+                if controller.providers[target.provider].config.type != "proxy":
+                    parameters = canonical_parameters(field_values)
+                    outputs = []
+                    for index in range(count):
+                        indexed = dict(parameters)
+                        if indexed.get("seed") is not None:
+                            indexed["seed"] = int(indexed["seed"]) + index
+                        result = await controller.execute_internal(
+                            target,
+                            f"{history_id}_{index}",
+                            "image_edit",
+                            indexed,
+                            files,
+                        )
+                        if result is None:
+                            outputs = None
+                            break
+                        outputs.extend(result)
+                if outputs is None:
+                    response = await controller.forward(
+                        target,
+                        "POST",
+                        "/v1/images/edits",
+                        encoded.read(),
+                        {"content-type": encoded.headers["content-type"]},
+                        request_id,
+                    )
+                else:
+                    response = None
             except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
                 failures.append(f"{target.provider}: {exception_message(exc)}")
                 continue
-            if response.is_success:
-                await controller.archive_images(history_id, target.provider, response)
+            if response is None or response.is_success:
+                if response is not None:
+                    await controller.archive_images(
+                        history_id, target.provider, response
+                    )
                 controller.store.update_history(
                     history_id, "completed", provider=target.provider
                 )
+                content = (
+                    archived_image_content(request, controller, history_id, response)
+                    if response is not None
+                    else internal_image_content(
+                        request,
+                        controller,
+                        history_id,
+                        outputs,
+                        field_values.get("response_format", "b64_json"),
+                    )
+                )
                 return Response(
-                    content=archived_image_content(
-                        request, controller, history_id, response
+                    content=content,
+                    status_code=response.status_code if response is not None else 200,
+                    media_type=(
+                        response.headers.get("content-type")
+                        if response is not None
+                        else "application/json"
                     ),
-                    status_code=response.status_code,
-                    media_type=response.headers.get("content-type"),
                     headers={
                         "x-comfy-provider": target.provider,
                         "x-comfy-history-id": history_id,
                         "x-request-id": request_id,
                     },
                 )
+            assert response is not None
             failures.append(f"{target.provider}: HTTP {response.status_code}")
             if response.status_code < 500 and response.status_code != 429:
                 controller.store.update_history(
@@ -961,6 +1309,15 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             model_id,
             json.dumps(history_parameters(parameters), separators=(",", ":")),
         )
+        if request.headers.get("content-type", "").startswith("multipart/form-data"):
+            for item in files:
+                controller.save_input_media(
+                    public_id,
+                    Path(item["path"]).read_bytes(),
+                    item["content_type"],
+                    item["filename"],
+                    item["field"],
+                )
         job = controller.store.job(public_id)
         assert job is not None
         controller.start_video(job)

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from rapidfuzz.fuzz import WRatio
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,16 @@ class Media:
     filename: str
     path: str
     size: int
+
+
+@dataclass(frozen=True)
+class MediaAsset:
+    id: int
+    sha256: str
+    content_type: str
+    path: str
+    size: int
+    created_at: int
 
 
 class ControlStore:
@@ -98,8 +111,195 @@ class ControlStore:
                     name TEXT PRIMARY KEY,
                     encrypted_value TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS media_assets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sha256 TEXT NOT NULL UNIQUE,
+                    content_type TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    size INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS generation_media (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    history_id TEXT NOT NULL REFERENCES history(id) ON DELETE CASCADE,
+                    asset_id INTEGER NOT NULL REFERENCES media_assets(id),
+                    role TEXT NOT NULL CHECK (role IN ('input', 'output')),
+                    field_name TEXT,
+                    position INTEGER NOT NULL,
+                    filename TEXT NOT NULL,
+                    source_url TEXT,
+                    legacy_media_id INTEGER UNIQUE REFERENCES media(id),
+                    UNIQUE (history_id, role, field_name, position)
+                );
+                CREATE INDEX IF NOT EXISTS generation_media_asset
+                    ON generation_media (asset_id, role, history_id);
+                CREATE INDEX IF NOT EXISTS generation_media_history
+                    ON generation_media (history_id, role, position);
+                CREATE TABLE IF NOT EXISTS generation_parameters (
+                    history_id TEXT NOT NULL REFERENCES history(id) ON DELETE CASCADE,
+                    path TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    value_type TEXT NOT NULL,
+                    text_value TEXT,
+                    number_value REAL,
+                    boolean_value INTEGER,
+                    PRIMARY KEY (history_id, path, position)
+                );
+                CREATE INDEX IF NOT EXISTS generation_parameters_number
+                    ON generation_parameters (path, number_value, history_id);
+                CREATE INDEX IF NOT EXISTS generation_parameters_text
+                    ON generation_parameters (path, text_value, history_id);
                 """
             )
+            self.connection.execute(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS generation_search USING fts5(
+                    history_id UNINDEXED,
+                    prompt,
+                    searchable,
+                    tokenize = 'trigram'
+                )
+                """
+            )
+        self._migrate_media_library()
+
+    @staticmethod
+    def _parameter_values(value: object, path: str = ""):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                child = f"{path}.{key}" if path else str(key)
+                yield from ControlStore._parameter_values(item, child)
+        elif isinstance(value, list):
+            for item in value:
+                yield from ControlStore._parameter_values(item, path)
+        elif value is None or not path:
+            return
+        elif isinstance(value, bool):
+            yield path, "boolean", None, None, int(value)
+        elif isinstance(value, (int, float)):
+            yield path, "number", None, float(value), None
+        elif isinstance(value, str) and not value.startswith(
+            "<embedded media omitted:"
+        ):
+            yield path, "text", value, None, None
+
+    def _index_history(self, history_id: str, parameters_json: str) -> None:
+        parameters = json.loads(parameters_json)
+        values = list(self._parameter_values(parameters))
+        positions: dict[str, int] = {}
+        rows = []
+        for path, value_type, text_value, number_value, boolean_value in values:
+            position = positions.get(path, 0)
+            positions[path] = position + 1
+            rows.append(
+                (
+                    history_id,
+                    path,
+                    position,
+                    value_type,
+                    text_value,
+                    number_value,
+                    boolean_value,
+                )
+            )
+        self.connection.execute(
+            "DELETE FROM generation_parameters WHERE history_id = ?", (history_id,)
+        )
+        self.connection.executemany(
+            """
+            INSERT INTO generation_parameters (
+                history_id, path, position, value_type, text_value, number_value,
+                boolean_value
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        history = self.connection.execute(
+            "SELECT model, operation, provider FROM history WHERE id = ?", (history_id,)
+        ).fetchone()
+        prompt = (
+            str(parameters.get("prompt", "")) if isinstance(parameters, dict) else ""
+        )
+        searchable = " ".join(
+            [
+                str(history["model"]),
+                str(history["operation"]),
+                str(history["provider"]),
+                *(str(row[4]) for row in rows if row[3] == "text" and row[4]),
+            ]
+        )
+        self.connection.execute(
+            "DELETE FROM generation_search WHERE history_id = ?", (history_id,)
+        )
+        self.connection.execute(
+            "INSERT INTO generation_search (history_id, prompt, searchable) VALUES (?, ?, ?)",
+            (history_id, prompt, searchable),
+        )
+
+    def _migrate_media_library(self) -> None:
+        with self.lock, self.connection:
+            rows = self.connection.execute(
+                """
+                SELECT media.* FROM media
+                LEFT JOIN generation_media ON generation_media.legacy_media_id = media.id
+                WHERE generation_media.id IS NULL
+                ORDER BY media.id
+                """
+            ).fetchall()
+            for row in rows:
+                path = Path(str(row["path"]))
+                if not path.is_file():
+                    continue
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                self.connection.execute(
+                    """
+                    INSERT INTO media_assets (
+                        sha256, content_type, path, size, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(sha256) DO NOTHING
+                    """,
+                    (
+                        digest,
+                        str(row["content_type"]),
+                        str(path),
+                        int(row["size"]),
+                        int(time.time()),
+                    ),
+                )
+                asset = self.connection.execute(
+                    "SELECT id FROM media_assets WHERE sha256 = ?", (digest,)
+                ).fetchone()
+                position = self.connection.execute(
+                    """
+                    SELECT COUNT(*) AS count FROM generation_media
+                    WHERE history_id = ? AND role = 'output'
+                    """,
+                    (str(row["history_id"]),),
+                ).fetchone()["count"]
+                self.connection.execute(
+                    """
+                    INSERT INTO generation_media (
+                        history_id, asset_id, role, field_name, position, filename,
+                        legacy_media_id
+                    ) VALUES (?, ?, 'output', NULL, ?, ?, ?)
+                    """,
+                    (
+                        str(row["history_id"]),
+                        int(asset["id"]),
+                        int(position),
+                        str(row["filename"]),
+                        int(row["id"]),
+                    ),
+                )
+            unindexed = self.connection.execute(
+                """
+                SELECT history.id, history.parameters_json FROM history
+                LEFT JOIN generation_search ON generation_search.history_id = history.id
+                WHERE generation_search.history_id IS NULL
+                """
+            ).fetchall()
+            for row in unindexed:
+                self._index_history(str(row["id"]), str(row["parameters_json"]))
 
     def configuration(
         self,
@@ -253,6 +453,7 @@ class ControlStore:
                 """,
                 (history_id, operation, model, now, now, parameters_json),
             )
+            self._index_history(history_id, parameters_json)
 
     def update_history(
         self,
@@ -274,6 +475,11 @@ class ControlStore:
                 """,
                 (provider, status, int(time.time()), error, history_id),
             )
+            row = self.connection.execute(
+                "SELECT parameters_json FROM history WHERE id = ?", (history_id,)
+            ).fetchone()
+            if row is not None:
+                self._index_history(history_id, str(row["parameters_json"]))
 
     def save_media(
         self,
@@ -292,7 +498,298 @@ class ControlStore:
                 """,
                 (history_id, content_type, filename, str(path), size),
             )
+            self._save_generation_media(
+                history_id,
+                content_type,
+                filename,
+                path,
+                size,
+                role="output",
+                field_name=None,
+                legacy_media_id=int(cursor.lastrowid),
+            )
         return int(cursor.lastrowid)
+
+    def _save_generation_media(
+        self,
+        history_id: str,
+        content_type: str,
+        filename: str,
+        path: Path,
+        size: int,
+        *,
+        role: str,
+        field_name: str | None,
+        legacy_media_id: int | None = None,
+        source_url: str | None = None,
+    ) -> int:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        self.connection.execute(
+            """
+            INSERT INTO media_assets (sha256, content_type, path, size, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(sha256) DO NOTHING
+            """,
+            (digest, content_type.split(";", 1)[0], str(path), size, int(time.time())),
+        )
+        asset = self.connection.execute(
+            "SELECT id FROM media_assets WHERE sha256 = ?", (digest,)
+        ).fetchone()
+        position = self.connection.execute(
+            """
+            SELECT COUNT(*) AS count FROM generation_media
+            WHERE history_id = ? AND role = ? AND field_name IS ?
+            """,
+            (history_id, role, field_name),
+        ).fetchone()["count"]
+        self.connection.execute(
+            """
+            INSERT INTO generation_media (
+                history_id, asset_id, role, field_name, position, filename,
+                source_url, legacy_media_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                history_id,
+                int(asset["id"]),
+                role,
+                field_name,
+                int(position),
+                filename,
+                source_url,
+                legacy_media_id,
+            ),
+        )
+        return int(asset["id"])
+
+    def save_input_media(
+        self,
+        history_id: str,
+        content_type: str,
+        filename: str,
+        path: Path,
+        size: int,
+        *,
+        field_name: str,
+        source_url: str | None = None,
+    ) -> int:
+        with self.lock, self.connection:
+            return self._save_generation_media(
+                history_id,
+                content_type,
+                filename,
+                path,
+                size,
+                role="input",
+                field_name=field_name,
+                source_url=source_url,
+            )
+
+    def media_asset(self, asset_id: int) -> MediaAsset | None:
+        with self.lock:
+            row = self.connection.execute(
+                "SELECT * FROM media_assets WHERE id = ?", (asset_id,)
+            ).fetchone()
+        return MediaAsset(**dict(row)) if row else None
+
+    def media_library(
+        self,
+        *,
+        query: str = "",
+        filters: list[dict[str, object]] | None = None,
+        include_inputs: bool = False,
+        sort: str = "newest",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, object]:
+        filters = filters or []
+        clauses = ["(? OR generation_media.role = 'output')"]
+        values: list[object] = [int(include_inputs)]
+        for item in filters:
+            path = str(item.get("path", ""))
+            operator = str(item.get("operator", "equals"))
+            value = item.get("value")
+            if path in {"model", "operation", "provider", "status"}:
+                column = f"history.{path}"
+                if operator == "equals":
+                    clauses.append(f"{column} = ?")
+                    values.append(value)
+                elif operator == "not_equals":
+                    clauses.append(f"{column} != ?")
+                    values.append(value)
+                continue
+            parameter_column = (
+                "number_value" if isinstance(value, (int, float)) else "text_value"
+            )
+            comparison = {
+                "contains": "LIKE",
+                "equals": "=",
+                "greater_than": ">",
+                "less_than": "<",
+                "not_equals": "!=",
+            }.get(operator, "=")
+            clauses.append(
+                "EXISTS (SELECT 1 FROM generation_parameters parameter "
+                "WHERE parameter.history_id = history.id AND parameter.path = ? "
+                f"AND parameter.{parameter_column} {comparison} ?)"
+            )
+            values.extend([path, f"%{value}%" if comparison == "LIKE" else value])
+        with self.lock:
+            rows = self.connection.execute(
+                f"""
+            SELECT
+                media_assets.id AS asset_id,
+                media_assets.content_type,
+                media_assets.size,
+                generation_media.filename,
+                generation_media.field_name,
+                generation_media.role,
+                generation_media.position,
+                history.id AS history_id,
+                history.operation,
+                history.model,
+                history.provider,
+                history.status,
+                history.created_at,
+                history.parameters_json,
+                generation_search.prompt,
+                generation_search.searchable
+            FROM generation_media
+            JOIN media_assets ON media_assets.id = generation_media.asset_id
+            JOIN history ON history.id = generation_media.history_id
+            JOIN generation_search ON generation_search.history_id = history.id
+            WHERE {" AND ".join(clauses)}
+            ORDER BY history.created_at DESC, generation_media.id DESC
+            LIMIT 5000
+                """,
+                values,
+            ).fetchall()
+        items = [dict(row) for row in rows]
+        if query.strip():
+            needle = query.strip()
+            for item in items:
+                item["relevance"] = WRatio(
+                    needle, f"{item['prompt']} {item['searchable']}"
+                )
+            items = [item for item in items if int(item["relevance"]) >= 35]
+            items.sort(
+                key=lambda item: (int(item["relevance"]), int(item["created_at"])),
+                reverse=True,
+            )
+        elif sort == "oldest":
+            items.sort(
+                key=lambda item: (int(item["created_at"]), int(item["asset_id"]))
+            )
+        elif sort in {"model", "provider", "content_type"}:
+            items.sort(
+                key=lambda item: (
+                    str(item[sort]),
+                    -int(item["created_at"]),
+                    int(item["asset_id"]),
+                )
+            )
+        elif sort.startswith("parameter:"):
+            sort_path = sort.removeprefix("parameter:")
+
+            def parameter_value(
+                item: dict[str, object],
+            ) -> tuple[bool, int, float | str]:
+                value: object = json.loads(str(item["parameters_json"]))
+                for part in sort_path.split("."):
+                    if not isinstance(value, dict) or part not in value:
+                        return True, 2, ""
+                    value = value[part]
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    return False, 0, float(value)
+                return value is None, 1, "" if value is None else str(value)
+
+            items.sort(key=lambda item: (*parameter_value(item), int(item["asset_id"])))
+        for item in items:
+            item.pop("searchable", None)
+            item["parameters"] = json.loads(str(item.pop("parameters_json")))
+        return {"count": len(items), "data": items[offset : offset + limit]}
+
+    def media_detail(self, asset_id: int) -> dict[str, object] | None:
+        with self.lock:
+            asset = self.connection.execute(
+                "SELECT * FROM media_assets WHERE id = ?", (asset_id,)
+            ).fetchone()
+            if asset is None:
+                return None
+            uses = self.connection.execute(
+                """
+                SELECT generation_media.history_id, generation_media.role,
+                       generation_media.field_name, generation_media.filename,
+                       history.model, history.operation, history.provider,
+                       history.status, history.created_at, history.parameters_json
+                FROM generation_media
+                JOIN history ON history.id = generation_media.history_id
+                WHERE generation_media.asset_id = ?
+                ORDER BY history.created_at DESC, generation_media.position
+                """,
+                (asset_id,),
+            ).fetchall()
+        detail = dict(asset)
+        detail["uses"] = []
+        for row in uses:
+            use = dict(row)
+            use["parameters"] = json.loads(str(use.pop("parameters_json")))
+            detail["uses"].append(use)
+        detail["lineage"] = self.media_lineage(asset_id)
+        return detail
+
+    def media_lineage(self, asset_id: int) -> dict[str, list[dict[str, object]]]:
+        with self.lock:
+            sources = self.connection.execute(
+                """
+                SELECT DISTINCT asset.id, asset.content_type, media.filename,
+                       media.history_id
+                FROM generation_media selected
+                JOIN generation_media media
+                  ON media.history_id = selected.history_id AND media.role = 'input'
+                JOIN media_assets asset ON asset.id = media.asset_id
+                WHERE selected.asset_id = ? AND selected.role = 'output'
+                ORDER BY media.position
+                """,
+                (asset_id,),
+            ).fetchall()
+            derivatives = self.connection.execute(
+                """
+                SELECT DISTINCT asset.id, asset.content_type, media.filename,
+                       media.history_id
+                FROM generation_media selected
+                JOIN generation_media media
+                  ON media.history_id = selected.history_id AND media.role = 'output'
+                JOIN media_assets asset ON asset.id = media.asset_id
+                WHERE selected.asset_id = ? AND selected.role = 'input'
+                ORDER BY media.position
+                """,
+                (asset_id,),
+            ).fetchall()
+        return {
+            "derivatives": [dict(row) for row in derivatives],
+            "sources": [dict(row) for row in sources],
+        }
+
+    def media_facets(self) -> dict[str, list[object]]:
+        with self.lock:
+            values = {
+                name: [
+                    row["value"]
+                    for row in self.connection.execute(
+                        f"SELECT DISTINCT {name} AS value FROM history "
+                        f"WHERE {name} != '' ORDER BY {name}"
+                    ).fetchall()
+                ]
+                for name in ("model", "operation", "provider", "status")
+            }
+            values["parameters"] = [
+                row["path"]
+                for row in self.connection.execute(
+                    "SELECT DISTINCT path FROM generation_parameters ORDER BY path"
+                ).fetchall()
+            ]
+        return values
 
     def close(self) -> None:
         self.connection.close()

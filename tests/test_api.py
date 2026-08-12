@@ -90,6 +90,42 @@ async def test_openai_image_generation_uses_workflow_model():
 
 
 @pytest.mark.asyncio
+async def test_internal_execution_uses_canonical_contract():
+    app = create_app(settings())
+    app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])
+    transport = httpx.ASGITransport(app=app)
+    spec = json.dumps(
+        {
+            "execution_id": "execution_1",
+            "model": "flux-2-klein-9b/text-to-image",
+            "operation": "image_generation",
+            "parameters": {"prompt": "a clean test", "width": 512, "height": 512},
+        }
+    )
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/internal/executions",
+            headers={"Authorization": "Bearer test-key"},
+            files={"spec": (None, spec)},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "execution_id": "execution_1",
+        "outputs": [
+            {
+                "content_type": "image/png",
+                "filename": "result.png",
+                "index": 0,
+                "url": "http://test/internal/executions/execution_1/outputs/0",
+            }
+        ],
+        "status": "completed",
+    }
+    assert app.state.runtime.run.await_args.args[1]["prompt"] == "a clean test"
+
+
+@pytest.mark.asyncio
 async def test_generation_queue_rejects_excess_work():
     app = create_app(replace(settings(), maximum_pending_generations=1))
     await app.state.runtime.reserve_generation()

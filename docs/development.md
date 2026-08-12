@@ -49,3 +49,9 @@ The `comfy-control` command supports:
 
 Use `workflow-add` only with an API-format ComfyUI export and restart Comfy Control
 after changing its mounted catalogue.
+
+## API Contracts
+
+Running control and worker services are the source of truth for API contracts.
+Read `/openapi.json` for machine consumption or `/docs` for the interactive view.
+Do not commit generated OpenAPI snapshots or add project-owned version prefixes.

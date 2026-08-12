@@ -4,14 +4,15 @@
 
 Each Comfy Control worker runs two supervised processes in one container:
 
-- **Comfy Control gateway** exposes authenticated OpenAI-compatible and native
-  ComfyUI routes on port 8000.
+- **Comfy Control worker** exposes authenticated internal execution and, in Pod
+  mode, separately authenticated native ComfyUI routes on port 8000.
 - **ComfyUI** executes workflows locally on port 8188 and is not modified by this
   project.
 
-The `control` command fronts independently deployed workers and owns public model
-IDs, ordered fallback, provider lifecycle, durable video jobs, account telemetry
-and the operations dashboard. Workers remain self-contained ComfyUI gateways.
+The `control` command is the public OpenAI-compatible service. It owns public model
+IDs, ordered fallback, provider lifecycle, durable video jobs, account telemetry,
+media provenance and the operations dashboard. Workers validate canonical
+execution requests, render catalogue workflows and execute them in local ComfyUI.
 Managed providers are selected by stable configured names. Their resource IDs and
 serving URLs are discovered through provider APIs and kept in controller runtime
 state, so provider-assigned addresses can change across starts without changing
@@ -44,12 +45,15 @@ editable through the dashboard.
 3. The worker checks the requested catalogue model against installed files and registered
    ComfyUI node types.
 4. Portable request fields are copied into a fresh API-format workflow graph.
-5. The request is admitted to the bounded queue.
-6. GPU execution is serialised and submitted to local ComfyUI.
-7. On a retriable failure, the control plane tries the next target and eventually
+5. The controller submits a canonical request to the worker's unversioned
+   `/internal/executions` endpoint. During the coordinated rollout only, a worker
+   returning 404 uses the legacy OpenAI-compatible worker route.
+6. The request is admitted to the bounded queue.
+7. GPU execution is serialised and submitted to local ComfyUI.
+8. On a retriable failure, the control plane tries the next target and eventually
    CLI Proxy API with `grok-imagine-image-quality` for images and edits, or
    `grok-imagine-video-1.5` for video.
-8. Results return as base64 or an authenticated URL.
+9. Results return as base64 or an authenticated URL.
 
 A timed-out workflow is removed from the ComfyUI queue or interrupted when already
 running.
@@ -58,8 +62,10 @@ running.
 
 The control plane records every image generation, image edit and video request in
 SQLite. History retains sanitised parameters, provider, status, errors and
-timestamps. Successful output media is copied into the controller's persistent
-`media/` directory and remains viewable after a worker is stopped or destroyed.
+timestamps. Input and output media are content-addressed by SHA-256 and associated
+with their generation as ordered inputs or outputs. The media library indexes safe
+scalar parameters, supports fuzzy prompt search and links sources to derived images
+and videos. Assets remain viewable after a worker is stopped or destroyed.
 The dashboard uses a normal sign-in form backed by an HTTP-only signed session
 cookie; it does not use browser Basic authentication. It queries each provider
 control plane for current state without routing work to serverless capacity and
@@ -100,6 +106,9 @@ content.
 
 `comfy-control vast-serverless` adds Vast.ai's required request-envelope ingress
 in front of the normal Serverless worker.
+
+Control and worker publish their live OpenAPI documents at `/openapi.json`.
+Project-owned operations and internal routes are unversioned.
 
 ## Provider Telemetry
 
