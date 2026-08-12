@@ -118,6 +118,7 @@ async def test_internal_execution_returns_and_streams_manifest_output():
 
     assert response.status_code == 200
     assert response.json()["status"] == "completed"
+    assert response.json()["outputs"][0]["url"].startswith("/internal/executions/")
     assert output.content == b"png-bytes"
     assert app.state.runtime.run.await_args.args[1]["prompt"] == "a clean test"
 

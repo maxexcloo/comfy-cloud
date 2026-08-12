@@ -731,7 +731,9 @@ class Controller:
         if runtime.base_url is None:
             raise RuntimeError(f"provider {runtime.config.id} has no discovered URL")
         base_url = self.resolve_resource(runtime.base_url, runtime.config.id)
-        return f"{base_url}{path}"
+        if not path:
+            return base_url.rstrip("/")
+        return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
     def available_actions(self, provider: str) -> dict[str, ProviderAction]:
         runtime = self.providers[provider]

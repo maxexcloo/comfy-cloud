@@ -94,7 +94,7 @@ def create_app(settings: Settings) -> FastAPI:
                 raise ValueError("request body is too large")
         return bytes(body)
 
-    def execution_result(request: Request, execution_id: str) -> ExecutionResult:
+    def execution_result(execution_id: str) -> ExecutionResult:
         return ExecutionResult(
             execution_id=execution_id,
             outputs=[
@@ -103,7 +103,7 @@ def create_app(settings: Settings) -> FastAPI:
                     content_type=output.media_type,
                     filename=output.filename,
                     url=str(
-                        request.url_for(
+                        app.url_path_for(
                             "internal_execution_output",
                             execution_id=execution_id,
                             index=index,
@@ -213,7 +213,7 @@ def create_app(settings: Settings) -> FastAPI:
             cached = runtime.execution_outputs.get(execution.execution_id)
             if cached is not None:
                 return JSONResponse(
-                    execution_result(request, execution.execution_id).model_dump()
+                    execution_result(execution.execution_id).model_dump()
                 )
             model = await runtime.model(execution.model)
             if model.operation != execution.operation:
@@ -263,9 +263,7 @@ def create_app(settings: Settings) -> FastAPI:
         finally:
             if owner:
                 await runtime.finish_execution(execution.execution_id, task, outputs)
-        return JSONResponse(
-            execution_result(request, execution.execution_id).model_dump()
-        )
+        return JSONResponse(execution_result(execution.execution_id).model_dump())
 
     @app.get(
         "/internal/executions/{execution_id}/outputs/{index}",

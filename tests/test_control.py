@@ -215,6 +215,7 @@ async def test_controller_prefers_internal_execution_contract(tmp_path: Path):
 
     app = create_app(settings(tmp_path))
     runtime = app.state.controller.providers["worker"]
+    runtime.base_url = "http://worker/"
     await runtime.client.aclose()
     runtime.client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=provider), base_url="http://worker"
