@@ -18,7 +18,7 @@ def build_app(configuration: Mapping[str, str]) -> modal.App:
         configuration.get("MODAL_MODEL_VOLUME", "comfy-control-models"),
         create_if_missing=True,
     )
-    environment = {"MODELS_DIR": "/opt/ComfyUI/models"}
+    environment = {"MODELS_DIR": "/models"}
     secret_values = {
         name: value
         for name in (
@@ -48,7 +48,7 @@ def build_app(configuration: Mapping[str, str]) -> modal.App:
         min_containers=int(configuration.get("MODAL_MIN_CONTAINERS", "0")),
         scaledown_window=int(configuration.get("MODAL_SCALEDOWN_WINDOW", "60")),
         secrets=secrets,
-        volumes={"/opt/ComfyUI/models": models},
+        volumes={"/models": models},
     )(modal.web_server(8000, startup_timeout=900)(serve))
     del registered_serve
 

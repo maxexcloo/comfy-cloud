@@ -87,6 +87,7 @@ def test_worker_ui_credentials_fall_back_when_compose_values_are_empty(
 def test_modal_function_uses_worker_image_python(monkeypatch):
     function_options: dict[str, object] = {}
     image_options: dict[str, object] = {}
+    models = object()
 
     class FakeApp:
         def __init__(self, name):
@@ -105,7 +106,7 @@ def test_modal_function_uses_worker_image_python(monkeypatch):
             )
         ),
         Secret=SimpleNamespace(from_dict=lambda value: value),
-        Volume=SimpleNamespace(from_name=lambda *args, **kwargs: object()),
+        Volume=SimpleNamespace(from_name=lambda *args, **kwargs: models),
         web_server=lambda *args, **kwargs: lambda value: value,
     )
     monkeypatch.setitem(sys.modules, "modal", fake_modal)
@@ -114,6 +115,8 @@ def test_modal_function_uses_worker_image_python(monkeypatch):
 
     assert "add_python" not in image_options
     assert "serialized" not in function_options
+    assert function_options["env"] == {"MODELS_DIR": "/models"}
+    assert function_options["volumes"] == {"/models": models}
 
 
 @pytest.mark.asyncio
