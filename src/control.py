@@ -38,6 +38,7 @@ from .control_inference import (
     internal_image_content,
     normalise_grok_image_options,
 )
+from .control_inference_routes import router as inference_router
 from .control_operations_history import router as history_operations_router
 from .control_operations_media import router as media_operations_router
 from .control_operations_providers import router as provider_operations_router
@@ -94,6 +95,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     app.state.settings = settings
     app.include_router(dashboard_sessions_router)
     app.include_router(health_router)
+    app.include_router(inference_router)
     app.include_router(history_operations_router)
     app.include_router(media_operations_router)
     app.include_router(settings_operations_router)
@@ -374,31 +376,6 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         if controller.store.media_asset(asset_id) is None:
             return error("media was not found", 404, "not_found")
         return JSONResponse(controller.store.media_lineage(asset_id))
-
-    @app.get("/v1/models")
-    async def models(request: Request) -> Response:
-        if not bearer_authorised(request, settings):
-            return error("invalid API key", 401, "invalid_api_key")
-        model_ids = {model.id for model in controller.config.models}
-        for model in controller.config.models:
-            for target in model.targets:
-                provider = controller.providers[target.provider].config
-                for provider_name in (provider.id, *provider.aliases):
-                    model_ids.add(f"{provider_name}/{target.model}")
-        return JSONResponse(
-            {
-                "object": "list",
-                "data": [
-                    {
-                        "id": model_id,
-                        "object": "model",
-                        "created": 0,
-                        "owned_by": "comfy-control",
-                    }
-                    for model_id in sorted(model_ids)
-                ],
-            }
-        )
 
     async def generation(request: Request, operation: str, path: str) -> Response:
         if not bearer_authorised(request, settings):
