@@ -30,6 +30,7 @@ from .control_dashboard import (
     valid_csrf,
 )
 from .control_dashboard_sessions import router as dashboard_sessions_router
+from .control_health import router as health_router
 from .control_http import RequestBodyTooLarge, error, limited_body
 from .control_inference import (
     archived_image_content,
@@ -92,27 +93,12 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     app.state.controller = controller
     app.state.settings = settings
     app.include_router(dashboard_sessions_router)
+    app.include_router(health_router)
     app.include_router(history_operations_router)
     app.include_router(media_operations_router)
     app.include_router(settings_operations_router)
     app.include_router(provider_operations_router)
     app.include_router(status_operations_router)
-
-    @app.get("/health/live")
-    async def live() -> dict[str, str]:
-        return {"status": "alive"}
-
-    @app.get("/health/ready")
-    async def ready() -> dict[str, str]:
-        return {"status": "ready"}
-
-    @app.get("/health")
-    async def health() -> dict[str, int | str]:
-        return {
-            "status": "ready",
-            "models": len(controller.config.models),
-            "providers": len(controller.providers),
-        }
 
     @app.get("/")
     async def dashboard(request: Request) -> Response:
