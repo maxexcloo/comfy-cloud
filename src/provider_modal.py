@@ -116,7 +116,9 @@ class ModalAdapter(BaseAdapter):
                 web_url, management.name, management.function or ""
             )
         except Exception as exc:
-            if resource_id is None:
+            import modal
+
+            if resource_id is None or isinstance(exc, modal.exception.NotFoundError):
                 raise ProviderNotDeployed(
                     f"provider resource not found: {management.name}"
                 ) from exc

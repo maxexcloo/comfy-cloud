@@ -90,7 +90,11 @@ def docker_flags(environment: dict[str, str], port: int) -> str:
 
 
 def response_json(status_code: int, value: object) -> httpx.Response:
-    return httpx.Response(status_code, json=value)
+    return httpx.Response(
+        status_code,
+        json=value,
+        request=httpx.Request("POST", "https://provider.invalid/internal"),
+    )
 
 
 async def checked_request(

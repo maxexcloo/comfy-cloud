@@ -36,12 +36,11 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY catalogue ./catalogue
 COPY profiles ./profiles
-RUN uv export --frozen --no-dev --extra build --extra vast --no-emit-project \
+RUN uv export --frozen --no-dev --extra build --extra modal --extra vast --no-emit-project \
       --no-hashes --output-file /tmp/requirements.txt \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /tmp/requirements.txt \
     && uv build --wheel --out-dir /tmp/dist \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --no-deps /tmp/dist/*.whl \
-    && sed -i 's/include-system-site-packages = false/include-system-site-packages = true/' "${VIRTUAL_ENV}/pyvenv.cfg" \
     && rm -rf /tmp/dist /tmp/requirements.txt
 
 RUN --mount=type=secret,id=HF_TOKEN,env=HF_TOKEN \

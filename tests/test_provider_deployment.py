@@ -14,8 +14,10 @@ from comfy_control.control_config import (
     ProviderManagement,
 )
 from comfy_control.control_preferences import ControlPreferences
+from comfy_control.provider_adapter import ProviderNotDeployed
 from comfy_control.provider_deployment import deploy_provider, terminate_provider
 from comfy_control.provider_deployment_common import configured_environment
+from comfy_control.provider_modal import ModalAdapter
 
 ROOT = Path(__file__).parents[1]
 
@@ -120,6 +122,32 @@ def test_modal_function_uses_worker_image_python(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_modal_discovery_clears_a_stale_resource(monkeypatch):
+    class ModalNotFoundError(Exception):
+        pass
+
+    fake_modal = SimpleNamespace(
+        exception=SimpleNamespace(NotFoundError=ModalNotFoundError)
+    )
+    monkeypatch.setitem(sys.modules, "modal", fake_modal)
+    monkeypatch.setattr(
+        "comfy_control.provider_modal.web_url",
+        lambda *_: (_ for _ in ()).throw(ModalNotFoundError()),
+    )
+    adapter = ModalAdapter("modal")
+
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(ProviderNotDeployed):
+            await adapter.discover(
+                client,
+                provider("modal"),
+                preferences(),
+                "comfy-control",
+                route=True,
+            )
+
+
+@pytest.mark.asyncio
 async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
     requests: list[str] = []
@@ -207,6 +235,7 @@ async def test_deploys_and_terminates_vast_serverless(tmp_path, monkeypatch):
         terminated = await terminate_provider(client, managed, preferences(), "7")
 
     assert deployed.json()["id"] == 7
+    deployed.raise_for_status()
     assert terminated.is_success
     assert ("DELETE", "/api/v0/workergroups/9/") in methods
     assert ("DELETE", "/api/v0/endptjobs/7/") in methods
