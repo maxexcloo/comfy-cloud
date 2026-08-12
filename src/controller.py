@@ -661,7 +661,12 @@ class Controller:
                 headers=action.headers,
                 json=action.json_body,
             )
-        response.raise_for_status()
+        resource_absent = (
+            action_name in {"delete", "destroy", "terminate"}
+            and response.status_code == 404
+        )
+        if not resource_absent:
+            response.raise_for_status()
         if action.resource_id_path is not None:
             try:
                 resource_id: object = response.json()

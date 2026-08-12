@@ -1225,6 +1225,60 @@ providers:
     await app.state.controller.close()
 
 
+@pytest.mark.asyncio
+async def test_controller_clears_resource_when_provider_already_deleted(tmp_path):
+    configured = settings(tmp_path)
+    configured.config_file.write_text(
+        """
+models: []
+providers:
+  - id: worker
+    api_key: worker-key
+    base_url: https://{resource_id}-8000.example.test
+    actions:
+      deploy:
+        resource_id_path: resource.id
+        url: http://management/deploy
+      terminate:
+        method: DELETE
+        url: http://management/resources/{resource_id}
+""".lstrip()
+    )
+    app = create_app(configured)
+    management = FastAPI()
+
+    @management.post("/deploy")
+    async def deploy() -> dict[str, object]:
+        return {"resource": {"id": "pod-123"}}
+
+    @management.delete("/resources/{resource_id}")
+    async def terminate(resource_id: str) -> Response:
+        assert resource_id == "pod-123"
+        return Response(status_code=404)
+
+    await app.state.controller.lifecycle_client.aclose()
+    app.state.controller.lifecycle_client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=management), base_url="http://management"
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        await sign_in(client)
+        await client.post(
+            "/ops/providers/worker/actions/deploy",
+            headers={"x-comfy-control-action": "worker/deploy"},
+        )
+        terminated = await client.post(
+            "/ops/providers/worker/actions/terminate",
+            headers={"x-comfy-control-action": "worker/terminate"},
+        )
+
+    assert terminated.status_code == 200
+    assert terminated.json()["status"] == 404
+    assert app.state.controller.store.provider_resource("worker") is None
+    await app.state.controller.close()
+
+
 def test_control_config_expands_environment(tmp_path, monkeypatch):
     monkeypatch.setenv("CONTROL_TOKEN", "secret")
     config = tmp_path / "control.yaml"
