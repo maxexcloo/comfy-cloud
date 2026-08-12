@@ -23,11 +23,6 @@ from fastapi.responses import (
 from jinja2 import Environment, select_autoescape
 
 from .control_config import ControlSettings
-from .control_contracts import (
-    ProviderActionResult,
-    ProviderTestRequest,
-    ProviderTestResult,
-)
 from .control_dashboard import (
     SESSION_COOKIE,
     SESSION_SECONDS,
@@ -66,7 +61,6 @@ MEDIA_LIBRARY_HTML = (
 TEMPLATES = Environment(autoescape=select_autoescape(("html", "xml")))
 DASHBOARD_PAGE_SIZE = 20
 LOGIN_MAXIMUM_BYTES = 16 * 1024
-PROVIDER_TEST_MAXIMUM_BYTES = 16 * 1024
 
 
 def html() -> str:
@@ -446,187 +440,6 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         response = RedirectResponse("/login", status_code=303)
         response.delete_cookie(SESSION_COOKIE, path="/")
         return response
-
-    @app.post(
-        "/ops/providers/{provider_id}/actions/{action_name}",
-        tags=["operations"],
-        operation_id="provider_action",
-        response_model=ProviderActionResult,
-    )
-    async def provider_action(
-        provider_id: str, action_name: str, request: Request
-    ) -> Response:
-        if not (
-            ui_authorised(request, settings) or bearer_authorised(request, settings)
-        ):
-            return Response(status_code=401)
-        expected = f"{provider_id}/{action_name}"
-        if not hmac.compare_digest(
-            request.headers.get("x-comfy-control-action", ""), expected
-        ):
-            return error(
-                "provider action confirmation is missing", 400, "invalid_action"
-            )
-        request_id = uuid.uuid4().hex[:16]
-        controller.store.event(
-            "info",
-            f"provider action {action_name} started",
-            provider=provider_id,
-            request_id=request_id,
-        )
-        try:
-            result = await controller.run_provider_action(
-                provider_id, action_name, request_id
-            )
-        except KeyError as exc:
-            controller.store.event(
-                "error",
-                f"provider action {action_name} failed: {exception_message(exc)}",
-                provider=provider_id,
-                request_id=request_id,
-            )
-            return error(str(exc), 404, "action_not_found")
-        except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
-            controller.store.event(
-                "error",
-                f"provider action {action_name} failed: {exception_message(exc)}",
-                provider=provider_id,
-                request_id=request_id,
-            )
-            return error(exception_message(exc), 502, "action_failed")
-        return JSONResponse(result)
-
-    @app.post(
-        "/ops/providers/{provider_id}/test",
-        tags=["operations"],
-        operation_id="test_provider",
-        response_model=ProviderTestResult,
-        openapi_extra={
-            "requestBody": {
-                "content": {
-                    "application/json": {
-                        "schema": ProviderTestRequest.model_json_schema()
-                    }
-                },
-                "required": True,
-            }
-        },
-    )
-    async def provider_test(provider_id: str, request: Request) -> Response:
-        if not (
-            ui_authorised(request, settings) or bearer_authorised(request, settings)
-        ):
-            return Response(status_code=401)
-        try:
-            body = await limited_body(request, PROVIDER_TEST_MAXIMUM_BYTES)
-            values = json.loads(body)
-            if not isinstance(values, dict):
-                raise TypeError("request body must be an object")
-            prompt = str(values.get("prompt", "")).strip()
-            if not prompt or len(prompt) > 2000:
-                raise ValueError("prompt must contain between 1 and 2000 characters")
-            requested_model = str(values.get("model", ""))
-            size = str(values.get("size", "512x512"))
-            if size not in {"512x512", "768x768", "1024x1024"}:
-                raise ValueError("unsupported test size")
-            model, targets = controller.resolve_model(
-                requested_model, "image_generation", provider_id
-            )
-        except RequestBodyTooLarge:
-            return error("request body is too large", 413, "request_too_large")
-        except (json.JSONDecodeError, TypeError, ValueError) as exc:
-            return error(str(exc), 400, "invalid_request")
-        except KeyError as exc:
-            return error(str(exc), 404, "model_not_found")
-        target = targets[0]
-        request_id = uuid.uuid4().hex[:16]
-        history_id = f"test_{uuid.uuid4().hex}"
-        parameters = {
-            "model": requested_model,
-            "prompt": prompt,
-            "provider": provider_id,
-            "size": size,
-        }
-        controller.store.save_history(
-            history_id,
-            "image_generation",
-            model.id,
-            json.dumps(parameters, separators=(",", ":")),
-        )
-        controller.store.update_history(
-            history_id, "in_progress", provider=target.provider
-        )
-        attempt_id = controller.store.start_attempt(history_id, target.provider)
-        started = time.monotonic()
-        try:
-            if controller.providers[target.provider].config.type == "proxy":
-                response = await controller.forward(
-                    target,
-                    "POST",
-                    "/v1/images/generations",
-                    json.dumps(
-                        {
-                            "model": target.model,
-                            "n": 1,
-                            "prompt": prompt,
-                            "response_format": "b64_json",
-                            "size": size,
-                        },
-                        separators=(",", ":"),
-                    ).encode(),
-                    {"content-type": "application/json"},
-                    request_id,
-                )
-                if not response.is_success:
-                    raise RuntimeError(f"provider returned HTTP {response.status_code}")
-                await controller.archive_images(history_id, target.provider, response)
-            else:
-                width, height = size.split("x", 1)
-                outputs = await controller.execute_internal(
-                    target,
-                    history_id,
-                    "image_generation",
-                    {"height": int(height), "prompt": prompt, "width": int(width)},
-                )
-                for content, content_type, filename in outputs:
-                    controller.save_media(history_id, content, content_type, filename)
-            controller.store.finish_attempt(attempt_id, "completed")
-            controller.store.update_history(
-                history_id, "completed", provider=target.provider
-            )
-            controller.store.event(
-                "info",
-                "dashboard test completed",
-                provider=target.provider,
-                request_id=request_id,
-            )
-        except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
-            message = exception_message(exc)
-            controller.store.finish_attempt(attempt_id, "failed", message)
-            controller.store.update_history(history_id, "failed", error=message)
-            controller.store.event(
-                "error", message, provider=target.provider, request_id=request_id
-            )
-            return error(message, 502, "test_failed")
-        media = controller.store.media_for_history(history_id)
-        return JSONResponse(
-            {
-                "duration_seconds": round(time.monotonic() - started, 2),
-                "history_id": history_id,
-                "media": [
-                    {
-                        "content_type": item.content_type,
-                        "filename": item.filename,
-                        "id": item.id,
-                        "size": item.size,
-                    }
-                    for item in media
-                ],
-                "model": model.id,
-                "provider": target.provider,
-                "status": "completed",
-            }
-        )
 
     @app.get("/v1/models")
     async def models(request: Request) -> Response:
