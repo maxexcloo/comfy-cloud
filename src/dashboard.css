@@ -263,6 +263,7 @@ dialog::backdrop {
   padding: 1rem;
 }
 .dialog-actions {
+  align-items: center;
   display: flex;
   gap: 0.5rem;
 }

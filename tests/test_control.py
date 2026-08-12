@@ -1010,6 +1010,9 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert 'event.key === "ArrowRight"' in javascript.text
     assert 'event.key === "Escape"' in javascript.text
     assert "event.target === mediaDialog" in javascript.text
+    assert "logBody.scrollTop = logBody.scrollHeight" in javascript.text
+    assert 'following ? "Following" : "Paused"' in javascript.text
+    assert "[...data.entries]" in javascript.text
     assert log_stream.media_type == "text/event-stream"
     assert str(first_log_update).startswith("data:")
     await app.state.controller.close()

@@ -1,7 +1,10 @@
 <dialog id="log-dialog" aria-labelledby="log-title">
   <div class="dialog-head">
     <h2 id="log-title">Provider Logs</h2>
-    <button type="button" data-close>Close</button>
+    <div class="dialog-actions">
+      <small id="log-follow-state" role="status">Following</small>
+      <button type="button" data-close>Close</button>
+    </div>
   </div>
   <div class="dialog-body">
     <pre id="log-output" aria-live="polite">Connecting…</pre>

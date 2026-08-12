@@ -24,19 +24,40 @@ for (const button of document.querySelectorAll("[data-confirmation]")) {
 
 const logDialog = document.getElementById("log-dialog");
 if (logDialog) {
+  const logBody = logDialog.querySelector(".dialog-body");
+  const logFollowState = document.getElementById("log-follow-state");
   const logOutput = document.getElementById("log-output");
+  let following = true;
   let logSource;
+  const updateLogFollowState = () => {
+    logFollowState.textContent = following ? "Following" : "Paused";
+  };
+  const scrollLogsToBottom = () => {
+    if (!following) return;
+    requestAnimationFrame(() => {
+      logBody.scrollTop = logBody.scrollHeight;
+    });
+  };
+  logBody.addEventListener("scroll", () => {
+    following =
+      logBody.scrollHeight - logBody.scrollTop - logBody.clientHeight <= 24;
+    updateLogFollowState();
+  });
   for (const button of document.querySelectorAll("[data-log-url]")) {
     button.addEventListener("click", () => {
       if (logSource) logSource.close();
       document.getElementById("log-title").textContent =
         `${button.dataset.logProvider} Logs`;
+      following = true;
+      updateLogFollowState();
       logOutput.textContent = "Connecting…";
       logDialog.showModal();
+      scrollLogsToBottom();
       logSource = new EventSource(button.dataset.logUrl);
       logSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        const lines = data.entries
+        const lines = [...data.entries]
+          .reverse()
           .map(
             (item) =>
               `${formatDate(item.created_at)} ${item.source || "Provider"} ${item.level.toUpperCase()} ${item.message}${item.request_id ? ` [${item.request_id}]` : ""}`,
@@ -44,6 +65,7 @@ if (logDialog) {
         if (data.worker_error)
           lines.push(`Worker Logs Unavailable: ${data.worker_error}`);
         logOutput.textContent = lines.join("\n");
+        scrollLogsToBottom();
       };
       logSource.onerror = () => {
         if (!logOutput.textContent) logOutput.textContent = "Waiting For Logs…";
@@ -54,7 +76,10 @@ if (logDialog) {
     .querySelector("[data-close]")
     .addEventListener("click", () => logDialog.close());
   logDialog.addEventListener("close", () => {
-    if (logSource) logSource.close();
+    if (logSource) {
+      logSource.close();
+      logSource = undefined;
+    }
   });
 }
 
