@@ -136,11 +136,18 @@ async def provider_test(provider_id: str, request: Request) -> Response:
     controller.store.save_history(
         history_id,
         "image_generation",
-        model.id,
+        requested_model,
         json.dumps(parameters, separators=(",", ":")),
     )
-    controller.store.update_history(history_id, "in_progress", provider=target.provider)
-    attempt_id = controller.store.start_attempt(history_id, target.provider)
+    controller.store.update_history(
+        history_id,
+        "in_progress",
+        provider=target.provider,
+        provider_model=target.model,
+    )
+    attempt_id = controller.store.start_attempt(
+        history_id, target.provider, target.model
+    )
     started = time.monotonic()
     try:
         if controller.providers[target.provider].config.type == "proxy":

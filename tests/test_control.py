@@ -324,10 +324,13 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert image.headers["x-comfy-provider"] == "worker"
     assert image.headers["x-comfy-history-id"] == history["id"]
     assert history["operation"] == "image_generation"
+    assert history["model"] == "worker/worker/image"
+    assert history["provider_model"] == "worker/image"
     assert history["parameters"] == {
         "model": "worker/worker/image",
         "prompt": "test",
     }
+    assert history["attempts"][0]["model"] == "worker/image"
     assert history["status"] == "completed"
     assert status.json()["history_pagination"] == {
         "count": 1,
@@ -981,7 +984,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert f"/history?q={history_id}" in events.text
     assert history.text.count(history_id) >= 1
     assert "Unrelated Prompt" not in history.text
-    assert "history_id%7Cequals%7Cimage-wombat" in history.text
+    assert 'data-media-id="1"' in history.text
     assert 'id="media-dialog"' in media.text
     assert 'aria-labelledby="media-title"' in media.text
     assert 'data-media-id="' in media.text
@@ -993,6 +996,8 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert "body > nav" in stylesheet.text
     assert javascript.headers["content-type"].startswith("text/javascript")
     assert "if (!mediaDialog.open) mediaDialog.showModal()" in javascript.text
+    assert 'labelledValue("Generation Time"' in javascript.text
+    assert '["KiB", "MiB", "GiB"]' in javascript.text
     assert log_stream.media_type == "text/event-stream"
     assert str(first_log_update).startswith("data:")
     await app.state.controller.close()
@@ -1706,8 +1711,77 @@ def test_media_metadata_and_schema_migrations_are_persisted(tmp_path: Path):
     ).fetchall()
 
     assert (item["width"], item["height"]) == (640, 480)
-    assert [row["version"] for row in versions] == [1]
+    assert [row["version"] for row in versions] == [1, 2]
     store.close()
+
+
+def test_historical_routes_and_unique_input_lineage_are_reconciled(tmp_path: Path):
+    configured = settings(tmp_path)
+    first = create_app(configured)
+    store = first.state.controller.store
+    store.save_history(
+        "source",
+        "image_generation",
+        "public/image",
+        '{"model":"public/image","prompt":"source"}',
+    )
+    store.update_history(
+        "source",
+        "completed",
+        provider="worker",
+        provider_model="worker/image",
+    )
+    source = tmp_path / "source.png"
+    source.write_bytes(b"unique-source")
+    source_id = store.save_media(
+        "source", "image/png", "source.png", source, source.stat().st_size
+    )
+    store.save_history(
+        "edit",
+        "image_edit",
+        "public/image-edit",
+        json.dumps(
+            {
+                "input_media": [
+                    {
+                        "content_type": "image/png",
+                        "filename": "reference.png",
+                        "size": source.stat().st_size,
+                    }
+                ],
+                "model": "worker/worker/image-edit",
+                "provider": "worker",
+                "prompt": "edit",
+            }
+        ),
+    )
+    store.update_history("edit", "completed", provider="worker")
+    output = tmp_path / "output.png"
+    output.write_bytes(b"edited-output-with-a-different-size")
+    output_id = store.save_media(
+        "edit", "image/png", "output.png", output, output.stat().st_size
+    )
+    store.close()
+
+    second = create_app(configured)
+    history = next(
+        item
+        for item in second.state.controller.store.histories()
+        if item["id"] == "edit"
+    )
+
+    assert history["model"] == "worker/worker/image-edit"
+    assert history["provider_model"] == "worker/image-edit"
+    assert history["attempts"][0]["model"] == "worker/image-edit"
+    assert second.state.controller.store.media_lineage(output_id)["sources"] == [
+        {
+            "content_type": "image/png",
+            "filename": "reference.png",
+            "history_id": "edit",
+            "id": source_id,
+        }
+    ]
+    second.state.controller.store.close()
 
 
 def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):

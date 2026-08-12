@@ -100,6 +100,26 @@ const labelledValue = (label, value) => {
   return item;
 };
 
+const formatBytes = (bytes) => {
+  if (!Number.isFinite(bytes) || bytes < 1024) return `${bytes || 0} B`;
+  const units = ["KiB", "MiB", "GiB"];
+  let value = bytes;
+  let unit = "B";
+  for (const candidate of units) {
+    value /= 1024;
+    unit = candidate;
+    if (value < 1024) break;
+  }
+  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value)} ${unit}`;
+};
+
+const formatDuration = (seconds) => {
+  if (!Number.isFinite(seconds)) return "—";
+  if (seconds < 60) return `${seconds.toFixed(1)} s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} min ${Math.round(seconds % 60)} s`;
+};
+
 const mediaDialog = document.getElementById("media-dialog");
 if (mediaDialog) {
   const detailRoot = document.getElementById("media-detail");
@@ -115,9 +135,10 @@ if (mediaDialog) {
     }
     const item = await response.json();
     const use = item.uses[0] || {};
+    const actualModel = use.provider_model || use.model;
     document.getElementById("media-kind").textContent = item.content_type;
     document.getElementById("media-title").textContent =
-      use.model || `Media ${item.id}`;
+      actualModel || `Media ${item.id}`;
     const preview = item.content_type.startsWith("video/")
       ? element("video", "media-preview")
       : element("img", "media-preview");
@@ -127,22 +148,14 @@ if (mediaDialog) {
 
     const facts = element("div", "detail-grid");
     facts.append(
-      labelledValue("Model", use.model),
-      labelledValue("Operation", use.operation?.replaceAll("_", " ")),
       labelledValue("Provider", use.provider),
-      labelledValue("Created", formatDate(item.created_at)),
+      labelledValue("Model", actualModel),
       labelledValue(
         "Dimensions",
         item.width && item.height ? `${item.width} × ${item.height}` : "—",
       ),
-      labelledValue(
-        "Size",
-        new Intl.NumberFormat(undefined, {
-          style: "unit",
-          unit: "byte",
-          unitDisplay: "narrow",
-        }).format(item.size),
-      ),
+      labelledValue("Size", formatBytes(item.size)),
+      labelledValue("Generation Time", formatDuration(use.generation_seconds)),
     );
     const body = document.createDocumentFragment();
     body.append(preview, facts);

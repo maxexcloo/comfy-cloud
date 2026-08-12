@@ -47,7 +47,11 @@
           ><br /><small><code>{{ item.id }}</code></small>
         </td>
         <td>{{ item.operation.replace("_", " ") | title }}</td>
-        <td>{{ item.model }}</td>
+        <td>
+          {{ item.model }}{% if item.provider_model and item.provider_model !=
+          item.model %}<br /><small>Provider Model: {{ item.provider_model }}</small>{%
+          endif %}
+        </td>
         <td>
           {% if item.provider %}<a href="/providers#{{ item.provider }}"
             >{{ item.provider }}</a
@@ -55,11 +59,8 @@
         </td>
         <td>{{ ui.badge(item.status) }}</td>
         <td>
-          {% if item.media %}<a
-            href="/media?filter={{ ('history_id|equals|' ~ item.id) | urlencode }}"
-            >View {{ item.media | length }} Item{% if item.media | length != 1
-            %}s{% endif %}</a
-          >{% else %}—{% endif %}
+          {% if item.media %}<button type="button" data-media-id="{{
+          item.media[0].asset_id }}">Open Media</button>{% else %}—{% endif %}
         </td>
       </tr>
       {% else %}

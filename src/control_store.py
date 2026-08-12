@@ -145,6 +145,7 @@ class ControlStore:
                     operation TEXT NOT NULL,
                     model TEXT NOT NULL,
                     provider TEXT NOT NULL,
+                    provider_model TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL,
@@ -227,8 +228,9 @@ class ControlStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     history_id TEXT NOT NULL REFERENCES history(id) ON DELETE CASCADE,
                     provider TEXT NOT NULL,
-                    started_at INTEGER NOT NULL,
-                    finished_at INTEGER,
+                    model TEXT NOT NULL DEFAULT '',
+                    started_at REAL NOT NULL,
+                    finished_at REAL,
                     status TEXT NOT NULL,
                     error TEXT
                 );
@@ -252,9 +254,28 @@ class ControlStore:
             )
         self._apply_migrations()
         self._migrate_media_library()
+        self._backfill_input_lineage()
 
     def _apply_migrations(self) -> None:
         with self.lock, self.connection:
+            history_columns = {
+                str(row["name"])
+                for row in self.connection.execute("PRAGMA table_info(history)")
+            }
+            if "provider_model" not in history_columns:
+                self.connection.execute(
+                    "ALTER TABLE history ADD COLUMN provider_model TEXT NOT NULL DEFAULT ''"
+                )
+            attempt_columns = {
+                str(row["name"])
+                for row in self.connection.execute(
+                    "PRAGMA table_info(provider_attempts)"
+                )
+            }
+            if "model" not in attempt_columns:
+                self.connection.execute(
+                    "ALTER TABLE provider_attempts ADD COLUMN model TEXT NOT NULL DEFAULT ''"
+                )
             columns = {
                 str(row["name"])
                 for row in self.connection.execute("PRAGMA table_info(media_assets)")
@@ -273,6 +294,11 @@ class ControlStore:
                 "VALUES (1, ?)",
                 (int(time.time()),),
             )
+            self.connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations (version, applied_at) "
+                "VALUES (2, ?)",
+                (int(time.time()),),
+            )
             rows = self.connection.execute(
                 "SELECT id, content_type, path FROM media_assets "
                 "WHERE width IS NULL AND height IS NULL AND duration IS NULL"
@@ -288,6 +314,78 @@ class ControlStore:
                     "UPDATE media_assets SET width = ?, height = ?, duration = ? "
                     "WHERE id = ?",
                     (width, height, duration, int(row["id"])),
+                )
+
+    def _backfill_input_lineage(self) -> None:
+        with self.lock, self.connection:
+            self._backfill_input_lineage_locked()
+
+    def _backfill_input_lineage_locked(self) -> None:
+        rows = self.connection.execute(
+            """
+            SELECT history.id, history.created_at, history.parameters_json
+            FROM history
+            WHERE NOT EXISTS (
+                SELECT 1 FROM generation_media
+                WHERE generation_media.history_id = history.id
+                  AND generation_media.role = 'input'
+            )
+            ORDER BY history.created_at, history.rowid
+            """
+        ).fetchall()
+        for row in rows:
+            parameters = json.loads(str(row["parameters_json"]))
+            references = (
+                parameters.get("input_media", [])
+                if isinstance(parameters, dict)
+                else []
+            )
+            if not isinstance(references, list):
+                continue
+            for position, reference in enumerate(references):
+                if not isinstance(reference, dict):
+                    continue
+                try:
+                    size = int(reference.get("size", 0))
+                except (TypeError, ValueError):
+                    continue
+                if size <= 0 or not reference.get("content_type"):
+                    continue
+                candidates = self.connection.execute(
+                    """
+                    SELECT DISTINCT media_assets.id
+                    FROM media_assets
+                    JOIN generation_media
+                      ON generation_media.asset_id = media_assets.id
+                    JOIN history source
+                      ON source.id = generation_media.history_id
+                    WHERE generation_media.role = 'output'
+                      AND media_assets.content_type = ?
+                      AND media_assets.size = ?
+                      AND source.created_at <= ?
+                    """,
+                    (
+                        str(reference.get("content_type", "")),
+                        size,
+                        int(row["created_at"]),
+                    ),
+                ).fetchall()
+                if len(candidates) != 1:
+                    continue
+                self.connection.execute(
+                    """
+                    INSERT OR IGNORE INTO generation_media (
+                        history_id, asset_id, role, field_name, position, filename,
+                        source_url, legacy_media_id
+                    ) VALUES (?, ?, 'input', 'image', ?, ?, ?, NULL)
+                    """,
+                    (
+                        str(row["id"]),
+                        int(candidates[0]["id"]),
+                        position,
+                        str(reference.get("filename") or f"input-{position + 1}"),
+                        reference.get("source_url"),
+                    ),
                 )
 
     @staticmethod
@@ -490,8 +588,8 @@ class ControlStore:
         with self.lock:
             rows = self.connection.execute(
                 """
-                SELECT id, operation, model, provider, status, created_at, updated_at,
-                       parameters_json, error
+                SELECT id, operation, model, provider, provider_model, status,
+                       created_at, updated_at, parameters_json, error
                 FROM history ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?
                 """,
                 (limit, offset),
@@ -506,16 +604,20 @@ class ControlStore:
         with self.lock:
             media_rows = self.connection.execute(
                 f"""
-                SELECT id, history_id, content_type, filename, size
+                SELECT media.id, media.history_id, media.content_type,
+                       media.filename, media.size, generation_media.asset_id
                 FROM media
-                WHERE history_id IN ({placeholders})
-                ORDER BY id
+                LEFT JOIN generation_media
+                  ON generation_media.legacy_media_id = media.id
+                WHERE media.history_id IN ({placeholders})
+                ORDER BY media.id
                 """,
                 history_ids,
             ).fetchall()
             attempt_rows = self.connection.execute(
                 f"""
-                SELECT id, history_id, provider, started_at, finished_at, status, error
+                SELECT id, history_id, provider, model, started_at, finished_at,
+                       status, error
                 FROM provider_attempts
                 WHERE history_id IN ({placeholders})
                 ORDER BY id
@@ -561,7 +663,7 @@ class ControlStore:
             if value:
                 clauses.append(f"{column} = ?")
                 values.append(value)
-        searchable = "LOWER(id || ' ' || operation || ' ' || model || ' ' || provider || ' ' || status || ' ' || parameters_json || ' ' || COALESCE(error, ''))"
+        searchable = "LOWER(id || ' ' || operation || ' ' || model || ' ' || provider || ' ' || provider_model || ' ' || status || ' ' || parameters_json || ' ' || COALESCE(error, ''))"
         for term in query.casefold().split():
             clauses.append(f"INSTR({searchable}, ?) > 0")
             values.append(term)
@@ -574,8 +676,8 @@ class ControlStore:
             )
             rows = self.connection.execute(
                 f"""
-                SELECT id, operation, model, provider, status, created_at, updated_at,
-                       parameters_json, error
+                SELECT id, operation, model, provider, provider_model, status,
+                       created_at, updated_at, parameters_json, error
                 FROM history WHERE {where}
                 ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?
                 """,
@@ -602,6 +704,73 @@ class ControlStore:
                 "SELECT COUNT(*) AS count FROM history"
             ).fetchone()
         return int(row["count"])
+
+    def history_routes(self) -> list[dict[str, object]]:
+        with self.lock:
+            rows = self.connection.execute(
+                """
+                SELECT id, operation, model, provider, provider_model, status,
+                       created_at, updated_at, parameters_json, error
+                FROM history ORDER BY created_at, rowid
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def reconcile_history_route(
+        self,
+        history_id: str,
+        requested_model: str,
+        provider: str,
+        provider_model: str,
+    ) -> None:
+        with self.lock, self.connection:
+            row = self.connection.execute(
+                "SELECT status, created_at, updated_at, error FROM history WHERE id = ?",
+                (history_id,),
+            ).fetchone()
+            if row is None:
+                return
+            self.connection.execute(
+                """
+                UPDATE history
+                SET model = ?, provider = ?, provider_model = ?
+                WHERE id = ?
+                """,
+                (requested_model, provider, provider_model, history_id),
+            )
+            attempt = self.connection.execute(
+                "SELECT 1 FROM provider_attempts WHERE history_id = ? LIMIT 1",
+                (history_id,),
+            ).fetchone()
+            if provider and attempt is None:
+                self.connection.execute(
+                    """
+                    INSERT INTO provider_attempts (
+                        history_id, provider, model, started_at, finished_at,
+                        status, error
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        history_id,
+                        provider,
+                        provider_model,
+                        int(row["created_at"]),
+                        int(row["updated_at"]),
+                        str(row["status"]),
+                        row["error"],
+                    ),
+                )
+            self.connection.execute(
+                """
+                UPDATE provider_attempts SET model = ?
+                WHERE history_id = ? AND provider = ? AND model = ''
+                """,
+                (provider_model, history_id, provider),
+            )
+            parameters = self.connection.execute(
+                "SELECT parameters_json FROM history WHERE id = ?", (history_id,)
+            ).fetchone()
+            self._index_history(history_id, str(parameters["parameters_json"]))
 
     def history_usage(self, provider: str) -> dict[str, int]:
         with self.lock:
@@ -648,9 +817,9 @@ class ControlStore:
             self.connection.execute(
                 """
                 INSERT INTO history (
-                    id, operation, model, provider, status, created_at, updated_at,
-                    parameters_json, error
-                ) VALUES (?, ?, ?, '', 'queued', ?, ?, ?, NULL)
+                    id, operation, model, provider, provider_model, status,
+                    created_at, updated_at, parameters_json, error
+                ) VALUES (?, ?, ?, '', '', 'queued', ?, ?, ?, NULL)
                 ON CONFLICT(id) DO NOTHING
                 """,
                 (history_id, operation, model, now, now, parameters_json),
@@ -663,6 +832,7 @@ class ControlStore:
         status: str,
         *,
         provider: str | None = None,
+        provider_model: str | None = None,
         error: str | None = None,
     ) -> None:
         with self.lock, self.connection:
@@ -670,12 +840,20 @@ class ControlStore:
                 """
                 UPDATE history SET
                     provider = COALESCE(?, provider),
+                    provider_model = COALESCE(?, provider_model),
                     status = ?,
                     updated_at = ?,
                     error = ?
                 WHERE id = ?
                 """,
-                (provider, status, int(time.time()), error, history_id),
+                (
+                    provider,
+                    provider_model,
+                    status,
+                    int(time.time()),
+                    error,
+                    history_id,
+                ),
             )
             row = self.connection.execute(
                 "SELECT parameters_json FROM history WHERE id = ?", (history_id,)
@@ -683,13 +861,13 @@ class ControlStore:
             if row is not None:
                 self._index_history(history_id, str(row["parameters_json"]))
 
-    def start_attempt(self, history_id: str, provider: str) -> int:
+    def start_attempt(self, history_id: str, provider: str, model: str) -> int:
         with self.lock, self.connection:
             cursor = self.connection.execute(
                 "INSERT INTO provider_attempts "
-                "(history_id, provider, started_at, status) "
-                "VALUES (?, ?, ?, 'running')",
-                (history_id, provider, int(time.time())),
+                "(history_id, provider, model, started_at, status) "
+                "VALUES (?, ?, ?, ?, 'running')",
+                (history_id, provider, model, time.time()),
             )
         return int(cursor.lastrowid)
 
@@ -700,13 +878,13 @@ class ControlStore:
             self.connection.execute(
                 "UPDATE provider_attempts SET finished_at = ?, status = ?, error = ? "
                 "WHERE id = ?",
-                (int(time.time()), status, error, attempt_id),
+                (time.time(), status, error, attempt_id),
             )
 
     def attempts(self, history_id: str) -> list[dict[str, object]]:
         with self.lock:
             rows = self.connection.execute(
-                "SELECT id, provider, started_at, finished_at, status, error "
+                "SELECT id, provider, model, started_at, finished_at, status, error "
                 "FROM provider_attempts WHERE history_id = ? ORDER BY id",
                 (history_id,),
             ).fetchall()
@@ -910,6 +1088,7 @@ class ControlStore:
                 history.operation,
                 history.model,
                 history.provider,
+                history.provider_model,
                 history.status,
                 history.created_at,
                 history.parameters_json,
@@ -982,8 +1161,15 @@ class ControlStore:
                 SELECT generation_media.history_id, generation_media.role,
                        generation_media.field_name, generation_media.filename,
                        history.model, history.operation, history.provider,
+                       history.provider_model,
                        history.status, history.created_at, history.parameters_json,
-                       generation_search.prompt
+                       generation_search.prompt,
+                       (
+                           SELECT MAX(attempt.finished_at - attempt.started_at)
+                           FROM provider_attempts attempt
+                           WHERE attempt.history_id = history.id
+                             AND attempt.status = 'completed'
+                       ) AS generation_seconds
                 FROM generation_media
                 JOIN history ON history.id = generation_media.history_id
                 JOIN generation_search ON generation_search.history_id = history.id

@@ -39,7 +39,7 @@ async def generate_image(request: Request, operation: str, path: str) -> Respons
         original = normalise_grok_image_options(original)
         requested_model = str(original.get("model", ""))
         provider = str(original.get("provider", "")).strip() or None
-        model, targets = controller.resolve_model(requested_model, operation, provider)
+        _, targets = controller.resolve_model(requested_model, operation, provider)
         canonical_parameters(original)
         count = int(original.get("n", 1))
         if count < 1 or count > 4:
@@ -55,7 +55,7 @@ async def generate_image(request: Request, operation: str, path: str) -> Respons
     controller.store.save_history(
         history_id,
         operation,
-        model.id,
+        requested_model,
         json.dumps(history_parameters(original), separators=(",", ":")),
     )
     headers = {
@@ -69,9 +69,14 @@ async def generate_image(request: Request, operation: str, path: str) -> Respons
     forwarded_body = json.dumps(forwarded, separators=(",", ":")).encode()
     for target in targets:
         controller.store.update_history(
-            history_id, "in_progress", provider=target.provider
+            history_id,
+            "in_progress",
+            provider=target.provider,
+            provider_model=target.model,
         )
-        attempt_id = controller.store.start_attempt(history_id, target.provider)
+        attempt_id = controller.store.start_attempt(
+            history_id, target.provider, target.model
+        )
         try:
             is_proxy = controller.providers[target.provider].config.type == "proxy"
             if not is_proxy:
@@ -229,7 +234,7 @@ async def image_edits(request: Request) -> Response:
         form = await request.form()
         model_id = str(form.get("model", ""))
         provider = str(form.get("provider", "")).strip() or None
-        model, targets = controller.resolve_model(model_id, "image_edit", provider)
+        _, targets = controller.resolve_model(model_id, "image_edit", provider)
     except ValueError as exc:
         return error(str(exc), 400, "invalid_request")
     except KeyError as exc:
@@ -290,7 +295,7 @@ async def image_edits(request: Request) -> Response:
     controller.store.save_history(
         history_id,
         "image_edit",
-        model.id,
+        model_id,
         json.dumps(history_parameters(parameters), separators=(",", ":")),
     )
     for field_name, (filename, content, content_type) in files:
@@ -300,9 +305,14 @@ async def image_edits(request: Request) -> Response:
     failures: list[str] = []
     for target in targets:
         controller.store.update_history(
-            history_id, "in_progress", provider=target.provider
+            history_id,
+            "in_progress",
+            provider=target.provider,
+            provider_model=target.model,
         )
-        attempt_id = controller.store.start_attempt(history_id, target.provider)
+        attempt_id = controller.store.start_attempt(
+            history_id, target.provider, target.model
+        )
         encoded = httpx.Request(
             "POST",
             "http://multipart.invalid",

@@ -22,7 +22,16 @@
       <p class="notice" role="status">{{ message }}</p>
       {% endif %} {% block content %}{% endblock %}
     </main>
-    {% block dialogs %}{% endblock %}
+    <dialog id="media-dialog" aria-labelledby="media-title">
+      <div class="dialog-head">
+        <div>
+          <small id="media-kind">Media</small>
+          <h2 id="media-title">Media Details</h2>
+        </div>
+        <button type="button" data-close>Close</button>
+      </div>
+      <div class="dialog-body" id="media-detail"><p>Loading…</p></div>
+    </dialog>
     <script src="/assets/dashboard.js"></script>
   </body>
 </html>

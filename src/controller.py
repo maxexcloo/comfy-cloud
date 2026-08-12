@@ -133,10 +133,50 @@ class Controller:
         self.models = {model.id: model for model in self.config.models}
         self.providers = self.build_providers(self.config)
         self.provider_ids = self.build_provider_ids(self.config)
+        self.reconcile_history_routes()
         self.configuration_lock = asyncio.Lock()
         self.lifecycle_client = httpx.AsyncClient(timeout=60)
         self.media = ControlMedia(self, settings.database_path.parent)
         self.video_tasks: set[asyncio.Task[None]] = set()
+
+    def reconcile_history_routes(self) -> None:
+        for row in self.store.history_routes():
+            try:
+                parameters = json.loads(str(row["parameters_json"]))
+            except json.JSONDecodeError:
+                continue
+            requested_model = (
+                str(parameters.get("model") or row["model"])
+                if isinstance(parameters, dict)
+                else str(row["model"])
+            )
+            requested_provider = (
+                str(parameters.get("provider") or row["provider"] or "")
+                if isinstance(parameters, dict)
+                else str(row["provider"] or "")
+            )
+            try:
+                _, targets = self.resolve_model(
+                    requested_model,
+                    str(row["operation"]),
+                    requested_provider or None,
+                )
+            except (KeyError, ValueError):
+                continue
+            selected = next(
+                (
+                    target
+                    for target in targets
+                    if target.provider == str(row["provider"])
+                ),
+                targets[0],
+            )
+            self.store.reconcile_history_route(
+                str(row["id"]),
+                requested_model,
+                selected.provider,
+                selected.model,
+            )
 
     def build_providers(self, config: ControlFile) -> dict[str, ProviderRuntime]:
         return {
@@ -489,7 +529,15 @@ class Controller:
             )
             for target in targets:
                 self.store.update_job(job.id, "in_progress", provider=target.provider)
-                attempt_id = self.store.start_attempt(job.id, target.provider)
+                self.store.update_history(
+                    job.id,
+                    "in_progress",
+                    provider=target.provider,
+                    provider_model=target.model,
+                )
+                attempt_id = self.store.start_attempt(
+                    job.id, target.provider, target.model
+                )
                 try:
                     response: httpx.Response | None = None
                     internal_outputs: list[tuple[bytes, str, str]] | None = None
@@ -913,6 +961,10 @@ class Controller:
                 provider_id = self.provider_ids[provider]
             except KeyError as exc:
                 raise ValueError(f"unknown provider: {provider}") from exc
+        if provider_id and "/" in model_id:
+            provider_name, qualified_model = model_id.split("/", 1)
+            if self.provider_ids.get(provider_name) == provider_id:
+                model_id = qualified_model
         try:
             model = self.model(model_id, operation)
         except KeyError:
