@@ -19,6 +19,45 @@ class ConfigurationConflict(RuntimeError):
 class ControlPreferences(BaseModel):
     model_config = ConfigDict(hide_input_in_errors=True)
 
+    ENVIRONMENT_FIELDS: ClassVar[dict[str, tuple[str, ...]]] = {
+        "civitai_token": ("CIVITAI_TOKEN",),
+        "cliproxy_api_key": ("CLIPROXY_API_KEY",),
+        "cliproxy_management_key": ("CLIPROXY_MANAGEMENT_KEY",),
+        "cliproxy_url": ("CLIPROXY_URL",),
+        "comfy_ui_password": ("COMFY_UI_PASSWORD",),
+        "comfy_ui_username": ("COMFY_UI_USERNAME",),
+        "control_maximum_request_bytes": ("CONTROL_MAXIMUM_REQUEST_BYTES",),
+        "hf_token": ("HF_TOKEN",),
+        "local_pod_url": ("LOCAL_POD_URL",),
+        "maximum_pending_generations": ("MAXIMUM_PENDING_GENERATIONS",),
+        "maximum_request_bytes": ("MAXIMUM_REQUEST_BYTES",),
+        "modal_gpu": ("MODAL_GPU",),
+        "modal_minimum_containers": ("MODAL_MIN_CONTAINERS",),
+        "modal_model_volume": ("MODAL_MODEL_VOLUME",),
+        "modal_scaledown_window": ("MODAL_SCALEDOWN_WINDOW",),
+        "modal_token_id": ("MODAL_TOKEN_ID",),
+        "modal_token_secret": ("MODAL_TOKEN_SECRET",),
+        "model_profiles": ("MODEL_PROFILES",),
+        "public_base_url": ("PUBLIC_BASE_URL",),
+        "request_timeout": ("REQUEST_TIMEOUT",),
+        "runpod_api_key": ("RUNPOD_API_KEY",),
+        "runpod_data_centres": ("RUNPOD_DATA_CENTRES",),
+        "runpod_gpu_types": ("RUNPOD_GPU_TYPES",),
+        "runpod_maximum_workers": ("RUNPOD_MAXIMUM_WORKERS",),
+        "salad_api_key": ("SALAD_API_KEY",),
+        "salad_gpu_classes": ("SALAD_GPU_CLASSES",),
+        "salad_organisation": ("SALAD_ORGANISATION",),
+        "salad_project": ("SALAD_PROJECT",),
+        "vast_api_key": ("VAST_API_KEY",),
+        "vast_maximum_workers": ("VAST_MAXIMUM_WORKERS",),
+        "vast_minimum_gpu_memory_gb": (
+            "VAST_MINIMUM_GPU_RAM_GB",
+            "VAST_MINIMUM_GPU_RAM_MB",
+        ),
+        "worker_api_key": ("WORKER_API_KEY",),
+        "worker_image": ("WORKER_IMAGE",),
+        "workflow_timeout": ("WORKFLOW_TIMEOUT",),
+    }
     FIELD_METADATA: ClassVar[dict[str, dict[str, object]]] = {
         "civitai_token": {
             "label": "Civitai token",
@@ -323,6 +362,15 @@ class ControlPreferences(BaseModel):
             workflow_timeout=float(os.getenv("WORKFLOW_TIMEOUT", "900")),
         )
 
+    @classmethod
+    def environment_overrides(cls) -> dict[str, object]:
+        configured = cls.from_environment().model_dump()
+        return {
+            field: configured[field]
+            for field, names in cls.ENVIRONMENT_FIELDS.items()
+            if any(name in os.environ for name in names)
+        }
+
     def environment(self) -> dict[str, str]:
         values = {
             "CIVITAI_TOKEN": self.civitai_token,
@@ -368,15 +416,18 @@ class ConfigurationManager:
         store: ControlStore,
         secret_key: str,
         initial: ControlPreferences | None = None,
+        environment_overrides: Mapping[str, Any] | None = None,
     ):
         key = base64.urlsafe_b64encode(hashlib.sha256(secret_key.encode()).digest())
         self.cipher = Fernet(key)
+        self.environment_overrides = dict(environment_overrides or {})
+        self.locked_fields = frozenset(self.environment_overrides)
         self.store = store
         loaded = store.configuration()
         if loaded is None:
             self.revision = 1
-            self.preferences = initial or ControlPreferences.from_environment()
-            self._save(self.preferences, expected_revision=0)
+            stored_preferences = initial or ControlPreferences()
+            self._save(stored_preferences, expected_revision=0)
         else:
             revision, document, secrets = loaded
             for name, encrypted in secrets.items():
@@ -386,8 +437,15 @@ class ConfigurationManager:
                     raise ValueError(
                         f"stored configuration secret cannot be decrypted: {name}"
                     ) from exc
-            self.preferences = ControlPreferences.model_validate(document)
+            stored_preferences = ControlPreferences.model_validate(document)
             self.revision = revision
+        self.stored_preferences = stored_preferences
+        self.preferences = self._effective(stored_preferences)
+
+    def _effective(self, stored: ControlPreferences) -> ControlPreferences:
+        return ControlPreferences.model_validate(
+            stored.model_dump() | self.environment_overrides
+        )
 
     def _save(self, preferences: ControlPreferences, expected_revision: int) -> None:
         document = preferences.model_dump()
@@ -415,6 +473,7 @@ class ConfigurationManager:
             fields.append(
                 {
                     "configured": bool(values[name]),
+                    "locked": name in self.locked_fields,
                     "name": name,
                     "value": value,
                     **metadata,
@@ -430,6 +489,12 @@ class ConfigurationManager:
         unknown = sorted(set(values) - set(ControlPreferences.model_fields))
         if unknown:
             raise ValueError(f"unknown configuration fields: {', '.join(unknown)}")
+        locked = sorted(set(values) & self.locked_fields)
+        if locked:
+            raise ValueError(
+                "environment-controlled configuration fields cannot be changed: "
+                + ", ".join(locked)
+            )
         document = self.preferences.model_dump()
         for name, value in values.items():
             if name in ControlPreferences.SECRET_FIELDS and value == "":
@@ -438,5 +503,11 @@ class ConfigurationManager:
         return ControlPreferences.model_validate(document)
 
     def save(self, preferences: ControlPreferences, revision: int) -> None:
-        self._save(preferences, expected_revision=revision)
-        self.preferences = preferences
+        document = preferences.model_dump()
+        stored = self.stored_preferences.model_dump()
+        for name in self.locked_fields:
+            document[name] = stored[name]
+        stored_preferences = ControlPreferences.model_validate(document)
+        self._save(stored_preferences, expected_revision=revision)
+        self.stored_preferences = stored_preferences
+        self.preferences = self._effective(stored_preferences)

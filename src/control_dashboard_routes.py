@@ -133,6 +133,8 @@ async def save_settings(request: Request) -> Response:
     values: dict[str, object] = {}
     description = controller.describe_configuration()
     for field in description["fields"]:
+        if field.get("locked"):
+            continue
         name = str(field["name"])
         raw = str(form.get(name, ""))
         if field.get("secret") and not raw:

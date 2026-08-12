@@ -35,6 +35,10 @@ Provider credentials, deployment preferences, routing, limits and worker setting
 are versioned in SQLite. Secrets use authenticated encryption and are never returned
 by the settings API. The administrator dashboard applies a validated configuration
 snapshot atomically; updates are rejected while inference requests are active.
+Explicit environment variables override their corresponding SQLite settings on
+every start. Environment-controlled fields are marked as locked in the settings API
+and dashboard and cannot be changed there. Removing an environment variable reveals
+the previously stored value.
 
 The packaged Python registry defines provider capabilities, public models and safe
 control-plane requests. SQLite stores enabled routes and operator preferences,

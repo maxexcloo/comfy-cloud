@@ -125,7 +125,7 @@ class Controller:
     def __init__(self, settings: ControlSettings):
         self.settings = settings
         self.store = ControlStore(settings.database_path)
-        initial_preferences = ControlPreferences.from_environment()
+        initial_preferences = ControlPreferences()
         initial_preferences.routes = (
             self.file_routes(settings.config_file)
             if settings.config_file is not None
@@ -136,7 +136,10 @@ class Controller:
                 settings.maximum_request_bytes
             )
         self.configuration = ConfigurationManager(
-            self.store, settings.secret_key, initial_preferences
+            self.store,
+            settings.secret_key,
+            initial_preferences,
+            ControlPreferences.environment_overrides(),
         )
         self.preferences = self.configuration.preferences
         self.configure_modal_auth(self.preferences)

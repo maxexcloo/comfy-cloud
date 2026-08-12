@@ -76,10 +76,10 @@ SaladCloud. RunPod and Vast.ai select suitable available GPU capacity through th
 APIs. GPU classes, regions, worker counts and minimum Vast.ai GPU memory are optional
 preferences rather than prerequisites.
 
-On first start only, legacy optional values already present in `.env` are imported
-into SQLite. This supports upgrades from environment-based releases. After confirming
-the values in Settings, remove those optional entries from `.env`; subsequent starts
-use the saved configuration. Back up `CONTROL_SECRET_KEY` with the data volume: a
+Optional provider and worker environment variables override their corresponding
+SQLite settings on every start. The dashboard marks those fields as controlled by
+the environment and does not allow them to be edited. Removing a variable restores
+the previously stored value. Back up `CONTROL_SECRET_KEY` with the data volume: a
 replacement key cannot decrypt existing saved credentials.
 
 Deploy creates all provider-side compute dependencies: a Pod or container group for
