@@ -11,8 +11,9 @@ from .control_dashboard_media import router as dashboard_media_router
 from .control_dashboard_routes import router as dashboard_router
 from .control_dashboard_sessions import router as dashboard_sessions_router
 from .control_health import router as health_router
+from .control_inference_images import router as inference_images_router
 from .control_inference_models import router as inference_models_router
-from .control_inference_routes import router as inference_router
+from .control_inference_videos import router as inference_videos_router
 from .control_operations_history import router as history_operations_router
 from .control_operations_media import router as media_operations_router
 from .control_operations_providers import router as provider_operations_router
@@ -44,7 +45,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(history_operations_router)
     app.include_router(inference_models_router)
-    app.include_router(inference_router)
+    app.include_router(inference_images_router)
+    app.include_router(inference_videos_router)
     app.include_router(media_operations_router)
     app.include_router(provider_operations_router)
     app.include_router(settings_operations_router)
