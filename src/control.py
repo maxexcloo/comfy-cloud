@@ -40,6 +40,7 @@ from .control_dashboard import (
     ui_authorised,
     valid_csrf,
 )
+from .control_http import RequestBodyTooLarge, error, limited_body
 from .control_inference import (
     archived_image_content,
     canonical_parameters,
@@ -58,11 +59,6 @@ from .controller import (
     rewrite_json_model,
 )
 
-
-class RequestBodyTooLarge(ValueError):
-    pass
-
-
 DASHBOARD_HTML = resources.files("comfy_control").joinpath("dashboard.html").read_text()
 MEDIA_LIBRARY_HTML = (
     resources.files("comfy_control").joinpath("media_library.html").read_text()
@@ -71,35 +67,6 @@ TEMPLATES = Environment(autoescape=select_autoescape(("html", "xml")))
 DASHBOARD_PAGE_SIZE = 20
 LOGIN_MAXIMUM_BYTES = 16 * 1024
 PROVIDER_TEST_MAXIMUM_BYTES = 16 * 1024
-
-
-def error(message: str, status: int, code: str) -> JSONResponse:
-    return JSONResponse(
-        status_code=status,
-        content={
-            "error": {
-                "message": message,
-                "type": "server_error" if status >= 500 else "invalid_request_error",
-                "code": code,
-            }
-        },
-    )
-
-
-async def limited_body(request: Request, maximum_bytes: int) -> bytes:
-    try:
-        content_length = int(request.headers.get("content-length", "0"))
-    except ValueError:
-        content_length = 0
-    if content_length > maximum_bytes:
-        raise RequestBodyTooLarge
-    body = bytearray()
-    async for chunk in request.stream():
-        body.extend(chunk)
-        if len(body) > maximum_bytes:
-            raise RequestBodyTooLarge
-    request._body = bytes(body)  # Starlette form parsing reuses the bounded body.
-    return request._body
 
 
 def html() -> str:

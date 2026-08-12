@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .control_config import ControlSettings
 from .control_contracts import MediaLineage, MediaSearch
+from .control_http import error
 from .controller import Controller
 
 router = APIRouter(prefix="/ops/media", tags=["operations"])
@@ -20,13 +21,6 @@ def dependencies(request: Request) -> tuple[Controller, ControlSettings]:
 def authorised(request: Request, settings: ControlSettings) -> bool:
     scheme, _, value = request.headers.get("authorization", "").partition(" ")
     return scheme.lower() == "bearer" and hmac.compare_digest(value, settings.api_key)
-
-
-def api_error(message: str, status: int, code: str) -> JSONResponse:
-    return JSONResponse(
-        {"error": {"code": code, "message": message, "type": "invalid_request_error"}},
-        status_code=status,
-    )
 
 
 @router.get("", operation_id="search_media", response_model=MediaSearch)
@@ -55,7 +49,7 @@ async def search_media(request: Request) -> Response:
             offset=max(int(request.query_params.get("offset", "0")), 0),
         )
     except ValueError as exc:
-        return api_error(str(exc), 400, "invalid_filter")
+        return error(str(exc), 400, "invalid_filter")
     return JSONResponse(result)
 
 
@@ -75,7 +69,7 @@ async def media_lineage(asset_id: int, request: Request) -> Response:
     if not authorised(request, settings):
         return Response(status_code=401)
     if controller.store.media_asset(asset_id) is None:
-        return api_error("media was not found", 404, "not_found")
+        return error("media was not found", 404, "not_found")
     return JSONResponse(controller.store.media_lineage(asset_id))
 
 
@@ -86,7 +80,7 @@ async def media_detail(asset_id: int, request: Request) -> Response:
         return Response(status_code=401)
     detail = controller.store.media_detail(asset_id)
     if detail is None:
-        return api_error("media was not found", 404, "not_found")
+        return error("media was not found", 404, "not_found")
     return JSONResponse(detail)
 
 
@@ -97,7 +91,7 @@ async def media_content(asset_id: int, request: Request) -> Response:
         return Response(status_code=401)
     asset = controller.store.media_asset(asset_id)
     if asset is None or not Path(asset.path).is_file():
-        return api_error("media was not found", 404, "not_found")
+        return error("media was not found", 404, "not_found")
     return FileResponse(
         asset.path,
         media_type=asset.content_type,

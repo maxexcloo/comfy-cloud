@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, Response
 
 from .control_contracts import ProviderLogs
 from .control_dashboard import bearer_authorised, ui_authorised
+from .control_http import error
 
 router = APIRouter(prefix="/ops/providers", tags=["operations"])
 
@@ -19,17 +20,6 @@ async def provider_logs(provider_id: str, request: Request) -> Response:
         limit = min(max(int(request.query_params.get("limit", "200")), 1), 500)
         return JSONResponse(controller.provider_logs(provider_id, limit))
     except ValueError:
-        return JSONResponse(
-            {
-                "error": {
-                    "code": "invalid_request",
-                    "message": "log limit must be a number",
-                }
-            },
-            status_code=400,
-        )
+        return error("log limit must be a number", 400, "invalid_request")
     except KeyError as exc:
-        return JSONResponse(
-            {"error": {"code": "provider_not_found", "message": str(exc)}},
-            status_code=404,
-        )
+        return error(str(exc), 404, "provider_not_found")
