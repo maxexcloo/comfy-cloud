@@ -11,7 +11,6 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from .control_contracts import (
     ImageGenerationRequest,
     ImageGenerationResponse,
-    InferenceModelList,
     VideoCreateRequest,
     VideoJob,
 )
@@ -616,31 +615,3 @@ async def video_response(job_id: str, request: Request, *, content: bool) -> Res
     if output_url := response_data.get("output_url"):
         return Response(status_code=302, headers={"Location": output_url})
     return error("video output was not archived", 409, "video_output_missing")
-
-
-@router.get("/models", operation_id="list_models", response_model=InferenceModelList)
-async def models(request: Request) -> Response:
-    controller = request.app.state.controller
-    settings = request.app.state.settings
-    if not bearer_authorised(request, settings):
-        return error("invalid API key", 401, "invalid_api_key")
-    model_ids = {model.id for model in controller.config.models}
-    for model in controller.config.models:
-        for target in model.targets:
-            provider = controller.providers[target.provider].config
-            for provider_name in (provider.id, *provider.aliases):
-                model_ids.add(f"{provider_name}/{target.model}")
-    return JSONResponse(
-        {
-            "object": "list",
-            "data": [
-                {
-                    "id": model_id,
-                    "object": "model",
-                    "created": 0,
-                    "owned_by": "comfy-control",
-                }
-                for model_id in sorted(model_ids)
-            ],
-        }
-    )
