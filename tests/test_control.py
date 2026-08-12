@@ -284,16 +284,12 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert 'autocomplete="current-password"' in login_page.text
     assert invalid_login.status_code == 401
     assert dashboard.status_code == 200
-    assert "Actions continue if this window is closed" in dashboard.text
     assert 'class="provider-grid"' in dashboard.text
-    assert 'data-tab="historyPageSection"' in dashboard.text
-    assert "if (refresh.running) return" in dashboard.text
-
-    assert '.join("\\n")' in dashboard.text
-    assert "Previous media (Left arrow)" in dashboard.text
-    assert "event.clientX < bounds.left" in dashboard.text
-    assert "Send test request" in dashboard.text
-    assert "Log Out" in dashboard.text
+    assert 'href="/?view=history"' in dashboard.text
+    assert 'href="/?view=settings"' in dashboard.text
+    assert 'href="/media"' in dashboard.text
+    assert 'action="/logout"' in dashboard.text
+    assert "setInterval" not in dashboard.text
     assert [model["id"] for model in models.json()["data"]] == [
         "public/image",
         "public/image-edit",
@@ -386,6 +382,25 @@ async def test_settings_are_admin_only_versioned_and_encrypted(tmp_path):
     assert invalid.status_code == 400
     assert "must-not-leak" not in invalid.text
     assert stale.status_code == 409
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_server_rendered_settings_require_csrf(tmp_path):
+    app = create_app(settings(tmp_path))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        await sign_in(client)
+        page = await client.get("/?view=settings")
+        rejected = await client.post(
+            "/settings", data={"csrf_token": "invalid", "revision": "1"}
+        )
+
+    assert page.status_code == 200
+    assert 'action="/settings"' in page.text
+    assert 'name="csrf_token"' in page.text
+    assert rejected.status_code == 403
     await app.state.controller.close()
 
 
