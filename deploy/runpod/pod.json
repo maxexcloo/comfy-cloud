@@ -1,20 +1,13 @@
 {
   "containerDiskInGb": 30,
   "dockerArgs": "",
-  "imageName": "ghcr.io/maxexcloo/comfy-control:worker",
-  "name": "comfy-control",
   "ports": "8000/http",
   "volumeInGb": 100,
   "volumeMountPath": "/opt/ComfyUI/models",
   "env": [
-    { "key": "API_KEY", "value": "CHANGE_ME" },
-    { "key": "COMFY_UI_PASSWORD", "value": "CHANGE_ME" },
-    { "key": "COMFY_UI_USERNAME", "value": "comfy" },
     {
       "key": "JOBS_DIR",
       "value": "/opt/ComfyUI/models/.comfy-control/jobs"
-    },
-    { "key": "MAXIMUM_PENDING_GENERATIONS", "value": "8" },
-    { "key": "MAXIMUM_REQUEST_BYTES", "value": "104857600" }
+    }
   ]
 }

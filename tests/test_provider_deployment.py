@@ -10,6 +10,7 @@ from comfy_control.control_config import (
     Provider,
     ProviderManagement,
 )
+from comfy_control.control_preferences import ControlPreferences
 from comfy_control.provider_deployment import (
     configured_environment,
     deploy_provider,
@@ -27,6 +28,12 @@ def settings(tmp_path: Path) -> ControlSettings:
         maximum_request_bytes=1024,
         ui_password="ui-password",
         ui_username="comfy",
+    )
+
+
+def preferences() -> ControlPreferences:
+    return ControlPreferences.from_environment().model_copy(
+        update={"worker_api_key": "worker-key"}
     )
 
 
@@ -58,7 +65,7 @@ async def test_deploys_runpod_pod_from_credentials(tmp_path, monkeypatch):
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         response = await deploy_provider(
-            client, provider("runpod-pod"), settings(tmp_path)
+            client, provider("runpod-pod"), preferences(), settings(tmp_path)
         )
 
     assert response.json()["id"] == "pod-1"
@@ -69,7 +76,9 @@ def test_worker_ui_credentials_fall_back_when_compose_values_are_empty(
 ):
     monkeypatch.setenv("COMFY_UI_PASSWORD", "")
     monkeypatch.setenv("COMFY_UI_USERNAME", "")
-    environment = configured_environment({}, provider("runpod-pod"), settings(tmp_path))
+    environment = configured_environment(
+        {}, provider("runpod-pod"), preferences(), settings(tmp_path)
+    )
 
     assert environment["COMFY_UI_PASSWORD"] == "ui-password"
     assert environment["COMFY_UI_USERNAME"] == "comfy"
@@ -95,7 +104,10 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         response = await deploy_provider(
-            client, provider("runpod-serverless"), settings(tmp_path)
+            client,
+            provider("runpod-serverless"),
+            preferences(),
+            settings(tmp_path),
         )
 
     assert requests == ["/v1/templates", "/v1/templates", "/v1/endpoints"]
@@ -119,7 +131,9 @@ async def test_deploys_salad_group_with_discovered_gpu(tmp_path, monkeypatch):
         return httpx.Response(201, json={"id": "group-1"})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        response = await deploy_provider(client, provider("salad"), settings(tmp_path))
+        response = await deploy_provider(
+            client, provider("salad"), preferences(), settings(tmp_path)
+        )
 
     assert response.json()["id"] == "group-1"
 
@@ -152,8 +166,10 @@ async def test_deploys_and_terminates_vast_serverless(tmp_path, monkeypatch):
 
     managed = provider("vast-serverless", "comfy")
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        deployed = await deploy_provider(client, managed, settings(tmp_path))
-        terminated = await terminate_provider(client, managed, "7")
+        deployed = await deploy_provider(
+            client, managed, preferences(), settings(tmp_path)
+        )
+        terminated = await terminate_provider(client, managed, preferences(), "7")
 
     assert deployed.json()["id"] == 7
     assert terminated.is_success

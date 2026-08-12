@@ -17,6 +17,24 @@ serving URLs are discovered through provider APIs and kept in controller runtime
 state, so provider-assigned addresses can change across starts without changing
 deployment configuration.
 
+## Configuration
+
+The control plane has a deliberately small bootstrap environment:
+
+- `CONTROL_API_KEY` authenticates inference clients;
+- `CONTROL_SECRET_KEY` encrypts saved credentials;
+- `CONTROL_UI_PASSWORD` and `CONTROL_UI_USERNAME` authenticate administrators.
+
+Provider credentials, deployment preferences, routing, limits and worker settings
+are versioned in SQLite. Secrets use authenticated encryption and are never returned
+by the settings API. The administrator dashboard applies a validated configuration
+snapshot atomically; updates are rejected while inference requests are active.
+
+`config/control.yaml` remains the trusted provider and model catalogue. It defines
+provider capabilities and safe control-plane requests, while the UI exposes only
+known typed values. Arbitrary provider URLs, headers and request bodies are not
+editable through the dashboard.
+
 ## Request Flow
 
 1. The control plane authenticates the request and selects configured targets.

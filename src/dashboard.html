@@ -135,6 +135,61 @@
         gap: 0.8rem;
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
+      .settings-actions {
+        align-items: center;
+        display: flex;
+        gap: 0.8rem;
+        justify-content: flex-end;
+        margin-top: 1rem;
+      }
+      .settings-grid {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .settings-grid fieldset {
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        display: grid;
+        gap: 0.8rem;
+        margin: 0;
+        min-width: 0;
+        padding: 1rem;
+      }
+      .settings-grid legend {
+        color: var(--accent);
+        font-size: 0.8rem;
+        font-weight: 750;
+        padding: 0 0.35rem;
+      }
+      .settings-grid label {
+        color: var(--muted);
+        font-size: 0.75rem;
+      }
+      .settings-grid input,
+      .settings-grid textarea {
+        display: block;
+        margin-top: 0.3rem;
+        width: 100%;
+      }
+      .settings-grid textarea {
+        min-height: 9rem;
+      }
+      .secret-state {
+        font-size: 0.68rem;
+        margin-left: 0.35rem;
+      }
+      .secret-clear {
+        align-items: center;
+        display: flex;
+        gap: 0.35rem;
+        margin-top: 0.3rem;
+      }
+      .settings-grid .secret-clear input {
+        display: inline;
+        margin: 0;
+        width: auto;
+      }
       .provider-card {
         background: #0c1319;
         border: 1px solid #202e38;
@@ -459,6 +514,9 @@
         .provider-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
+        .settings-grid {
+          grid-template-columns: 1fr;
+        }
       }
       @media (max-width: 650px) {
         header,
@@ -584,7 +642,8 @@
     <nav class="tabbar" aria-label="Dashboard">
       <button class="active" data-tab="providersPage">Providers</button
       ><button data-tab="historyPageSection">History</button
-      ><button data-tab="eventsPage">Events</button>
+      ><button data-tab="eventsPage">Events</button
+      ><button data-tab="settingsPage">Settings</button>
     </nav>
     <main>
       <section id="providersPage" data-page>
@@ -646,6 +705,21 @@
           ><small id="eventPage"></small
           ><button id="eventNext" class="secondary">Next</button>
         </div>
+      </section>
+      <section id="settingsPage" data-page hidden>
+        <div class="section-head">
+          <div>
+            <h2>Settings</h2>
+            <small>Saved securely and applied without restarting</small>
+          </div>
+        </div>
+        <form id="settingsForm">
+          <div id="settingsFields" class="settings-grid"></div>
+          <div class="settings-actions">
+            <small id="settingsStatus"></small>
+            <button id="settingsSave">Save settings</button>
+          </div>
+        </form>
       </section>
     </main>
     <dialog id="viewer">
@@ -775,7 +849,11 @@ A cinematic photograph of a wombat operating a compact GPU server, studio lighti
         testResult = element("testResult"),
         testMedia = element("testMedia"),
         testSize = element("testSize"),
-        testPrompt = element("testPrompt");
+        testPrompt = element("testPrompt"),
+        settingsForm = element("settingsForm"),
+        settingsFields = element("settingsFields"),
+        settingsSave = element("settingsSave"),
+        settingsStatus = element("settingsStatus");
       let historyData = [],
         providerData = [],
         viewerItems = [],
@@ -783,7 +861,8 @@ A cinematic photograph of a wombat operating a compact GPU server, studio lighti
         testProvider = "",
         logsProvider = "",
         historyPageNumber = 1,
-        eventPageNumber = 1;
+        eventPageNumber = 1,
+        settingsRevision = 0;
       const actionStates = new Map(),
         actionPolls = new Map();
       document.querySelectorAll("[data-tab]").forEach(
@@ -795,8 +874,109 @@ A cinematic photograph of a wombat operating a compact GPU server, studio lighti
             document
               .querySelectorAll("[data-page]")
               .forEach((page) => (page.hidden = page.id !== tab.dataset.tab));
+            if (tab.dataset.tab === "settingsPage") loadSettings();
           }),
       );
+      function settingsInput(field) {
+        const type = field.secret
+            ? "password"
+            : field.type === "number"
+              ? "number"
+              : field.type === "url"
+                ? "url"
+                : "text",
+          value = field.secret
+            ? ""
+            : field.type === "list"
+              ? field.value.join(", ")
+              : field.type === "routes"
+                ? JSON.stringify(field.value, null, 2)
+                : field.value;
+        if (field.type === "routes")
+          return `<textarea name="${esc(field.name)}">${esc(value)}</textarea>`;
+        return `<input name="${esc(field.name)}" type="${type}" value="${esc(value)}" ${field.minimum === undefined ? "" : `min="${esc(field.minimum)}"`} ${field.secret ? 'autocomplete="new-password"' : ""}>`;
+      }
+      async function loadSettings() {
+        settingsStatus.textContent = "Loading…";
+        const response = await fetch("/api/settings");
+        if (response.status === 401) {
+          location = "/login";
+          return;
+        }
+        if (!response.ok) throw new Error("settings " + response.status);
+        const data = await response.json();
+        settingsRevision = data.revision;
+        const sections = new Map();
+        for (const field of data.fields) {
+          if (!sections.has(field.section)) sections.set(field.section, []);
+          sections.get(field.section).push(field);
+        }
+        settingsFields.innerHTML = [...sections]
+          .map(
+            ([section, fields]) =>
+              `<fieldset><legend>${esc(section)}</legend>${fields
+                .map(
+                  (field) =>
+                    `<label>${esc(field.label)}${field.secret ? `<span class="secret-state">${field.configured ? "Configured · leave blank to keep" : "Not configured"}</span>` : ""}${settingsInput(field)}${field.secret && field.configured ? `<span class="secret-clear"><input name="_clear_${esc(field.name)}" type="checkbox">Clear saved secret</span>` : ""}</label>`,
+                )
+                .join("")}</fieldset>`,
+          )
+          .join("");
+        settingsStatus.textContent = `Revision ${settingsRevision}`;
+      }
+      settingsForm.onsubmit = async (event) => {
+        event.preventDefault();
+        settingsSave.disabled = true;
+        settingsStatus.textContent = "Saving…";
+        try {
+          const values = {};
+          for (const field of settingsForm.elements) {
+            if (!field.name || field.type === "submit") continue;
+            if (field.name.startsWith("_clear_")) {
+              if (field.checked) values[field.name.slice(7)] = null;
+              continue;
+            }
+            if (field.type === "password" && !field.value) continue;
+            if (field.tagName === "TEXTAREA") {
+              values[field.name] = JSON.parse(field.value || "{}");
+            } else if (field.type === "number") {
+              values[field.name] = Number(field.value);
+            } else if (
+              [
+                "model_profiles",
+                "runpod_data_centres",
+                "runpod_gpu_types",
+                "salad_gpu_classes",
+              ].includes(field.name)
+            ) {
+              values[field.name] = field.value
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean);
+            } else {
+              values[field.name] = field.value;
+            }
+          }
+          const response = await fetch("/api/settings", {
+            body: JSON.stringify({ revision: settingsRevision, values }),
+            headers: {
+              "content-type": "application/json",
+              "x-comfy-control-settings": "update",
+            },
+            method: "PATCH",
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok)
+            throw new Error(data.error?.message ?? "save failed");
+          settingsRevision = data.revision;
+          settingsStatus.textContent = `Saved revision ${settingsRevision}`;
+          await Promise.all([loadSettings(), refresh()]);
+        } catch (error) {
+          settingsStatus.textContent = "Unable to save: " + error.message;
+        } finally {
+          settingsSave.disabled = false;
+        }
+      };
       function metricText(metric) {
         const number = Number(metric.value),
           value =
@@ -831,7 +1011,7 @@ A cinematic photograph of a wombat operating a compact GPU server, studio lighti
           providers.innerHTML = d.providers
             .map(
               (p) =>
-                `<article class="provider-card"><div class="provider-head"><div><div class="provider-name">${esc(p.platform ?? p.id)}</div><div class="provider-kind">${esc(title(p.type))} · ${esc(p.id)}${p.active_requests ? ` · ${p.active_requests} active` : ""}</div></div><span class="badge ${esc(p.state)}">${esc(title(p.state))}</span></div>${p.error ? `<p class="provider-error">${esc(p.error)}</p>` : ""}<div class="metrics">${p.usage.status === "ok" ? p.usage.metrics.map(metricText).join("") || '<div class="metric-empty">No account metrics exposed</div>' : `<div class="metric-empty">${esc(p.usage.error ?? p.usage.status)}</div>`}</div><div class="resource" title="${esc(p.resource_id ?? "Not deployed")}">${esc(p.resource_id ?? "Not deployed")}</div><div class="actions">${p.actions.length ? `<div class="primary-actions">${p.actions.map((a) => `<button class="provider-action ${["delete", "destroy", "terminate"].includes(a.name) ? "danger" : ""}" data-provider="${esc(p.id)}" data-action="${esc(a.name)}" data-confirmation="${esc(a.confirmation)}">${esc(title(a.name))}</button>`).join("")}</div>` : ""}<div class="utility-actions"><button class="details" data-provider="${esc(p.id)}">Status</button><button class="logs" data-provider="${esc(p.id)}">Logs</button>${p.models.length ? `<button class="test" data-provider="${esc(p.id)}">Test</button>` : ""}${p.panel_url ? `<a class="button" href="${esc(p.panel_url)}" target="_blank" rel="noopener noreferrer">Panel ↗</a>` : ""}</div></div></article>`,
+                `<article class="provider-card"><div class="provider-head"><div><div class="provider-name">${esc(p.platform ?? p.id)}</div><div class="provider-kind">${esc(title(p.type))} · ${esc(p.id)}${p.active_requests ? ` · ${p.active_requests} active` : ""}</div></div><span class="badge ${esc(p.state)}">${esc(title(p.state))}</span></div>${p.error ? `<p class="provider-error">${esc(p.error)}</p>` : ""}<div class="metrics">${p.usage.status === "ok" ? p.usage.metrics.map(metricText).join("") || '<div class="metric-empty">No account metrics exposed</div>' : `<div class="metric-empty">${esc(p.usage.error ?? p.usage.status)}</div>`}</div><div class="resource" title="${esc(p.resource_id ?? (p.configured ? "Not deployed" : "Configure credentials in Settings"))}">${esc(p.resource_id ?? (p.configured ? "Not deployed" : "Credentials required"))}</div><div class="actions">${p.actions.length ? `<div class="primary-actions">${p.actions.map((a) => `<button class="provider-action ${["delete", "destroy", "terminate"].includes(a.name) ? "danger" : ""}" data-provider="${esc(p.id)}" data-action="${esc(a.name)}" data-confirmation="${esc(a.confirmation)}">${esc(title(a.name))}</button>`).join("")}</div>` : ""}<div class="utility-actions">${p.configured ? `<button class="details" data-provider="${esc(p.id)}">Status</button><button class="logs" data-provider="${esc(p.id)}">Logs</button>${p.models.length ? `<button class="test" data-provider="${esc(p.id)}">Test</button>` : ""}${p.panel_url ? `<a class="button" href="${esc(p.panel_url)}" target="_blank" rel="noopener noreferrer">Panel ↗</a>` : ""}` : '<button class="configure">Configure</button>'}</div></div></article>`,
             )
             .join("");
           providers
@@ -856,6 +1036,13 @@ A cinematic photograph of a wombat operating a compact GPU server, studio lighti
           providers
             .querySelectorAll(".test")
             .forEach((b) => (b.onclick = () => showTest(b.dataset.provider)));
+          providers
+            .querySelectorAll(".configure")
+            .forEach(
+              (button) =>
+                (button.onclick = () =>
+                  document.querySelector('[data-tab="settingsPage"]').click()),
+            );
           historyData = d.history;
           historyRows.innerHTML = historyData
             .map(

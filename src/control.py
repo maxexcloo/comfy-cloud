@@ -22,10 +22,12 @@ from fastapi.responses import (
     Response,
     StreamingResponse,
 )
+from pydantic import ValidationError
 from starlette.background import BackgroundTask
 
 from . import __version__
 from .control_config import ControlSettings
+from .control_preferences import ConfigurationConflict
 from .controller import (
     Controller,
     exception_message,
@@ -287,14 +289,16 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             return error("page must be a number", 400, "invalid_request")
         event_count = controller.store.event_count()
         history_count = controller.store.history_count()
-        usage, provider_statuses = await asyncio.gather(
-            controller.usage(), controller.provider_statuses()
-        )
+        async with controller.configuration_lock:
+            usage, provider_statuses = await asyncio.gather(
+                controller.usage(), controller.provider_statuses()
+            )
         return JSONResponse(
             {
                 "providers": [
                     {
                         "id": runtime.config.id,
+                        "configured": True,
                         "platform": runtime.config.platform,
                         "type": runtime.config.type,
                         "usage": usage[runtime.config.id],
@@ -325,6 +329,26 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                         ),
                     }
                     for runtime in controller.providers.values()
+                ]
+                + [
+                    {
+                        "actions": [],
+                        "active_requests": 0,
+                        "configured": False,
+                        "details": {},
+                        "error": None,
+                        "id": provider["id"],
+                        "idle_seconds": 0,
+                        "models": [],
+                        "panel_url": None,
+                        "platform": provider["platform"],
+                        "resource_id": None,
+                        "state": "not-configured",
+                        "type": provider["type"],
+                        "usage": {"status": "unconfigured"},
+                    }
+                    for provider in controller.available_providers
+                    if provider["id"] not in controller.providers
                 ],
                 "history": controller.store.histories(
                     DASHBOARD_PAGE_SIZE,
@@ -368,6 +392,47 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             return error("log limit must be a number", 400, "invalid_request")
         except KeyError as exc:
             return error(str(exc), 404, "provider_not_found")
+
+    @app.get("/api/settings")
+    async def get_settings(request: Request) -> Response:
+        if not ui_authorised(request, settings):
+            return Response(status_code=401)
+        return JSONResponse(controller.describe_configuration())
+
+    @app.patch("/api/settings")
+    async def update_settings(request: Request) -> Response:
+        if not ui_authorised(request, settings):
+            return Response(status_code=401)
+        if request.headers.get("x-comfy-control-settings") != "update":
+            return error(
+                "settings confirmation is missing", 400, "invalid_configuration"
+            )
+        try:
+            body = await limited_body(request, 256 * 1024)
+            payload = json.loads(body)
+            if not isinstance(payload, dict) or not isinstance(
+                payload.get("values"), dict
+            ):
+                raise TypeError("settings request must contain a values object")
+            revision = int(payload.get("revision"))
+            await controller.update_preferences(payload["values"], revision)
+        except RequestBodyTooLarge:
+            return error("settings request is too large", 413, "request_too_large")
+        except ConfigurationConflict as exc:
+            return error(str(exc), 409, "configuration_conflict")
+        except RuntimeError as exc:
+            status = 409 if "requests are active" in str(exc) else 500
+            return error(str(exc), status, "configuration_update_failed")
+        except ValidationError as exc:
+            message = "; ".join(
+                f"{'.'.join(map(str, item['loc']))}: {item['msg']}"
+                for item in exc.errors(include_input=False, include_url=False)
+            )
+            return error(message, 400, "invalid_configuration")
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            return error(str(exc), 400, "invalid_configuration")
+        controller.store.event("info", "control configuration updated")
+        return JSONResponse(controller.describe_configuration())
 
     @app.get("/api/history")
     async def history(request: Request) -> Response:
@@ -592,7 +657,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         if not bearer_authorised(request, settings):
             return error("invalid API key", 401, "invalid_api_key")
         try:
-            body = await limited_body(request, settings.maximum_request_bytes)
+            body = await limited_body(
+                request, controller.preferences.control_maximum_request_bytes
+            )
         except RequestBodyTooLarge:
             return error("request body is too large", 413, "request_too_large")
         try:
@@ -698,7 +765,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         if not bearer_authorised(request, settings):
             return error("invalid API key", 401, "invalid_api_key")
         try:
-            await limited_body(request, settings.maximum_request_bytes)
+            await limited_body(
+                request, controller.preferences.control_maximum_request_bytes
+            )
         except RequestBodyTooLarge:
             return error("request body is too large", 413, "request_too_large")
         try:
@@ -816,7 +885,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         if not bearer_authorised(request, settings):
             return error("invalid API key", 401, "invalid_api_key")
         try:
-            body = await limited_body(request, settings.maximum_request_bytes)
+            body = await limited_body(
+                request, controller.preferences.control_maximum_request_bytes
+            )
         except RequestBodyTooLarge:
             return error("request body is too large", 413, "request_too_large")
         try:

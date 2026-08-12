@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import importlib.util
 import json
 import os
 import time
@@ -12,6 +11,7 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
+import yaml
 
 from .cliproxy import CliproxyClient
 from .control_config import (
@@ -23,6 +23,7 @@ from .control_config import (
     Target,
     UsageProbe,
 )
+from .control_preferences import ConfigurationManager, ControlPreferences
 from .control_store import ControlStore, Job
 from .media import (
     image_media_type,
@@ -31,6 +32,18 @@ from .media import (
     safe_filename,
 )
 from .provider_deployment import deploy_provider, terminate_provider
+from .provider_modal import (
+    provider_action as modal_provider_action,
+)
+from .provider_modal import (
+    status as modal_status,
+)
+from .provider_modal import (
+    usage as modal_usage,
+)
+from .provider_modal import (
+    web_url as modal_web_url,
+)
 from .provider_telemetry import (
     deduplicate_metrics,
     first_number,
@@ -84,13 +97,6 @@ def redacted(value: object) -> object:
         }
     if isinstance(value, list):
         return [redacted(item) for item in value]
-    return value
-
-
-def required_environment(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"{name} is required to manage this provider")
     return value
 
 
@@ -163,9 +169,47 @@ class ProviderRuntime:
 class Controller:
     def __init__(self, settings: ControlSettings):
         self.settings = settings
-        self.config = ControlFile.load(settings.config_file)
+        self.store = ControlStore(settings.database_path)
+        initial_preferences = ControlPreferences.from_environment()
+        raw_configuration = yaml.safe_load(settings.config_file.read_text())
+        raw_models = (
+            raw_configuration.get("models", [])
+            if isinstance(raw_configuration, dict)
+            else []
+        )
+        initial_preferences.routes = {
+            str(model["id"]): [
+                str(target["provider"])
+                for target in model.get("targets", [])
+                if isinstance(target, dict) and target.get("provider")
+            ]
+            for model in raw_models
+            if isinstance(model, dict) and model.get("id")
+        }
+        if "CONTROL_MAXIMUM_REQUEST_BYTES" not in os.environ:
+            initial_preferences.control_maximum_request_bytes = (
+                settings.maximum_request_bytes
+            )
+        self.configuration = ConfigurationManager(
+            self.store, settings.secret_key, initial_preferences
+        )
+        self.preferences = self.configuration.preferences
+        self.configure_modal_auth(self.preferences)
+        self.available_providers = self.load_provider_catalogue()
+        self.config = self.load_control_file(self.preferences)
         self.models = {model.id: model for model in self.config.models}
-        self.providers = {
+        self.providers = self.build_providers(self.config)
+        self.provider_ids = self.build_provider_ids(self.config)
+        self.configuration_lock = asyncio.Lock()
+        self.lifecycle_client = httpx.AsyncClient(timeout=60)
+        self.media_client = httpx.AsyncClient(follow_redirects=True, timeout=120)
+        self.media_path = settings.database_path.parent / "media"
+        self.media_path.mkdir(parents=True, exist_ok=True)
+        self.uploads_path = settings.database_path.parent / "uploads"
+        self.video_tasks: set[asyncio.Task[None]] = set()
+
+    def build_providers(self, config: ControlFile) -> dict[str, ProviderRuntime]:
+        return {
             provider.id: ProviderRuntime(
                 config=provider,
                 base_url=provider.base_url,
@@ -173,20 +217,106 @@ class Controller:
                     follow_redirects=False, timeout=provider.request_timeout
                 ),
             )
-            for provider in self.config.providers
+            for provider in config.providers
         }
-        self.provider_ids = {
+
+    def load_provider_catalogue(self) -> list[dict[str, str]]:
+        value = yaml.safe_load(self.settings.config_file.read_text())
+        providers = value.get("providers", []) if isinstance(value, dict) else []
+        return [
+            {
+                "id": str(provider["id"]),
+                "platform": str(provider.get("platform") or provider["id"]),
+                "type": str(provider.get("type", "pod")),
+            }
+            for provider in providers
+            if isinstance(provider, dict) and provider.get("id")
+        ]
+
+    def build_provider_ids(self, config: ControlFile) -> dict[str, str]:
+        return {
             name: provider.id
-            for provider in self.config.providers
+            for provider in config.providers
             for name in (provider.id, *provider.aliases)
         }
-        self.lifecycle_client = httpx.AsyncClient(timeout=60)
-        self.media_client = httpx.AsyncClient(follow_redirects=True, timeout=120)
-        self.store = ControlStore(settings.database_path)
-        self.media_path = settings.database_path.parent / "media"
-        self.media_path.mkdir(parents=True, exist_ok=True)
-        self.uploads_path = settings.database_path.parent / "uploads"
-        self.video_tasks: set[asyncio.Task[None]] = set()
+
+    def load_control_file(self, preferences: ControlPreferences) -> ControlFile:
+        config = ControlFile.load(self.settings.config_file, preferences.environment())
+        models = []
+        for model in config.models:
+            route = preferences.routes.get(model.id)
+            if route is None:
+                models.append(model)
+                continue
+            targets = {target.provider: target for target in model.targets}
+            selected = [targets[provider] for provider in route if provider in targets]
+            if selected:
+                models.append(model.model_copy(update={"targets": selected}))
+        return config.model_copy(update={"models": models})
+
+    def required_preference(self, name: str) -> str:
+        value = self.preferences.environment().get(name)
+        if not value:
+            raise RuntimeError(f"{name} is required to manage this provider")
+        return value
+
+    def describe_configuration(self) -> dict[str, object]:
+        description = self.configuration.describe()
+        fields = description.get("fields")
+        if not isinstance(fields, list):
+            return description
+        for item in fields:
+            if not isinstance(item, dict):
+                continue
+            if item["name"] == "routes" and not item["value"]:
+                item["value"] = {
+                    model.id: [target.provider for target in model.targets]
+                    for model in self.config.models
+                }
+                item["providers"] = [
+                    provider["id"] for provider in self.available_providers
+                ]
+        return description
+
+    @staticmethod
+    def configure_modal_auth(preferences: ControlPreferences) -> None:
+        for name, value in (
+            ("MODAL_TOKEN_ID", preferences.modal_token_id),
+            ("MODAL_TOKEN_SECRET", preferences.modal_token_secret),
+        ):
+            if value:
+                os.environ[name] = value
+            else:
+                os.environ.pop(name, None)
+
+    async def update_preferences(
+        self, values: dict[str, object], revision: int
+    ) -> None:
+        async with self.configuration_lock:
+            if any(runtime.active_requests for runtime in self.providers.values()):
+                raise RuntimeError(
+                    "configuration cannot change while requests are active"
+                )
+            preferences = self.configuration.prepare_update(values, revision)
+            config = self.load_control_file(preferences)
+            providers = self.build_providers(config)
+            old_providers = self.providers
+            try:
+                self.configuration.save(preferences, revision)
+            except Exception:
+                await asyncio.gather(
+                    *(runtime.client.aclose() for runtime in providers.values())
+                )
+                raise
+            self.configure_modal_auth(preferences)
+            self.preferences = preferences
+            self.config = config
+            self.models = {model.id: model for model in config.models}
+            self.providers = providers
+            self.provider_ids = self.build_provider_ids(config)
+            await asyncio.gather(
+                *(runtime.client.aclose() for runtime in old_providers.values())
+            )
 
     async def provider_usage(self, runtime: ProviderRuntime) -> dict[str, object]:
         probe = runtime.config.usage
@@ -210,13 +340,13 @@ class Controller:
                     url = probe.url
                     headers = probe.headers
                     if probe.kind == "salad" and url is None:
-                        organisation = required_environment("SALAD_ORGANISATION")
+                        organisation = self.required_preference("SALAD_ORGANISATION")
                         url = (
                             "https://api.salad.com/api/public/organizations/"
                             f"{quote(organisation, safe='')}/quotas"
                         )
                         headers = {
-                            "Salad-Api-Key": required_environment("SALAD_API_KEY")
+                            "Salad-Api-Key": self.required_preference("SALAD_API_KEY")
                         }
                     response = await self.lifecycle_client.get(url, headers=headers)
                     response.raise_for_status()
@@ -521,7 +651,7 @@ class Controller:
             return {}
 
         if management.kind.startswith("runpod-"):
-            api_key = required_environment("RUNPOD_API_KEY")
+            api_key = self.required_preference("RUNPOD_API_KEY")
             collection = "pods" if management.kind == "runpod-pod" else "endpoints"
             response = await self.lifecycle_client.get(
                 f"https://rest.runpod.io/v1/{collection}",
@@ -549,11 +679,11 @@ class Controller:
             return resource
 
         if management.kind == "salad":
-            api_key = required_environment("SALAD_API_KEY")
-            organisation = management.organisation or required_environment(
+            api_key = self.required_preference("SALAD_API_KEY")
+            organisation = management.organisation or self.required_preference(
                 "SALAD_ORGANISATION"
             )
-            project = management.project or required_environment("SALAD_PROJECT")
+            project = management.project or self.required_preference("SALAD_PROJECT")
             response = await self.lifecycle_client.get(
                 "https://api.salad.com/api/public/organizations/"
                 f"{quote(organisation, safe='')}/projects/{quote(project, safe='')}"
@@ -576,7 +706,7 @@ class Controller:
             runtime.base_url = dns if "://" in dns else f"https://{dns}"
             return resource if isinstance(resource, dict) else {}
 
-        api_key = required_environment("VAST_API_KEY")
+        api_key = self.required_preference("VAST_API_KEY")
         headers = {"Authorization": f"Bearer {api_key}"}
         if management.kind == "vast-serverless":
             response = await self.lifecycle_client.get(
@@ -924,18 +1054,28 @@ class Controller:
             raise RuntimeError(f"provider {provider} is already deployed")
         if action.internal in {"modal-deploy", "modal-terminate"}:
             response = await asyncio.to_thread(
-                modal_provider_action, action.internal, self.providers[provider]
+                modal_provider_action,
+                action.internal,
+                self.providers[provider].config,
+                self.preferences,
+                self.settings,
             )
         elif action.internal == "provider-deploy":
             response = await deploy_provider(
-                self.lifecycle_client, self.providers[provider].config, self.settings
+                self.lifecycle_client,
+                self.providers[provider].config,
+                self.preferences,
+                self.settings,
             )
         elif action.internal == "provider-terminate":
             resource_id = self.resource_id(provider)
             if resource_id is None:
                 raise RuntimeError(f"provider {provider} is not deployed")
             response = await terminate_provider(
-                self.lifecycle_client, self.providers[provider].config, resource_id
+                self.lifecycle_client,
+                self.providers[provider].config,
+                self.preferences,
+                resource_id,
             )
         else:
             if action.url is None:
@@ -998,7 +1138,7 @@ class Controller:
         management = runtime.config.management
         if management is not None and management.kind == "runpod-pod":
             headers = {
-                "authorization": f"Bearer {required_environment('RUNPOD_API_KEY')}"
+                "authorization": f"Bearer {self.required_preference('RUNPOD_API_KEY')}"
             }
             actions.setdefault(
                 "start",
@@ -1016,15 +1156,17 @@ class Controller:
                 ),
             )
         if management is not None and management.kind == "salad":
-            organisation = management.organisation or os.getenv("SALAD_ORGANISATION")
-            project = management.project or os.getenv("SALAD_PROJECT")
+            organisation = (
+                management.organisation or self.preferences.salad_organisation
+            )
+            project = management.project or self.preferences.salad_project
             if organisation and project:
                 base_url = (
                     "https://api.salad.com/api/public/organizations/"
                     f"{quote(organisation, safe='')}/projects/{quote(project, safe='')}"
                     f"/containers/{quote(management.name, safe='')}"
                 )
-                headers = {"Salad-Api-Key": required_environment("SALAD_API_KEY")}
+                headers = {"Salad-Api-Key": self.required_preference("SALAD_API_KEY")}
                 actions.setdefault(
                     "start", ProviderAction(headers=headers, url=f"{base_url}/start")
                 )
@@ -1038,7 +1180,7 @@ class Controller:
                 )
         if management is not None and management.kind == "vast-pod":
             headers = {
-                "authorization": f"Bearer {required_environment('VAST_API_KEY')}"
+                "authorization": f"Bearer {self.required_preference('VAST_API_KEY')}"
             }
             url = "https://console.vast.ai/api/v0/instances/{resource_id}/"
             actions.setdefault(
@@ -1077,6 +1219,12 @@ class Controller:
         )
 
     async def run_provider_action(
+        self, provider: str, action_name: str, request_id: str
+    ) -> dict[str, object]:
+        async with self.configuration_lock:
+            return await self._run_provider_action(provider, action_name, request_id)
+
+    async def _run_provider_action(
         self, provider: str, action_name: str, request_id: str
     ) -> dict[str, object]:
         try:
@@ -1339,75 +1487,3 @@ def provider_panel_url(
     if management.kind == "vast-pod":
         return "https://cloud.vast.ai/instances/"
     return "https://cloud.vast.ai/serverless/"
-
-
-def modal_web_url(app_name: str, function_name: str) -> str:
-    import modal
-
-    url = modal.Function.from_name(app_name, function_name).get_web_url()
-    if not url:
-        raise RuntimeError(f"Modal web function has no URL: {app_name}/{function_name}")
-    return url.rstrip("/")
-
-
-def modal_provider_action(action: str, runtime: ProviderRuntime) -> httpx.Response:
-    import modal
-
-    management = runtime.config.management
-    if management is None or management.kind != "modal":
-        raise RuntimeError("Modal action requires Modal provider management")
-    if action == "modal-terminate":
-        modal.App.lookup(management.name).stop()
-        return httpx.Response(200, json={"status": "terminated"})
-    path = Path(
-        os.getenv("CONTROL_MODAL_APP", "/opt/comfy-control/deploy/modal/app.py")
-    )
-    if not path.is_file():
-        raise RuntimeError(f"Modal deployment asset was not found: {path}")
-    specification = importlib.util.spec_from_file_location("comfy_control_modal", path)
-    if specification is None or specification.loader is None:
-        raise RuntimeError("Modal deployment asset could not be loaded")
-    module = importlib.util.module_from_spec(specification)
-    specification.loader.exec_module(module)
-    module.app.deploy(name=management.name)
-    return httpx.Response(200, json={"status": "deployed"})
-
-
-def modal_status(app_name: str, function_name: str) -> dict[str, object]:
-    import modal
-
-    function = modal.Function.from_name(app_name, function_name)
-    stats = function.get_current_stats()
-    values = {
-        name: getattr(stats, name)
-        for name in (
-            "backlog",
-            "num_active_runners",
-            "num_total_runners",
-        )
-        if hasattr(stats, name)
-    }
-    active = values.get("num_active_runners") or values.get("num_total_runners")
-    values["state"] = "ready" if active else "scaled-down"
-    get_dashboard_url = getattr(function, "get_dashboard_url", None)
-    if callable(get_dashboard_url):
-        values["panel_url"] = get_dashboard_url()
-    return values
-
-
-def modal_usage() -> list[dict[str, object]]:
-    import modal
-
-    summary = modal.Workspace.from_context().billing.summary()
-    metrics = [
-        {"label": "Billed", "unit": "USD", "value": float(summary.billed_cost)},
-        {"label": "Metered", "unit": "USD", "value": float(summary.metered_cost)},
-    ]
-    credit = sum(
-        abs(float(value))
-        for key, value in summary.adjustments.items()
-        if "credit" in key.lower()
-    )
-    if credit:
-        metrics.append({"label": "Credits used", "unit": "USD", "value": credit})
-    return metrics

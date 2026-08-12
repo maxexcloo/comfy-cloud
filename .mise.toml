@@ -33,11 +33,11 @@ ruff format .
 """
 
 [tasks.setup]
-description = "Create local configuration if missing, then install Git hooks"
+description = "Create bootstrap configuration if missing, then install Git hooks"
 run = """
 if [[ ! -f .env ]]; then
   cp .env.example .env
-  echo "Created .env - please replace the required placeholders"
+  echo "Created .env - set the three blank bootstrap secrets before starting"
 fi
 prek install
 """

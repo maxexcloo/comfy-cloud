@@ -88,8 +88,76 @@ class ControlStore:
                     resource_id TEXT NOT NULL,
                     updated_at INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS control_configuration (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    revision INTEGER NOT NULL,
+                    document_json TEXT NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS control_secrets (
+                    name TEXT PRIMARY KEY,
+                    encrypted_value TEXT NOT NULL
+                );
                 """
             )
+
+    def configuration(
+        self,
+    ) -> tuple[int, dict[str, object], dict[str, str]] | None:
+        with self.lock:
+            row = self.connection.execute(
+                "SELECT revision, document_json FROM control_configuration WHERE id = 1"
+            ).fetchone()
+            if row is None:
+                return None
+            secret_rows = self.connection.execute(
+                "SELECT name, encrypted_value FROM control_secrets ORDER BY name"
+            ).fetchall()
+        document = json.loads(str(row["document_json"]))
+        if not isinstance(document, dict):
+            raise TypeError("stored control configuration must be an object")
+        return (
+            int(row["revision"]),
+            document,
+            {str(item["name"]): str(item["encrypted_value"]) for item in secret_rows},
+        )
+
+    def save_configuration(
+        self,
+        document: dict[str, object],
+        secrets: dict[str, str],
+        *,
+        expected_revision: int,
+    ) -> int:
+        with self.lock, self.connection:
+            row = self.connection.execute(
+                "SELECT revision FROM control_configuration WHERE id = 1"
+            ).fetchone()
+            current_revision = int(row["revision"]) if row else 0
+            if current_revision != expected_revision:
+                raise RuntimeError("configuration revision changed")
+            revision = current_revision + 1
+            self.connection.execute(
+                """
+                INSERT INTO control_configuration (id, revision, document_json, updated_at)
+                VALUES (1, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    revision = excluded.revision,
+                    document_json = excluded.document_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    revision,
+                    json.dumps(document, separators=(",", ":"), sort_keys=True),
+                    int(time.time()),
+                ),
+            )
+            self.connection.execute("DELETE FROM control_secrets")
+            self.connection.executemany(
+                "INSERT INTO control_secrets (name, encrypted_value) VALUES (?, ?)",
+                sorted(secrets.items()),
+            )
+        return revision
 
     def histories(self, limit: int = 100, offset: int = 0) -> list[dict[str, object]]:
         with self.lock:

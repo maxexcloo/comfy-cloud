@@ -10,6 +10,7 @@ from urllib.parse import quote
 import httpx
 
 from .control_config import ControlSettings, Provider
+from .control_preferences import ControlPreferences
 
 DEPLOYMENT_ROOT = Path(
     os.getenv("CONTROL_DEPLOYMENT_ROOT", "/opt/comfy-control/deploy")
@@ -22,8 +23,8 @@ RUNPOD_ENDPOINT_GPUS = [
 ]
 
 
-def required_environment(name: str) -> str:
-    value = os.getenv(name)
+def required_preference(name: str, preferences: ControlPreferences) -> str:
+    value = preferences.environment().get(name)
     if not value:
         raise RuntimeError(f"{name} is required to manage this provider")
     return value
@@ -39,12 +40,17 @@ def deployment_asset(*parts: str) -> dict[str, Any]:
     return value
 
 
-def worker_environment(provider: Provider, settings: ControlSettings) -> dict[str, str]:
+def worker_environment(
+    provider: Provider,
+    preferences: ControlPreferences,
+    settings: ControlSettings,
+) -> dict[str, str]:
+    configured = preferences.environment()
     environment = {
         "API_KEY": provider.api_key,
-        "COMFY_UI_PASSWORD": os.getenv("COMFY_UI_PASSWORD", "").strip()
+        "COMFY_UI_PASSWORD": configured.get("COMFY_UI_PASSWORD", "").strip()
         or settings.ui_password,
-        "COMFY_UI_USERNAME": os.getenv("COMFY_UI_USERNAME", "").strip()
+        "COMFY_UI_USERNAME": configured.get("COMFY_UI_USERNAME", "").strip()
         or settings.ui_username,
     }
     for name in (
@@ -57,13 +63,16 @@ def worker_environment(provider: Provider, settings: ControlSettings) -> dict[st
         "REQUEST_TIMEOUT",
         "WORKFLOW_TIMEOUT",
     ):
-        if value := os.getenv(name):
+        if value := configured.get(name):
             environment[name] = value
     return environment
 
 
 def configured_environment(
-    configured: object, provider: Provider, settings: ControlSettings
+    configured: object,
+    provider: Provider,
+    preferences: ControlPreferences,
+    settings: ControlSettings,
 ) -> dict[str, str]:
     if isinstance(configured, list):
         environment = {
@@ -75,7 +84,7 @@ def configured_environment(
         environment = {str(key): str(value) for key, value in configured.items()}
     else:
         environment = {}
-    environment.update(worker_environment(provider, settings))
+    environment.update(worker_environment(provider, preferences, settings))
     return environment
 
 
@@ -95,26 +104,30 @@ def response_json(status_code: int, value: object) -> httpx.Response:
 async def deploy_provider(
     client: httpx.AsyncClient,
     provider: Provider,
+    preferences: ControlPreferences,
     settings: ControlSettings,
 ) -> httpx.Response:
     management = provider.management
     if management is None:
         raise RuntimeError("provider has no deployment management")
     if management.kind == "runpod-pod":
-        return await deploy_runpod_pod(client, provider, settings)
+        return await deploy_runpod_pod(client, provider, preferences, settings)
     if management.kind == "runpod-serverless":
-        return await deploy_runpod_serverless(client, provider, settings)
+        return await deploy_runpod_serverless(client, provider, preferences, settings)
     if management.kind == "salad":
-        return await deploy_salad(client, provider, settings)
+        return await deploy_salad(client, provider, preferences, settings)
     if management.kind == "vast-pod":
-        return await deploy_vast_pod(client, provider, settings)
+        return await deploy_vast_pod(client, provider, preferences, settings)
     if management.kind == "vast-serverless":
-        return await deploy_vast_serverless(client, provider, settings)
+        return await deploy_vast_serverless(client, provider, preferences, settings)
     raise RuntimeError(f"unsupported standalone provider: {management.kind}")
 
 
 async def terminate_provider(
-    client: httpx.AsyncClient, provider: Provider, resource_id: str
+    client: httpx.AsyncClient,
+    provider: Provider,
+    preferences: ControlPreferences,
+    resource_id: str,
 ) -> httpx.Response:
     management = provider.management
     if management is None:
@@ -125,28 +138,28 @@ async def terminate_provider(
             client,
             "DELETE",
             f"https://rest.runpod.io/v1/{collection}/{quote(resource_id, safe='')}",
-            headers=runpod_headers(),
+            headers=runpod_headers(preferences),
         )
     if management.kind == "salad":
         return await checked_request(
             client,
             "DELETE",
-            f"{salad_container_url(provider)}",
-            headers=salad_headers(),
+            f"{salad_container_url(provider, preferences)}",
+            headers=salad_headers(preferences),
         )
     if management.kind == "vast-pod":
         return await checked_request(
             client,
             "DELETE",
             f"https://console.vast.ai/api/v0/instances/{quote(resource_id, safe='')}/",
-            headers=vast_headers(),
+            headers=vast_headers(preferences),
         )
     if management.kind == "vast-serverless":
         groups = await checked_request(
             client,
             "GET",
             "https://console.vast.ai/api/v0/workergroups/",
-            headers=vast_headers(),
+            headers=vast_headers(preferences),
         )
         payload = groups.json()
         for group in payload.get("results", []) if isinstance(payload, dict) else []:
@@ -162,13 +175,13 @@ async def terminate_provider(
                 "DELETE",
                 "https://console.vast.ai/api/v0/workergroups/"
                 f"{quote(str(group['id']), safe='')}/",
-                headers=vast_headers(),
+                headers=vast_headers(preferences),
             )
         return await checked_request(
             client,
             "DELETE",
             f"https://console.vast.ai/api/v0/endptjobs/{quote(resource_id, safe='')}/",
-            headers=vast_headers(),
+            headers=vast_headers(preferences),
         )
     raise RuntimeError(f"unsupported standalone provider: {management.kind}")
 
@@ -184,29 +197,37 @@ async def checked_request(
     return response
 
 
-def runpod_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {required_environment('RUNPOD_API_KEY')}"}
+def runpod_headers(preferences: ControlPreferences) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {required_preference('RUNPOD_API_KEY', preferences)}"
+    }
 
 
 async def deploy_runpod_pod(
-    client: httpx.AsyncClient, provider: Provider, settings: ControlSettings
+    client: httpx.AsyncClient,
+    provider: Provider,
+    preferences: ControlPreferences,
+    settings: ControlSettings,
 ) -> httpx.Response:
+    environment = preferences.environment()
     payload = deployment_asset("runpod", "pod.json")
     docker_args = str(payload.pop("dockerArgs", "")).strip()
     payload["dockerEntrypoint"] = []
     payload["dockerStartCmd"] = shlex.split(docker_args) if docker_args else []
-    payload["env"] = configured_environment(payload.get("env"), provider, settings)
+    payload["env"] = configured_environment(
+        payload.get("env"), provider, preferences, settings
+    )
     payload["name"] = provider.management.name  # type: ignore[union-attr]
-    payload["imageName"] = os.getenv("WORKER_IMAGE", str(payload["imageName"]))
+    payload["imageName"] = preferences.worker_image
     if isinstance(payload.get("ports"), str):
         payload["ports"] = [
             item.strip() for item in payload["ports"].split(",") if item.strip()
         ]
-    if gpu_types := os.getenv("RUNPOD_GPU_TYPES"):
+    if gpu_types := environment.get("RUNPOD_GPU_TYPES"):
         payload["gpuTypeIds"] = [
             item.strip() for item in gpu_types.split(",") if item.strip()
         ]
-    if data_centres := os.getenv("RUNPOD_DATA_CENTRES"):
+    if data_centres := environment.get("RUNPOD_DATA_CENTRES"):
         payload["dataCenterIds"] = [
             item.strip() for item in data_centres.split(",") if item.strip()
         ]
@@ -214,21 +235,27 @@ async def deploy_runpod_pod(
         client,
         "POST",
         "https://rest.runpod.io/v1/pods",
-        headers=runpod_headers(),
+        headers=runpod_headers(preferences),
         json=payload,
     )
 
 
 async def deploy_runpod_serverless(
-    client: httpx.AsyncClient, provider: Provider, settings: ControlSettings
+    client: httpx.AsyncClient,
+    provider: Provider,
+    preferences: ControlPreferences,
+    settings: ControlSettings,
 ) -> httpx.Response:
+    environment = preferences.environment()
     template = deployment_asset("runpod", "serverless.json")
     docker_args = str(template.pop("dockerArgs", "")).strip()
     template.pop("endpointType", None)
     template["dockerEntrypoint"] = []
     template["dockerStartCmd"] = shlex.split(docker_args) if docker_args else []
-    template["env"] = configured_environment(template.get("env"), provider, settings)
-    template["imageName"] = os.getenv("WORKER_IMAGE", str(template["imageName"]))
+    template["env"] = configured_environment(
+        template.get("env"), provider, preferences, settings
+    )
+    template["imageName"] = preferences.worker_image
     template["isPublic"] = False
     template["isServerless"] = True
     template["name"] = f"{provider.management.name}-template"  # type: ignore[union-attr]
@@ -241,7 +268,7 @@ async def deploy_runpod_serverless(
         client,
         "GET",
         "https://rest.runpod.io/v1/templates",
-        headers=runpod_headers(),
+        headers=runpod_headers(preferences),
     )
     templates = templates_response.json()
     existing = (
@@ -261,7 +288,7 @@ async def deploy_runpod_serverless(
             client,
             "POST",
             "https://rest.runpod.io/v1/templates",
-            headers=runpod_headers(),
+            headers=runpod_headers(preferences),
             json=template,
         )
         template_value = template_response.json()
@@ -272,9 +299,9 @@ async def deploy_runpod_serverless(
         raise RuntimeError("RunPod template response has no id")
     gpu_types = [
         item.strip()
-        for item in os.getenv("RUNPOD_GPU_TYPES", ",".join(RUNPOD_ENDPOINT_GPUS)).split(
-            ","
-        )
+        for item in environment.get(
+            "RUNPOD_GPU_TYPES", ",".join(RUNPOD_ENDPOINT_GPUS)
+        ).split(",")
         if item.strip()
     ]
     endpoint: dict[str, object] = {
@@ -287,10 +314,10 @@ async def deploy_runpod_serverless(
         "scalerType": "QUEUE_DELAY",
         "scalerValue": 4,
         "templateId": str(template_id),
-        "workersMax": int(os.getenv("RUNPOD_MAXIMUM_WORKERS", "1")),
+        "workersMax": preferences.runpod_maximum_workers,
         "workersMin": 0,
     }
-    if data_centres := os.getenv("RUNPOD_DATA_CENTRES"):
+    if data_centres := environment.get("RUNPOD_DATA_CENTRES"):
         endpoint["dataCenterIds"] = [
             item.strip() for item in data_centres.split(",") if item.strip()
         ]
@@ -298,27 +325,28 @@ async def deploy_runpod_serverless(
         client,
         "POST",
         "https://rest.runpod.io/v1/endpoints",
-        headers=runpod_headers(),
+        headers=runpod_headers(preferences),
         json=endpoint,
     )
 
 
-def salad_headers() -> dict[str, str]:
-    return {"Salad-Api-Key": required_environment("SALAD_API_KEY")}
+def salad_headers(preferences: ControlPreferences) -> dict[str, str]:
+    return {"Salad-Api-Key": required_preference("SALAD_API_KEY", preferences)}
 
 
-def salad_scope(provider: Provider) -> tuple[str, str]:
+def salad_scope(provider: Provider, preferences: ControlPreferences) -> tuple[str, str]:
     management = provider.management
     if management is None:
         raise RuntimeError("provider has no SaladCloud management")
     return (
-        management.organisation or required_environment("SALAD_ORGANISATION"),
-        management.project or required_environment("SALAD_PROJECT"),
+        management.organisation
+        or required_preference("SALAD_ORGANISATION", preferences),
+        management.project or required_preference("SALAD_PROJECT", preferences),
     )
 
 
-def salad_container_url(provider: Provider) -> str:
-    organisation, project = salad_scope(provider)
+def salad_container_url(provider: Provider, preferences: ControlPreferences) -> str:
+    organisation, project = salad_scope(provider, preferences)
     management = provider.management
     assert management is not None
     return (
@@ -328,16 +356,20 @@ def salad_container_url(provider: Provider) -> str:
     )
 
 
-async def salad_gpu_classes(client: httpx.AsyncClient, provider: Provider) -> list[str]:
-    if configured := os.getenv("SALAD_GPU_CLASSES"):
-        return [item.strip() for item in configured.split(",") if item.strip()]
-    organisation, _ = salad_scope(provider)
+async def salad_gpu_classes(
+    client: httpx.AsyncClient,
+    provider: Provider,
+    preferences: ControlPreferences,
+) -> list[str]:
+    if preferences.salad_gpu_classes:
+        return preferences.salad_gpu_classes
+    organisation, _ = salad_scope(provider, preferences)
     response = await checked_request(
         client,
         "GET",
         "https://api.salad.com/api/public/organizations/"
         f"{quote(organisation, safe='')}/gpu-classes",
-        headers=salad_headers(),
+        headers=salad_headers(preferences),
     )
     payload = response.json()
     values = payload.get("items", []) if isinstance(payload, dict) else payload
@@ -361,52 +393,62 @@ async def salad_gpu_classes(client: httpx.AsyncClient, provider: Provider) -> li
 
 
 async def deploy_salad(
-    client: httpx.AsyncClient, provider: Provider, settings: ControlSettings
+    client: httpx.AsyncClient,
+    provider: Provider,
+    preferences: ControlPreferences,
+    settings: ControlSettings,
 ) -> httpx.Response:
     payload = deployment_asset("salad", "container-group.json")
     container = payload.get("container")
     if not isinstance(container, dict):
         raise TypeError("SaladCloud deployment asset has no container")
-    container["image"] = os.getenv("WORKER_IMAGE", str(container["image"]))
+    container["image"] = preferences.worker_image
     container["environment_variables"] = configured_environment(
-        container.get("environment_variables"), provider, settings
+        container.get("environment_variables"), provider, preferences, settings
     )
     resources = container.get("resources")
     if not isinstance(resources, dict):
         raise TypeError("SaladCloud deployment asset has no resources")
-    resources["gpu_classes"] = await salad_gpu_classes(client, provider)
+    resources["gpu_classes"] = await salad_gpu_classes(client, provider, preferences)
     management = provider.management
     assert management is not None
     payload["name"] = management.name
-    organisation, project = salad_scope(provider)
+    organisation, project = salad_scope(provider, preferences)
     return await checked_request(
         client,
         "POST",
         "https://api.salad.com/api/public/organizations/"
         f"{quote(organisation, safe='')}/projects/{quote(project, safe='')}/containers",
-        headers=salad_headers(),
+        headers=salad_headers(preferences),
         json=payload,
     )
 
 
-def vast_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {required_environment('VAST_API_KEY')}"}
+def vast_headers(preferences: ControlPreferences) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {required_preference('VAST_API_KEY', preferences)}"
+    }
 
 
 async def deploy_vast_pod(
-    client: httpx.AsyncClient, provider: Provider, settings: ControlSettings
+    client: httpx.AsyncClient,
+    provider: Provider,
+    preferences: ControlPreferences,
+    settings: ControlSettings,
 ) -> httpx.Response:
     specification = deployment_asset("vast", "pod.json")
-    environment = configured_environment(specification.get("env"), provider, settings)
+    environment = configured_environment(
+        specification.get("env"), provider, preferences, settings
+    )
     search = await checked_request(
         client,
         "POST",
         "https://console.vast.ai/api/v0/bundles/",
-        headers=vast_headers(),
+        headers=vast_headers(preferences),
         json={
             "allocated_storage": specification.get("disk_space", 100),
             "direct_port_count": {"gte": 1},
-            "gpu_ram": {"gte": int(os.getenv("VAST_MINIMUM_GPU_RAM_MB", "24000"))},
+            "gpu_ram": {"gte": preferences.vast_minimum_gpu_memory_gb * 1000},
             "limit": 20,
             "num_gpus": {"eq": 1},
             "order": [["dph_total", "asc"]],
@@ -431,12 +473,12 @@ async def deploy_vast_pod(
         client,
         "PUT",
         f"https://console.vast.ai/api/v0/asks/{quote(str(offer_id), safe='')}/",
-        headers=vast_headers(),
+        headers=vast_headers(preferences),
         json={
             "cancel_unavail": True,
             "disk": specification.get("disk_space", 100),
             "env": docker_flags(environment, management.port),
-            "image": os.getenv("WORKER_IMAGE", str(specification["image"])),
+            "image": preferences.worker_image,
             "label": management.name,
             "target_state": "running",
         },
@@ -444,13 +486,18 @@ async def deploy_vast_pod(
 
 
 async def deploy_vast_serverless(
-    client: httpx.AsyncClient, provider: Provider, settings: ControlSettings
+    client: httpx.AsyncClient,
+    provider: Provider,
+    preferences: ControlPreferences,
+    settings: ControlSettings,
 ) -> httpx.Response:
     specification = deployment_asset("vast", "serverless.json")
-    environment = configured_environment(specification.get("env"), provider, settings)
+    environment = configured_environment(
+        specification.get("env"), provider, preferences, settings
+    )
     management = provider.management
     assert management is not None
-    image = os.getenv("WORKER_IMAGE", str(specification["image"]))
+    image = preferences.worker_image
     ports = specification.get("ports")
     worker_port = (
         int(ports[0]) if isinstance(ports, list) and ports else management.port
@@ -459,7 +506,7 @@ async def deploy_vast_serverless(
         client,
         "POST",
         "https://console.vast.ai/api/v0/template/",
-        headers=vast_headers(),
+        headers=vast_headers(preferences),
         json={
             "args_str": "comfy-control vast-serverless",
             "docker_login_pass": "",
@@ -483,12 +530,12 @@ async def deploy_vast_serverless(
         client,
         "POST",
         "https://console.vast.ai/api/v0/endptjobs/",
-        headers=vast_headers(),
+        headers=vast_headers(preferences),
         json={
             "cold_workers": 0,
             "endpoint_name": management.name,
             "inactivity_timeout": max(provider.idle_seconds or 60, 60),
-            "max_workers": int(os.getenv("VAST_MAXIMUM_WORKERS", "1")),
+            "max_workers": preferences.vast_maximum_workers,
             "min_load": 0,
             "target_util": 0.9,
         },
@@ -503,16 +550,16 @@ async def deploy_vast_serverless(
         client,
         "POST",
         "https://console.vast.ai/api/v0/workergroups/",
-        headers=vast_headers(),
+        headers=vast_headers(preferences),
         json={
             "cold_workers": 0,
             "endpoint_id": endpoint_id,
             "endpoint_name": management.name,
-            "gpu_ram": int(os.getenv("VAST_MINIMUM_GPU_RAM_GB", "24")),
-            "max_workers": int(os.getenv("VAST_MAXIMUM_WORKERS", "1")),
+            "gpu_ram": preferences.vast_minimum_gpu_memory_gb,
+            "max_workers": preferences.vast_maximum_workers,
             "search_params": (
                 "verified=true rentable=true rented=false num_gpus=1 "
-                f"gpu_ram>={int(os.getenv('VAST_MINIMUM_GPU_RAM_MB', '24000'))}"
+                f"gpu_ram>={preferences.vast_minimum_gpu_memory_gb * 1000}"
             ),
             "template_hash": str(template["hash_id"]),
             "test_workers": 1,

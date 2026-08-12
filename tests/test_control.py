@@ -1,5 +1,4 @@
 import asyncio
-import re
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -228,6 +227,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert 'class="provider-grid"' in dashboard.text
     assert 'data-tab="historyPageSection"' in dashboard.text
     assert "if (refresh.running) return" in dashboard.text
+
     assert '.join("\\n")' in dashboard.text
     assert "Previous media (Left arrow)" in dashboard.text
     assert "event.clientX < bounds.left" in dashboard.text
@@ -265,6 +265,66 @@ async def test_controller_lists_and_routes_models(tmp_path):
         "successful_requests": 1,
         "total_requests": 1,
     }
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_settings_are_admin_only_versioned_and_encrypted(tmp_path):
+    app = create_app(settings(tmp_path))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        denied = await client.get(
+            "/api/settings", headers={"Authorization": "Bearer control-key"}
+        )
+        await sign_in(client)
+        initial = await client.get("/api/settings")
+        revision = initial.json()["revision"]
+        missing_confirmation = await client.patch(
+            "/api/settings", json={"revision": revision, "values": {}}
+        )
+        updated = await client.patch(
+            "/api/settings",
+            headers={"x-comfy-control-settings": "update"},
+            json={
+                "revision": revision,
+                "values": {
+                    "hf_token": "hf-secret-value",
+                    "worker_image": "registry.example/comfy-control:worker",
+                },
+            },
+        )
+        invalid = await client.patch(
+            "/api/settings",
+            headers={"x-comfy-control-settings": "update"},
+            json={
+                "revision": updated.json()["revision"],
+                "values": {
+                    "modal_token_id": "must-not-leak",
+                    "modal_token_secret": None,
+                },
+            },
+        )
+        stale = await client.patch(
+            "/api/settings",
+            headers={"x-comfy-control-settings": "update"},
+            json={"revision": revision, "values": {"worker_image": "stale"}},
+        )
+
+    fields = {field["name"]: field for field in updated.json()["fields"]}
+    stored_secret = app.state.controller.store.connection.execute(
+        "SELECT encrypted_value FROM control_secrets WHERE name = 'hf_token'"
+    ).fetchone()[0]
+    assert denied.status_code == 401
+    assert missing_confirmation.status_code == 400
+    assert updated.status_code == 200
+    assert fields["hf_token"]["configured"] is True
+    assert fields["hf_token"]["value"] is None
+    assert fields["worker_image"]["value"] == "registry.example/comfy-control:worker"
+    assert "hf-secret-value" not in stored_secret
+    assert invalid.status_code == 400
+    assert "must-not-leak" not in invalid.text
+    assert stale.status_code == 409
     await app.state.controller.close()
 
 
@@ -929,20 +989,20 @@ def test_control_settings_reject_non_positive_request_limit(monkeypatch):
         ControlSettings.from_env()
 
 
-def test_compose_forwards_control_provider_environment():
-    control = (ROOT / "config/control.yaml").read_text()
-    required = set(re.findall(r"(?:env\.|\$\{)([A-Z][A-Z0-9_]*)", control))
+def test_compose_forwards_only_bootstrap_environment():
     compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
     assert set(compose["services"]) == {"comfy-control"}
-    forwarded = set(compose["services"]["comfy-control"]["environment"])
+    service = compose["services"]["comfy-control"]
+    forwarded = set(service["environment"])
     env_example = {
         line.partition("=")[0]
         for line in (ROOT / ".env.example").read_text().splitlines()
         if line and not line.startswith("#")
     }
 
-    assert required <= forwarded
+    assert service["env_file"] == [{"path": ".env", "required": False}]
     assert env_example <= forwarded
+    assert env_example == forwarded - {"CONTROL_CONFIG", "CONTROL_DATABASE"}
     for name in env_example:
         assert str(
             compose["services"]["comfy-control"]["environment"][name]

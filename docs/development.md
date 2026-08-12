@@ -7,8 +7,9 @@ mise run setup
 mise run check
 ```
 
-Setup creates `.env` from its template when missing and installs Prek hooks. Checks
-use an isolated Python environment; a repository-local `.venv` is not required.
+Setup creates the bootstrap `.env` from its template when missing and installs Prek
+hooks. Set the three blank secrets before starting Compose. Checks use an isolated
+Python environment; a repository-local `.venv` is not required.
 
 Use `mise run fmt` for supported formatting and `mise run cleanup` to remove test,
 lint and bytecode caches.
@@ -31,6 +32,7 @@ The container workflow separately builds and smoke-tests the Comfy Control image
 - Keep portable API behaviour directly in `src/`.
 - Keep provider-specific deployment assets in `deploy/`.
 - Keep lifecycle and telemetry configuration in `config/control.yaml`.
+- Keep safe user-editable preferences in `ControlPreferences` and SQLite.
 - Keep ComfyUI workers primary and the fixed CLI Proxy API fallback last.
 
 ## Command-Line Interface

@@ -38,7 +38,8 @@ comfy-control workflow-add \
   --catalogue-dir /data/catalogue
 ```
 
-Set `CATALOGUE_DIR=/data/catalogue`, mount that directory and restart the worker.
+Set `CATALOGUE_DIR=/data/catalogue` on a manually managed worker, mount that
+directory and restart the worker.
 UI-format ComfyUI workflows are not accepted; export them using **Export (API)**.
 Run `comfy-control repository-check` after catalogue or profile changes.
 
@@ -56,9 +57,9 @@ first-frame `image`.
 ## Profiles
 
 Profiles under `profiles/` pin weight sources independently from workflow logic.
-`MODEL_PROFILES` defaults to `flux-2-klein-9b`; set it to one or more
-comma-separated profile names to change the prepared models. Fetch a profile
-manually with:
+The control-plane Settings page defaults to `flux-2-klein-9b`; select one or more
+profile names there to change the models prepared on managed workers. Fetch a
+profile manually with:
 
 ```bash
 comfy-control models-fetch profiles/flux-2-klein-9b.yaml \

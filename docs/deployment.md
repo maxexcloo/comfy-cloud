@@ -33,6 +33,7 @@ For a local GPU host:
 
 ```bash
 cp .env.example .env
+# Set CONTROL_API_KEY, CONTROL_SECRET_KEY and CONTROL_UI_PASSWORD.
 docker compose up --build --detach
 docker compose ps
 ```
@@ -55,24 +56,27 @@ dashboard viewer. There is no automatic retention deletion.
 Definitions under `deploy/` run the worker image on Modal, RunPod, SaladCloud and
 Vast.ai. RunPod and Vast.ai contain separate Pod and Serverless definitions.
 
-Managed providers are credential-driven. When no named resource exists, the dashboard
-shows `Not deployed` and offers Deploy. A routed request can also deploy the resource,
-wait for its discovered URL to become healthy, forward the request, and apply the
-configured idle policy. Provider resource identifiers are saved in the controller
-database; serving URLs are rediscovered because they may change after a start or scale
-event.
+Managed providers are credential-driven. Unconfigured providers remain visible and
+link to Settings. When no named resource exists, the dashboard shows `Not deployed`
+and offers Deploy. A routed request can also deploy the resource, wait for its
+discovered URL to become healthy, forward the request, and apply the configured idle
+policy. Provider resource identifiers are saved in the controller database; serving
+URLs are rediscovered because they may change after a start or scale event.
 
-Compose forwards every setting in `.env.example` to the control plane. Settings such
-as `HF_TOKEN`, `MODEL_PROFILES` and `WORKER_IMAGE` are then applied when it creates a
-managed worker. Set `WORKER_IMAGE` to a full release or SHA tag to pin provider
-deployments instead of following the moving `worker` tag.
+Configure provider credentials, `HF_TOKEN`, model profiles, the worker image and GPU
+preferences through Settings. Pin the worker image to a full release or SHA tag when
+reproducibility is more important than following the moving `worker` tag. SaladCloud
+also requires its organisation and project because its public API uses both slugs as
+security boundaries. Comfy Control discovers a suitable current GPU class for
+SaladCloud. RunPod and Vast.ai select suitable available GPU capacity through their
+APIs. GPU classes, regions, worker counts and minimum Vast.ai GPU memory are optional
+preferences rather than prerequisites.
 
-SaladCloud also requires `SALAD_ORGANISATION` and `SALAD_PROJECT` because its public API
-uses both slugs as security boundaries. Comfy Control discovers a suitable current GPU
-class for SaladCloud. RunPod and Vast.ai select suitable available GPU capacity through
-their APIs. `RUNPOD_DATA_CENTRES`, `RUNPOD_GPU_TYPES`, `RUNPOD_MAXIMUM_WORKERS`,
-`SALAD_GPU_CLASSES`, `VAST_MAXIMUM_WORKERS`, `VAST_MINIMUM_GPU_RAM_GB` and
-`VAST_MINIMUM_GPU_RAM_MB` are optional overrides rather than prerequisites.
+On first start only, legacy optional values already present in `.env` are imported
+into SQLite. This supports upgrades from environment-based releases. After confirming
+the values in Settings, remove those optional entries from `.env`; subsequent starts
+use the saved configuration. Back up `CONTROL_SECRET_KEY` with the data volume: a
+replacement key cannot decrypt existing saved credentials.
 
 Deploy creates all provider-side compute dependencies: a Pod or container group for
 Pod-style providers, a RunPod template and endpoint for RunPod Serverless, and a Vast.ai
@@ -98,10 +102,9 @@ collector queue and must not be polled by a dashboard. Keep
 
 ## Model Preparation
 
-`MODEL_PROFILES` defaults to `flux-2-klein-9b`. Set it to one or more
-comma-separated profile names to change the prepared models. The supervisor prepares
-those profiles before starting ComfyUI and the gateway. Hugging Face sources may use
-`HF_TOKEN`; Civitai sources may use `CIVITAI_TOKEN`.
+Managed workers default to the `flux-2-klein-9b` profile. Change the selected profiles
+in Settings. The supervisor prepares those profiles before starting ComfyUI and the
+gateway. Hugging Face and Civitai credentials are also configured there.
 
 Profiles can also be baked into an image by passing `MODEL_PROFILE` as a build
 argument with the corresponding build secret.

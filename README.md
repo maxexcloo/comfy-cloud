@@ -27,7 +27,7 @@ On a container host:
 
 ```bash
 cp .env.example .env
-# Set the required control, worker and UI secrets.
+# Set the three blank bootstrap secrets.
 docker compose up --build --detach
 docker compose ps
 ```
@@ -35,6 +35,9 @@ docker compose ps
 Comfy Control listens on `http://localhost:28081`. Compose builds and starts only
 the lightweight control plane. The control plane manages independently deployed
 worker images; `LOCAL_POD_URL` may point at an externally managed Pod worker.
+Sign in and use **Settings** to configure provider credentials, deployment limits,
+model profiles, routing and worker authentication. Saved settings are applied
+without restarting the control plane.
 
 ## Repository Layout
 

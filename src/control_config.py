@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .catalogue import Operation
 from .config import required_secret
@@ -85,6 +86,8 @@ class ProviderManagement(BaseModel):
 
 
 class Provider(BaseModel):
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     id: str
     api_key: str
     aliases: list[str] = Field(default_factory=list)
@@ -156,6 +159,8 @@ class RoutedModel(BaseModel):
 
 
 class ControlFile(BaseModel):
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     models: list[RoutedModel]
     providers: list[Provider]
 
@@ -189,13 +194,16 @@ class ControlFile(BaseModel):
         return self
 
     @classmethod
-    def load(cls, path: Path) -> ControlFile:
+    def load(
+        cls, path: Path, environment: Mapping[str, str] | None = None
+    ) -> ControlFile:
+        environment = os.environ if environment is None else environment
         raw = yaml.safe_load(path.read_text())
         providers = raw.get("providers", [])
         raw["providers"] = [
             {key: value for key, value in provider.items() if key != "enabled_if"}
             for provider in providers
-            if not provider.get("enabled_if") or os.getenv(provider["enabled_if"])
+            if not provider.get("enabled_if") or environment.get(provider["enabled_if"])
         ]
         enabled = {provider["id"] for provider in raw["providers"]}
         for model in raw.get("models", []):
@@ -205,17 +213,20 @@ class ControlFile(BaseModel):
                 if target["provider"] in enabled
             ]
         raw["models"] = [model for model in raw.get("models", []) if model["targets"]]
-        return cls.model_validate(expand_environment(raw))
+        return cls.model_validate(expand_environment(raw, environment))
 
 
-def expand_environment(value: Any) -> Any:
+def expand_environment(value: Any, environment: Mapping[str, str] | None = None) -> Any:
+    environment = os.environ if environment is None else environment
     if isinstance(value, dict):
-        return {key: expand_environment(item) for key, item in value.items()}
+        return {
+            key: expand_environment(item, environment) for key, item in value.items()
+        }
     if isinstance(value, list):
-        return [expand_environment(item) for item in value]
+        return [expand_environment(item, environment) for item in value]
     if isinstance(value, str) and value.startswith("env."):
         name = value[4:]
-        resolved = os.getenv(name)
+        resolved = environment.get(name)
         if resolved is None:
             raise ValueError(f"environment variable is not set: {name}")
         return resolved
@@ -223,7 +234,7 @@ def expand_environment(value: Any) -> Any:
 
         def replace(match: re.Match[str]) -> str:
             name = match.group(1)
-            resolved = os.getenv(name)
+            resolved = environment.get(name)
             if resolved is None:
                 raise ValueError(f"environment variable is not set: {name}")
             return resolved
@@ -240,6 +251,7 @@ class ControlSettings:
     maximum_request_bytes: int
     ui_password: str
     ui_username: str
+    secret_key: str = "test-control-secret-key-at-least-32-characters"
 
     @classmethod
     def from_env(cls) -> ControlSettings:
@@ -248,13 +260,18 @@ class ControlSettings:
         )
         if maximum_request_bytes < 1:
             raise ValueError("CONTROL_MAXIMUM_REQUEST_BYTES must be at least 1")
+        api_key = required_secret("CONTROL_API_KEY")
+        secret_key = required_secret("CONTROL_SECRET_KEY")
+        if len(secret_key) < 32:
+            raise ValueError("CONTROL_SECRET_KEY must contain at least 32 characters")
         return cls(
-            api_key=required_secret("CONTROL_API_KEY"),
+            api_key=api_key,
             config_file=Path(
                 os.getenv("CONTROL_CONFIG", "/opt/comfy-control/config/control.yaml")
             ),
             database_path=Path(os.getenv("CONTROL_DATABASE", "/data/comfy-control.db")),
             maximum_request_bytes=maximum_request_bytes,
+            secret_key=secret_key,
             ui_password=required_secret("CONTROL_UI_PASSWORD"),
             ui_username=os.getenv("CONTROL_UI_USERNAME", "comfy"),
         )
