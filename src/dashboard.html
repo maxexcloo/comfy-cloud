@@ -67,7 +67,7 @@
         {% endfor %}
       </div>
       {% elif view == 'history' %}
-      <section><h2>History</h2><table><thead><tr><th>Time</th><th>Operation</th><th>Model</th><th>Provider</th><th>Status</th><th>Media</th></tr></thead><tbody>{% for item in history %}<tr><td>{{ item.created_at }}</td><td>{{ item.operation }}</td><td>{{ item.model }}</td><td>{{ item.provider or '—' }}</td><td>{{ item.status }}</td><td>{% for media in item.media %}<a href="/api/history/{{ item.id }}/media/{{ media.id }}">{{ media.filename }}</a> {% endfor %}</td></tr>{% endfor %}</tbody></table>{{ pagination | safe }}</section>
+      <section><h2>History</h2><table><thead><tr><th>Time</th><th>Operation</th><th>Model</th><th>Provider</th><th>Status</th><th>Media</th></tr></thead><tbody>{% for item in history %}<tr><td>{{ item.created_at }}</td><td>{{ item.operation }}</td><td>{{ item.model }}</td><td>{{ item.provider or '—' }}</td><td>{{ item.status }}</td><td>{% for media in item.media %}<a href="/ops/history/{{ item.id }}/media/{{ media.id }}">{{ media.filename }}</a> {% endfor %}</td></tr>{% endfor %}</tbody></table>{{ pagination | safe }}</section>
       {% elif view == 'events' %}
       <section><h2>Events</h2><table><thead><tr><th>Time</th><th>Level</th><th>Provider</th><th>Message</th></tr></thead><tbody>{% for item in events %}<tr><td>{{ item.created_at }}</td><td>{{ item.level }}</td><td>{{ item.provider or '—' }}</td><td>{{ item.message }}</td></tr>{% endfor %}</tbody></table>{{ pagination | safe }}</section>
       {% elif view == 'settings' %}

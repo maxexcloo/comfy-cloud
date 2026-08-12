@@ -15,10 +15,7 @@ def build_app(configuration: Mapping[str, str]) -> modal.App:
         configuration.get("MODAL_MODEL_VOLUME", "comfy-control-models"),
         create_if_missing=True,
     )
-    environment = {
-        "JOBS_DIR": "/opt/ComfyUI/models/.comfy-control/jobs",
-        "MODELS_DIR": "/opt/ComfyUI/models",
-    }
+    environment = {"MODELS_DIR": "/opt/ComfyUI/models"}
     secret_values = {
         name: value
         for name in (
@@ -35,7 +32,6 @@ def build_app(configuration: Mapping[str, str]) -> modal.App:
         "MAXIMUM_PENDING_GENERATIONS",
         "MAXIMUM_REQUEST_BYTES",
         "MODEL_PROFILES",
-        "PUBLIC_BASE_URL",
         "REQUEST_TIMEOUT",
         "WORKFLOW_TIMEOUT",
     ):

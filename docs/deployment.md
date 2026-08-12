@@ -30,9 +30,8 @@ bundled catalogue and model profiles. Run workers on CUDA-capable hosts with
 persistent model and output storage.
 
 Deploy matching control and worker images. The controller uses the current
-unversioned internal execution contract. A temporary legacy-worker fallback exists
-only to support rolling upgrades and will be removed after managed providers have
-been redeployed.
+unversioned internal execution contract; compatibility with older worker APIs is
+not retained.
 
 For a local GPU host:
 
@@ -90,8 +89,9 @@ or container group. Terminate deletes its compute resource; provider-local disks
 deleted with that resource. Generated media is copied to the controller's persistent
 `/data` volume before idle shutdown and does not depend on provider storage.
 
-Use persistent storage for model weights and `JOBS_DIR` where the provider supports
-it. The worker image defaults to `comfy-control pod`; override the container
+Use persistent storage for model weights where the provider supports it. Video job
+state and generated media are owned by the controller. The worker image defaults to
+`comfy-control pod`; override the container
 command with `comfy-control serverless` when the ComfyUI frontend should not be
 exposed. Vast.ai Serverless uses `comfy-control vast-serverless` for its request
 envelope.
@@ -124,5 +124,5 @@ video content are then served by Comfy Control with normal authentication.
 
 - The project does not grant model redistribution rights.
 - Publishing model weights may impose upstream licence obligations.
-- Worker-local jobs and outputs disappear when their persistent storage is
-  destroyed.
+- Worker-local ComfyUI outputs are transient; the controller copies successful
+  results into its persistent media store.

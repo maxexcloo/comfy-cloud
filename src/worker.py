@@ -1,29 +1,24 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import json
-import time
 import uuid
 from contextlib import asynccontextmanager
-from io import BytesIO
 from typing import Annotated, Any
 from urllib.parse import parse_qsl, urlencode
 
 import httpx
 import websockets
 from fastapi import FastAPI, Form, Request, WebSocket
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from prometheus_client import generate_latest
 from prometheus_client.exposition import CONTENT_TYPE_LATEST
 from starlette.background import BackgroundTask
 
 from .auth import request_authorised, websocket_authorised
-from .catalogue import WorkflowModel
-from .comfy import OutputRef
 from .config import Settings
 from .execution import ExecutionOutput, ExecutionRequest, ExecutionResult
-from .runtime import GenerationQueueFull, Runtime, VideoJob
+from .runtime import GenerationQueueFull, Runtime
 
 HOP_HEADERS = {
     "connection",
@@ -36,74 +31,24 @@ HOP_HEADERS = {
     "upgrade",
 }
 NATIVE_API_PREFIXES = (
-    "prompt",
+    "api",
+    "free",
     "history",
-    "view",
-    "queue",
+    "interrupt",
     "object_info",
+    "prompt",
+    "queue",
     "system_stats",
     "upload",
-    "interrupt",
-    "free",
     "userdata",
-    "api",
+    "view",
 )
 
 
-class ParameterError(ValueError):
-    def __init__(self, parameter: str, message: str):
-        super().__init__(message)
-        self.parameter = parameter
-
-
-def integer_parameter(
-    value: Any,
-    parameter: str,
-    *,
-    default: int | None = None,
-    minimum: int | None = None,
-    maximum: int | None = None,
-) -> int | None:
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        raise ParameterError(parameter, f"{parameter} must be an integer")
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ParameterError(parameter, f"{parameter} must be an integer") from exc
-    if minimum is not None and parsed < minimum:
-        raise ParameterError(parameter, f"{parameter} must be at least {minimum}")
-    if maximum is not None and parsed > maximum:
-        raise ParameterError(parameter, f"{parameter} must be at most {maximum}")
-    return parsed
-
-
-def dimensions_parameter(value: Any) -> tuple[int | None, int | None]:
-    if value in (None, "", "auto"):
-        return None, None
-    try:
-        width, height = (int(part) for part in value.lower().split("x", 1))
-    except (AttributeError, TypeError, ValueError) as exc:
-        raise ParameterError("size", "size must be WIDTHxHEIGHT or auto") from exc
-    if width <= 0 or height <= 0:
-        raise ParameterError("size", "size dimensions must be positive")
-    return width, height
-
-
-def openai_error(
-    message: str, status: int, code: str, param: str | None = None
-) -> JSONResponse:
+def worker_error(message: str, status: int, code: str) -> JSONResponse:
     return JSONResponse(
         status_code=status,
-        content={
-            "error": {
-                "message": message,
-                "type": "invalid_request_error",
-                "param": param,
-                "code": code,
-            }
-        },
+        content={"error": {"code": code, "message": message}},
     )
 
 
@@ -113,81 +58,62 @@ def create_app(settings: Settings) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         yield
-        for task in runtime.background_tasks:
-            task.cancel()
-        if runtime.background_tasks:
-            await asyncio.gather(*runtime.background_tasks, return_exceptions=True)
         await runtime.close()
 
-    app = FastAPI(title="Comfy Control Worker", version="current", lifespan=lifespan)
+    app = FastAPI(
+        title="Comfy Control Worker API",
+        description=(
+            "Current controller-to-worker execution contract. The OpenAI-compatible "
+            "public API is served by the controller."
+        ),
+        version="current",
+        lifespan=lifespan,
+    )
     app.state.runtime = runtime
 
     def require(request: Request) -> JSONResponse | None:
-        if not request_authorised(request, settings):
-            return JSONResponse(
-                status_code=401,
-                headers={"WWW-Authenticate": "Bearer"},
-                content={
-                    "error": {
-                        "message": "invalid API key",
-                        "type": "authentication_error",
-                        "code": "invalid_api_key",
-                    }
-                },
-            )
-        return None
+        if request_authorised(request, settings):
+            return None
+        return JSONResponse(
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+            content={
+                "error": {
+                    "code": "invalid_api_key",
+                    "message": "invalid API key",
+                }
+            },
+        )
 
     async def limited_body(request: Request) -> bytes:
         body = bytearray()
         async for chunk in request.stream():
             body.extend(chunk)
             if len(body) > settings.maximum_request_bytes:
-                raise ParameterError("body", "Request body is too large")
+                raise ValueError("request body is too large")
         return bytes(body)
 
-    def cliproxy_response(upstream: httpx.Response) -> Response:
-        return Response(
-            content=upstream.content,
-            status_code=upstream.status_code,
-            media_type=upstream.headers.get("content-type"),
-            headers={"x-comfy-provider": "cliproxyapi"},
-        )
-
-    async def fallback_image_generation(
-        body: dict[str, Any], comfy_error: Exception
-    ) -> Response:
-        if runtime.cliproxy is None:
-            return openai_error(str(comfy_error), 500, "generation_failed")
-        try:
-            return cliproxy_response(await runtime.cliproxy.generate_image(body))
-        except (RuntimeError, TimeoutError, httpx.HTTPError) as cliproxy_error:
-            return openai_error(
-                f"ComfyUI failed: {comfy_error}; CLI Proxy API failed: {cliproxy_error}",
-                502,
-                "providers_failed",
-            )
-
-    async def fallback_image_edit(
-        fields: dict[str, str],
-        filename: str,
-        content: bytes,
-        content_type: str,
-        comfy_error: Exception,
-    ) -> Response:
-        if runtime.cliproxy is None:
-            return openai_error(str(comfy_error), 500, "generation_failed")
-        try:
-            return cliproxy_response(
-                await runtime.cliproxy.edit_image(
-                    fields, filename, content, content_type
+    def execution_result(request: Request, execution_id: str) -> ExecutionResult:
+        return ExecutionResult(
+            execution_id=execution_id,
+            outputs=[
+                ExecutionOutput(
+                    index=index,
+                    content_type=output.media_type,
+                    filename=output.filename,
+                    url=str(
+                        request.url_for(
+                            "internal_execution_output",
+                            execution_id=execution_id,
+                            index=index,
+                        )
+                    ),
                 )
-            )
-        except (RuntimeError, TimeoutError, httpx.HTTPError) as cliproxy_error:
-            return openai_error(
-                f"ComfyUI failed: {comfy_error}; CLI Proxy API failed: {cliproxy_error}",
-                502,
-                "providers_failed",
-            )
+                for index, output in enumerate(
+                    runtime.execution_outputs.get(execution_id, [])
+                )
+            ],
+        )
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
@@ -197,58 +123,50 @@ def create_app(settings: Settings) -> FastAPI:
         except ValueError:
             content_length = 0
         if content_length > settings.maximum_request_bytes:
-            response = openai_error(
-                "Request body is too large", 413, "request_too_large"
+            response = worker_error(
+                "request body is too large", 413, "request_too_large"
             )
         else:
             response = await call_next(request)
         response.headers["x-request-id"] = request_id
-        status = str(response.status_code)
         runtime.requests.inc()
-        runtime.requests_by_status.labels(status).inc()
+        runtime.requests_by_status.labels(str(response.status_code)).inc()
         return response
 
-    @app.get("/health/live")
-    async def live() -> JSONResponse:
-        return JSONResponse({"status": "alive"})
+    @app.get("/health/live", tags=["health"], operation_id="worker_liveness")
+    async def live() -> dict[str, str]:
+        return {"status": "alive"}
 
-    @app.get("/health/ready")
-    async def ready() -> JSONResponse:
-        ready = await runtime.ready()
+    @app.get("/health/ready", tags=["health"], operation_id="worker_readiness")
+    async def ready() -> Response:
+        is_ready = await runtime.ready()
         return JSONResponse(
-            {"status": "ready" if ready else "starting"},
-            status_code=200 if ready else 503,
+            {"status": "ready" if is_ready else "starting"},
+            status_code=200 if is_ready else 503,
         )
 
-    @app.get("/health")
-    async def health() -> JSONResponse:
-        ready = await runtime.ready()
+    @app.get("/health", tags=["health"], operation_id="worker_health")
+    async def health() -> Response:
         object_info = await runtime.object_info()
-        cliproxy_ready = runtime.cliproxy is not None and await runtime.cliproxy.ready()
-        installed = (
-            runtime.catalogue.list()
-            if cliproxy_ready
-            else runtime.available_models(object_info)
-        )
+        available = runtime.available_models(object_info)
         return JSONResponse(
             {
-                "status": "ready" if ready else "starting",
-                "cliproxyapi": "ready" if cliproxy_ready else "unavailable",
                 "comfyui": "ready" if object_info is not None else "unavailable",
-                "models": len(installed),
-                "unavailable_models": len(runtime.catalogue.list()) - len(installed),
+                "models": len(available),
+                "status": "ready" if object_info is not None else "starting",
+                "unavailable_models": len(runtime.catalogue.list()) - len(available),
             },
-            status_code=200 if ready else 503,
+            status_code=200 if object_info is not None else 503,
         )
 
-    @app.get("/metrics")
+    @app.get("/metrics", tags=["health"], operation_id="worker_metrics")
     async def metrics() -> Response:
         return Response(
             generate_latest(runtime.metric_registry),
             media_type=CONTENT_TYPE_LATEST,
         )
 
-    @app.get("/internal/info", tags=["internal"], operation_id="internal_info")
+    @app.get("/internal/info", tags=["internal"], operation_id="worker_info")
     async def internal_info(request: Request) -> Response:
         if denied := require(request):
             return denied
@@ -270,7 +188,7 @@ def create_app(settings: Settings) -> FastAPI:
     @app.post(
         "/internal/executions",
         tags=["internal"],
-        operation_id="create_internal_execution",
+        operation_id="create_worker_execution",
         response_model=ExecutionResult,
     )
     async def internal_execution(
@@ -279,18 +197,22 @@ def create_app(settings: Settings) -> FastAPI:
         if denied := require(request):
             return denied
         try:
-            form = await request.form()
             execution = ExecutionRequest.model_validate_json(spec)
+            cached = runtime.execution_outputs.get(execution.execution_id)
+            if cached is not None:
+                return JSONResponse(
+                    execution_result(request, execution.execution_id).model_dump()
+                )
             model = await runtime.model(execution.model)
             if model.operation != execution.operation:
-                return openai_error(
-                    f"Model '{model.id}' does not support {execution.operation}",
+                return worker_error(
+                    f"model '{model.id}' does not support {execution.operation}",
                     400,
                     "unsupported_operation",
-                    "model",
                 )
-            values = dict(execution.parameters)
+            values: dict[str, Any] = dict(execution.parameters)
             uploads: dict[str, list[str]] = {}
+            form = await request.form()
             for field_name, value in form.multi_items():
                 if field_name == "spec" or not hasattr(value, "read"):
                     continue
@@ -298,8 +220,8 @@ def create_app(settings: Settings) -> FastAPI:
                     value.size is not None
                     and value.size > settings.maximum_request_bytes
                 ):
-                    return openai_error(
-                        "input is too large", 413, "request_too_large", field_name
+                    return worker_error(
+                        f"{field_name} is too large", 413, "request_too_large"
                     )
                 uploaded = await runtime.comfy.upload(
                     value.filename or "input",
@@ -309,47 +231,29 @@ def create_app(settings: Settings) -> FastAPI:
                 uploads.setdefault(field_name, []).append(uploaded)
             for field_name, uploaded in uploads.items():
                 values[field_name] = uploaded[0] if len(uploaded) == 1 else uploaded
-        except ParameterError:
-            return openai_error("Request body is too large", 413, "request_too_large")
+            task, owner = await runtime.start_execution(
+                execution.execution_id, model, values
+            )
+        except GenerationQueueFull as exc:
+            return worker_error(str(exc), 429, "execution_queue_full")
         except (KeyError, TypeError, ValueError) as exc:
-            return openai_error(str(exc), 400, "invalid_execution")
-        outputs = runtime.execution_outputs.get(execution.execution_id)
-        if outputs is None:
-            try:
-                await runtime.reserve_generation()
-            except GenerationQueueFull as exc:
-                return openai_error(str(exc), 429, "rate_limit_exceeded")
-            task = asyncio.create_task(runtime.run(model, values))
-            runtime.execution_tasks[execution.execution_id] = task
-            try:
-                outputs = await task
+            return worker_error(str(exc), 400, "invalid_execution")
+
+        outputs = None
+        try:
+            outputs = await task
+            if owner:
                 runtime.execution_outputs[execution.execution_id] = outputs
-            except asyncio.CancelledError:
-                return openai_error("execution was cancelled", 409, "cancelled")
-            except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
-                return openai_error(str(exc), 502, "execution_failed")
-            finally:
-                runtime.execution_tasks.pop(execution.execution_id, None)
-                await runtime.release_generation()
-        result = ExecutionResult(
-            execution_id=execution.execution_id,
-            outputs=[
-                ExecutionOutput(
-                    index=index,
-                    content_type=output.media_type,
-                    filename=output.filename,
-                    url=str(
-                        request.url_for(
-                            "internal_execution_output",
-                            execution_id=execution.execution_id,
-                            index=index,
-                        )
-                    ),
-                )
-                for index, output in enumerate(outputs)
-            ],
+        except asyncio.CancelledError:
+            return worker_error("execution was cancelled", 409, "execution_cancelled")
+        except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
+            return worker_error(str(exc), 502, "execution_failed")
+        finally:
+            if owner:
+                await runtime.finish_execution(execution.execution_id, task, outputs)
+        return JSONResponse(
+            execution_result(request, execution.execution_id).model_dump()
         )
-        return JSONResponse(result.model_dump())
 
     @app.get(
         "/internal/executions/{execution_id}/outputs/{index}",
@@ -363,7 +267,7 @@ def create_app(settings: Settings) -> FastAPI:
             return denied
         outputs = runtime.execution_outputs.get(execution_id, [])
         if index < 0 or index >= len(outputs):
-            return openai_error("execution output was not found", 404, "not_found")
+            return worker_error("execution output was not found", 404, "not_found")
         output = outputs[index]
         return StreamingResponse(
             runtime.comfy.stream_output(output), media_type=output.media_type
@@ -372,7 +276,8 @@ def create_app(settings: Settings) -> FastAPI:
     @app.delete(
         "/internal/executions/{execution_id}",
         tags=["internal"],
-        operation_id="cancel_internal_execution",
+        operation_id="cancel_worker_execution",
+        status_code=204,
     )
     async def cancel_internal_execution(
         execution_id: str, request: Request
@@ -380,568 +285,14 @@ def create_app(settings: Settings) -> FastAPI:
         if denied := require(request):
             return denied
         task = runtime.execution_tasks.get(execution_id)
-        if task is None:
-            return Response(status_code=204)
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
         return Response(status_code=204)
 
     @app.get("/ping", include_in_schema=False)
     async def ping() -> Response:
-        """Serverless readiness contract: 204 while loading, 200 when ready."""
-        if await runtime.ready():
-            return Response(status_code=200)
-        return Response(status_code=204)
-
-    def model_object(model: WorkflowModel) -> dict[str, Any]:
-        capabilities: dict[str, Any] = {
-            "operation": model.operation,
-            "input_modalities": ["text", "image"]
-            if "image" in model.input_map
-            else ["text"],
-            "output_modalities": [model.output.type],
-            "parameters": sorted(model.input_map),
-        }
-        if model.operation == "image_edit":
-            capabilities["reference_images"] = {"minimum": 1, "maximum": 1}
-        return {
-            "id": model.id,
-            "object": "model",
-            "created": 0,
-            "owned_by": model.owned_by,
-            "capabilities": capabilities,
-        }
-
-    @app.get("/v1/models")
-    async def models(request: Request) -> Response:
-        if denied := require(request):
-            return denied
-        object_info = await runtime.object_info()
-        cliproxy_ready = runtime.cliproxy is not None and await runtime.cliproxy.ready()
-        available = (
-            runtime.catalogue.list()
-            if cliproxy_ready
-            else runtime.available_models(object_info)
-        )
-        return JSONResponse(
-            {
-                "object": "list",
-                "data": [model_object(model) for model in available],
-            }
-        )
-
-    @app.get("/v1/models/{model_id:path}")
-    async def retrieve_model(model_id: str, request: Request) -> Response:
-        if denied := require(request):
-            return denied
-        try:
-            model = runtime.catalogue.get(model_id)
-            try:
-                model = await runtime.model(model.id)
-            except KeyError:
-                if runtime.cliproxy is None or not await runtime.cliproxy.ready():
-                    raise
-        except KeyError:
-            return openai_error(
-                f"The model '{model_id}' does not exist",
-                404,
-                "model_not_found",
-                "model",
-            )
-        return JSONResponse(model_object(model))
-
-    @app.post("/v1/images/generations")
-    async def image_generations(request: Request) -> Response:
-        if denied := require(request):
-            return denied
-        try:
-            body = json.loads(await limited_body(request))
-            if not isinstance(body, dict):
-                raise TypeError
-            model = runtime.catalogue.get(body.get("model", ""))
-        except ParameterError:
-            return openai_error("Request body is too large", 413, "request_too_large")
-        except KeyError:
-            return openai_error(
-                "Requested model was not found", 404, "model_not_found", "model"
-            )
-        except (TypeError, ValueError):
-            return openai_error("Request body must be JSON", 400, "invalid_json")
-        if model.operation != "image_generation":
-            return openai_error(
-                f"Model '{model.id}' does not support image generation",
-                400,
-                "unsupported_operation",
-                "model",
-            )
-        prompt = body.get("prompt")
-        if not isinstance(prompt, str) or not prompt:
-            return openai_error(
-                "prompt is required", 400, "missing_required_parameter", "prompt"
-            )
-        try:
-            width, height = dimensions_parameter(body.get("size"))
-            count = integer_parameter(
-                body.get("n"), "n", default=1, minimum=1, maximum=4
-            )
-            seed = integer_parameter(body.get("seed"), "seed", minimum=0)
-            steps = integer_parameter(body.get("steps"), "steps", minimum=1)
-        except ParameterError as exc:
-            return openai_error(str(exc), 400, "invalid_value", exc.parameter)
-        response_format = body.get("response_format", "b64_json")
-        if response_format not in ("b64_json", "url"):
-            return openai_error(
-                "response_format must be b64_json or url",
-                400,
-                "invalid_value",
-                "response_format",
-            )
-        values = {
-            "prompt": prompt,
-            "negative_prompt": body.get("negative_prompt"),
-            "width": width,
-            "height": height,
-            "seed": seed,
-            "steps": steps,
-        }
-        try:
-            await runtime.reserve_generation()
-        except GenerationQueueFull as exc:
-            return openai_error(str(exc), 429, "rate_limit_exceeded")
-        try:
-            try:
-                model = await runtime.model(model.id)
-            except KeyError as exc:
-                return await fallback_image_generation(body, exc)
-            started = time.monotonic()
-            refs: list[OutputRef] = []
-            for index in range(count):
-                if seed is not None:
-                    values["seed"] = seed + index
-                refs.extend(await runtime.run(model, values))
-            runtime.generations.inc()
-            runtime.generation_duration.observe(time.monotonic() - started)
-            return JSONResponse(
-                {
-                    "created": int(time.time()),
-                    "data": await image_data(
-                        refs[:count], response_format, request_base_url(request)
-                    ),
-                }
-            )
-        except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
-            return await fallback_image_generation(body, exc)
-        finally:
-            await runtime.release_generation()
-
-    @app.post("/v1/images/edits")
-    async def image_edits(request: Request) -> Response:
-        if denied := require(request):
-            return denied
-        form = await request.form()
-        try:
-            model = runtime.catalogue.get(str(form.get("model", "")))
-        except KeyError:
-            return openai_error(
-                "Requested model was not found", 404, "model_not_found", "model"
-            )
-        if model.operation != "image_edit":
-            return openai_error(
-                f"Model '{model.id}' does not support image editing",
-                400,
-                "unsupported_operation",
-                "model",
-            )
-        images = list(form.getlist("image"))
-        if len(images) != 1:
-            return openai_error(
-                f"Model '{model.id}' requires exactly one reference image; "
-                f"received {len(images)}",
-                400,
-                "invalid_value",
-                "image",
-            )
-        if any(not hasattr(image, "read") for image in images):
-            return openai_error(
-                "image values must be uploaded files", 400, "invalid_value", "image"
-            )
-        if any(
-            image.size is not None and image.size > settings.maximum_request_bytes
-            for image in images
-        ):
-            return openai_error("image is too large", 413, "request_too_large", "image")
-        image = images[0]
-        image_content = await image.read()
-        image_name = image.filename or "image"
-        image_type = image.content_type or "application/octet-stream"
-        fallback_fields = {
-            key: str(form[key])
-            for key in ("n", "prompt", "response_format")
-            if form.get(key) is not None
-        }
-        prompt = str(form.get("prompt", ""))
-        if not prompt:
-            return openai_error(
-                "prompt is required", 400, "missing_required_parameter", "prompt"
-            )
-        try:
-            count = integer_parameter(
-                form.get("n"), "n", default=1, minimum=1, maximum=4
-            )
-            seed = integer_parameter(form.get("seed"), "seed", minimum=0)
-            steps = integer_parameter(form.get("steps"), "steps", minimum=1)
-        except ParameterError as exc:
-            return openai_error(str(exc), 400, "invalid_value", exc.parameter)
-        response_format = str(form.get("response_format", "b64_json"))
-        if response_format not in ("b64_json", "url"):
-            return openai_error(
-                "response_format must be b64_json or url",
-                400,
-                "invalid_value",
-                "response_format",
-            )
-        fallback_fields["response_format"] = response_format
-        size = str(form.get("size", "")).strip()
-        if size and size != "auto":
-            return openai_error(
-                "size is not supported for image edits", 400, "invalid_value", "size"
-            )
-        try:
-            uploaded = [
-                await runtime.comfy.upload(
-                    image_name,
-                    BytesIO(image_content),
-                    image_type,
-                )
-            ]
-        except httpx.HTTPError as exc:
-            return await fallback_image_edit(
-                fallback_fields,
-                image_name,
-                image_content,
-                image_type,
-                exc,
-            )
-        values: dict[str, Any] = {
-            "image": uploaded[0],
-            "prompt": prompt,
-            "seed": seed,
-            "steps": steps,
-        }
-        try:
-            await runtime.reserve_generation()
-        except GenerationQueueFull as exc:
-            return openai_error(str(exc), 429, "rate_limit_exceeded")
-        try:
-            try:
-                model = await runtime.model(model.id)
-            except KeyError as exc:
-                return await fallback_image_edit(
-                    fallback_fields,
-                    image_name,
-                    image_content,
-                    image_type,
-                    exc,
-                )
-            started = time.monotonic()
-            refs: list[OutputRef] = []
-            for index in range(count):
-                if seed is not None:
-                    values["seed"] = seed + index
-                refs.extend(await runtime.run(model, values))
-            runtime.generations.inc()
-            runtime.generation_duration.observe(time.monotonic() - started)
-            return JSONResponse(
-                {
-                    "created": int(time.time()),
-                    "data": await image_data(
-                        refs[:count], response_format, request_base_url(request)
-                    ),
-                }
-            )
-        except (RuntimeError, TimeoutError, httpx.HTTPError) as exc:
-            return await fallback_image_edit(
-                fallback_fields,
-                image_name,
-                image_content,
-                image_type,
-                exc,
-            )
-        finally:
-            await runtime.release_generation()
-
-    async def image_data(
-        refs: list[OutputRef], response_format: str, base_url: str
-    ) -> list[dict[str, Any]]:
-        data = []
-        for ref in refs:
-            if response_format == "url":
-                query = urlencode(
-                    {
-                        "filename": ref.filename,
-                        "subfolder": ref.subfolder,
-                        "type": ref.type,
-                    }
-                )
-                data.append({"url": f"{base_url}/view?{query}"})
-            else:
-                output = await runtime.comfy.fetch_output(ref)
-                data.append({"b64_json": base64.b64encode(output.content).decode()})
-        return data
-
-    def request_base_url(request: Request) -> str:
-        return settings.public_base_url or str(request.base_url).rstrip("/")
-
-    async def execute_video(
-        job: VideoJob,
-        model: WorkflowModel,
-        values: dict[str, Any],
-        fallback_body: dict[str, Any],
-        primary_error: Exception | None,
-    ) -> None:
-        try:
-            job.status = "in_progress"
-            job.lease_expires_at = int(
-                time.time() + runtime.settings.workflow_timeout + 60
-            )
-            runtime.store_job(job)
-            try:
-                if primary_error is not None:
-                    raise primary_error
-                job.output = (await runtime.run(model, values))[0]
-            except Exception as comfy_error:
-                if runtime.cliproxy is None:
-                    raise
-                try:
-                    job.output_url = await runtime.cliproxy.generate_video(
-                        fallback_body
-                    )
-                except Exception as cliproxy_error:
-                    raise RuntimeError(
-                        f"ComfyUI failed: {comfy_error}; "
-                        f"CLI Proxy API failed: {cliproxy_error}"
-                    ) from cliproxy_error
-            job.status = "completed"
-            job.lease_expires_at = None
-            runtime.store_job(job)
-            runtime.video_jobs.labels("completed").inc()
-        except Exception as exc:  # noqa: BLE001 - task boundary exposes errors through job status
-            job.status = "failed"
-            job.error = str(exc)
-            job.lease_expires_at = None
-            runtime.store_job(job)
-            runtime.video_jobs.labels("failed").inc()
-        finally:
-            await runtime.release_generation()
-
-    def video_response(job: VideoJob) -> JSONResponse:
-        return JSONResponse(
-            {
-                "id": job.id,
-                "object": "video",
-                "model": job.model,
-                "status": job.status,
-                "created_at": job.created_at,
-                "error": job.error,
-                "output_url": job.output_url,
-            }
-        )
-
-    async def wait_for_video(job: VideoJob) -> VideoJob:
-        while job.status in {"queued", "in_progress"}:
-            await asyncio.sleep(1)
-            job = runtime.get_job(job.id) or job
-        return job
-
-    @app.post("/v1/videos")
-    async def create_video(request: Request) -> Response:
-        if denied := require(request):
-            return denied
-        content_type = request.headers.get("content-type", "")
-        primary_error: Exception | None = None
-        if content_type.startswith("multipart/form-data"):
-            form = await request.form()
-            body: dict[str, Any] = {
-                key: str(value)
-                for key, value in form.items()
-                if not hasattr(value, "read")
-            }
-            image = form.get("image")
-            fallback_body = dict(body)
-            if image is not None and hasattr(image, "read"):
-                if (
-                    image.size is not None
-                    and image.size > settings.maximum_request_bytes
-                ):
-                    return openai_error(
-                        "image is too large", 413, "request_too_large", "image"
-                    )
-                image_content = await image.read()
-                image_type = image.content_type or "application/octet-stream"
-                fallback_body["image"] = {
-                    "type": "image_url",
-                    "url": (
-                        f"data:{image_type};base64,"
-                        + base64.b64encode(image_content).decode()
-                    ),
-                }
-                try:
-                    body["image"] = await runtime.comfy.upload(
-                        image.filename or "image",
-                        BytesIO(image_content),
-                        image_type,
-                    )
-                except httpx.HTTPError as exc:
-                    primary_error = exc
-                    body["image"] = fallback_body["image"]
-            for field in ("width", "height", "length", "seed", "steps"):
-                if field in body:
-                    try:
-                        body[field] = int(body[field])
-                    except (TypeError, ValueError):
-                        return openai_error(
-                            f"{field} must be an integer", 400, "invalid_value", field
-                        )
-        else:
-            try:
-                body = json.loads(await limited_body(request))
-                if not isinstance(body, dict):
-                    raise TypeError
-            except ParameterError:
-                return openai_error(
-                    "Request body is too large", 413, "request_too_large"
-                )
-            except (TypeError, ValueError):
-                return openai_error(
-                    "Request body must be JSON or multipart form", 400, "invalid_json"
-                )
-            fallback_body = dict(body)
-        try:
-            model = runtime.catalogue.get(body.get("model", ""))
-        except KeyError:
-            return openai_error(
-                "Requested model was not found", 404, "model_not_found", "model"
-            )
-        if model.operation != "video_generation":
-            return openai_error(
-                f"Model '{model.id}' does not support video generation",
-                400,
-                "unsupported_operation",
-                "model",
-            )
-        prompt = body.get("prompt")
-        if not isinstance(prompt, str) or not prompt:
-            return openai_error(
-                "prompt is required", 400, "missing_required_parameter", "prompt"
-            )
-        if "image" in model.input_map and not body.get("image"):
-            return openai_error(
-                "image is required for this video model",
-                400,
-                "missing_required_parameter",
-                "image",
-            )
-        values = dict(body)
-        try:
-            width, height = dimensions_parameter(body.get("size"))
-            if width is not None:
-                values["width"], values["height"] = width, height
-            for parameter in ("length", "seed", "steps"):
-                if parameter in body:
-                    values[parameter] = integer_parameter(
-                        body[parameter],
-                        parameter,
-                        minimum=0 if parameter == "seed" else 1,
-                    )
-        except ParameterError as exc:
-            return openai_error(str(exc), 400, "invalid_value", exc.parameter)
-        if body.get("seconds") is not None:
-            try:
-                seconds = float(body["seconds"])
-            except (TypeError, ValueError):
-                return openai_error(
-                    "seconds must be a number", 400, "invalid_value", "seconds"
-                )
-            if seconds <= 0 or seconds > 15:
-                return openai_error(
-                    "seconds must be between 0 and 15", 400, "invalid_value", "seconds"
-                )
-            fallback_body["seconds"] = seconds
-            frames = max(5, round(seconds * 24))
-            values["length"] = frames + (5 - frames % 17) % 17
-        if primary_error is None:
-            try:
-                model = await runtime.model(model.id)
-            except KeyError as exc:
-                primary_error = exc
-        requested_id = request.headers.get("x-comfy-job-id", "")
-        if requested_id and (
-            len(requested_id) > 128
-            or any(
-                character not in "-0123456789_abcdefghijklmnopqrstuvwxyz"
-                for character in requested_id
-            )
-        ):
-            return openai_error("Invalid video job ID", 400, "invalid_job_id")
-        if requested_id and (existing := runtime.get_job(requested_id)) is not None:
-            if request.query_params.get("wait", "").lower() in {"1", "true", "yes"}:
-                existing = await wait_for_video(existing)
-            return video_response(existing)
-        try:
-            await runtime.reserve_generation()
-        except GenerationQueueFull as exc:
-            return openai_error(str(exc), 429, "rate_limit_exceeded")
-        job = VideoJob(
-            id=requested_id or f"video_{uuid.uuid4().hex}",
-            model=model.id,
-            lease_expires_at=int(
-                time.time()
-                + settings.workflow_timeout * settings.maximum_pending_generations
-                + 60
-            ),
-        )
-        runtime.jobs[job.id] = job
-        runtime.store_job(job)
-        runtime.video_jobs_created.inc()
-        task = runtime.start_background_task(
-            execute_video(job, model, values, fallback_body, primary_error)
-        )
-        if request.query_params.get("wait", "").lower() in {"1", "true", "yes"}:
-            await asyncio.shield(task)
-        return video_response(job)
-
-    @app.get("/v1/videos/{job_id}")
-    async def get_video(job_id: str, request: Request) -> Response:
-        if denied := require(request):
-            return denied
-        job = runtime.get_job(job_id)
-        if not job:
-            return openai_error("Video job was not found", 404, "not_found")
-        return JSONResponse(
-            {
-                "id": job.id,
-                "object": "video",
-                "model": job.model,
-                "status": job.status,
-                "created_at": job.created_at,
-                "error": job.error,
-                "output_url": job.output_url,
-            }
-        )
-
-    @app.get("/v1/videos/{job_id}/content")
-    async def video_content(job_id: str, request: Request) -> Response:
-        if denied := require(request):
-            return denied
-        job = runtime.get_job(job_id)
-        if not job or (not job.output and not job.output_url):
-            return openai_error("Video is not ready", 409, "video_not_ready")
-        if output_url := job.output_url:
-            return Response(status_code=302, headers={"Location": output_url})
-        return StreamingResponse(
-            runtime.comfy.stream_output(job.output),
-            media_type=job.output.media_type,
-        )
+        return Response(status_code=200 if await runtime.ready() else 204)
 
     @app.websocket("/ws")
     async def websocket_proxy(websocket: WebSocket) -> None:
@@ -985,6 +336,7 @@ def create_app(settings: Settings) -> FastAPI:
     @app.api_route(
         "/{path:path}",
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+        include_in_schema=False,
     )
     async def comfy_proxy(path: str, request: Request) -> Response:
         is_native = any(
@@ -1003,13 +355,13 @@ def create_app(settings: Settings) -> FastAPI:
             )
         try:
             body = await limited_body(request)
-        except ParameterError:
-            return openai_error("Request body is too large", 413, "request_too_large")
+        except ValueError as exc:
+            return worker_error(str(exc), 413, "request_too_large")
         headers = {
             key: value
             for key, value in request.headers.items()
             if key.lower()
-            not in HOP_HEADERS | {"host", "authorization", "content-length"}
+            not in HOP_HEADERS | {"authorization", "content-length", "host"}
         }
         upstream_request = runtime.comfy.http.build_request(
             request.method,
@@ -1040,6 +392,33 @@ def create_app(settings: Settings) -> FastAPI:
             headers=response_headers,
             background=BackgroundTask(upstream.aclose),
         )
+
+    def current_openapi() -> dict[str, Any]:
+        if app.openapi_schema is None:
+            schema = get_openapi(
+                title=app.title,
+                version=app.version,
+                description=app.description,
+                routes=app.routes,
+            )
+            schema["paths"] = {
+                path: value
+                for path, value in schema["paths"].items()
+                if path.startswith(("/health", "/internal/")) or path == "/metrics"
+            }
+            components = schema.setdefault("components", {})
+            components.setdefault("securitySchemes", {})["bearerAuth"] = {
+                "scheme": "bearer",
+                "type": "http",
+            }
+            for path, value in schema["paths"].items():
+                if path.startswith("/internal/"):
+                    for operation in value.values():
+                        operation["security"] = [{"bearerAuth": []}]
+            app.openapi_schema = schema
+        return app.openapi_schema
+
+    app.openapi = current_openapi
 
     return app
 

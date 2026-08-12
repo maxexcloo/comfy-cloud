@@ -109,53 +109,51 @@ def settings(tmp_path: Path) -> ControlSettings:
 
 def worker_app() -> FastAPI:
     app = FastAPI()
+    outputs: dict[str, tuple[bytes, str, str]] = {}
 
     @app.get("/health/ready")
     async def ready() -> dict[str, str]:
         return {"status": "ready"}
 
-    @app.post("/v1/images/generations")
-    async def image(request: Request) -> dict[str, object]:
-        body = await request.json()
-        assert body["model"] == "worker/image"
-        assert "provider" not in body
-        return {"created": 1, "data": [{"b64_json": "aW1hZ2U="}]}
-
-    @app.post("/v1/images/edits")
-    async def image_edit(request: Request) -> dict[str, object]:
+    @app.post("/internal/executions")
+    async def execute(request: Request) -> dict[str, object]:
         form = await request.form()
-        images = form.getlist("image")
-        assert form["model"] == "worker/image-edit"
-        assert "provider" not in form
-        assert [image.filename for image in images] == ["mara.png", "elise.png"]
-        assert [await image.read() for image in images] == [b"mara", b"elise"]
-        return {"created": 1, "data": [{"b64_json": "ZWRpdA=="}]}
-
-    @app.post("/v1/videos")
-    async def video(request: Request) -> dict[str, object]:
-        assert request.query_params["wait"] == "true"
-        assert request.headers["x-comfy-job-id"].startswith("video_")
-        if request.headers["content-type"].startswith("multipart/form-data"):
-            form = await request.form()
-            assert form["model"] == "worker/video"
-            assert await form["image"].read() == b"image"
+        spec = json.loads(str(form["spec"]))
+        execution_id = str(spec["execution_id"])
+        operation = spec["operation"]
+        if operation == "image_generation":
+            assert spec["model"] == "worker/image"
+            output = (b"image", "image/png", "image.png")
+        elif operation == "image_edit":
+            assert spec["model"] == "worker/image-edit"
+            images = form.getlist("image")
+            assert [image.filename for image in images] == ["mara.png", "elise.png"]
+            assert [await image.read() for image in images] == [b"mara", b"elise"]
+            output = (b"edit", "image/png", "edit.png")
         else:
-            body = await request.json()
-            assert body["model"] == "worker/video"
-            assert "provider" not in body
+            assert spec["model"] == "worker/video"
+            images = form.getlist("image")
+            if images:
+                assert await images[0].read() == b"image"
+            output = (b"video", "video/mp4", "video.mp4")
+        outputs[execution_id] = output
         return {
-            "id": "upstream-video",
-            "object": "video",
-            "model": "worker/video",
+            "execution_id": execution_id,
+            "outputs": [
+                {
+                    "content_type": output[1],
+                    "filename": output[2],
+                    "index": 0,
+                    "url": f"http://worker/internal/executions/{execution_id}/outputs/0",
+                }
+            ],
             "status": "completed",
-            "created_at": 1,
-            "error": None,
-            "output_url": "https://objects.example/video.mp4",
         }
 
-    @app.get("/v1/videos/upstream-video/content")
-    async def video_content() -> Response:
-        return Response(b"video", media_type="video/mp4")
+    @app.get("/internal/executions/{execution_id}/outputs/0")
+    async def output(execution_id: str) -> Response:
+        content, content_type, _ = outputs[execution_id]
+        return Response(content, media_type=content_type)
 
     return app
 
@@ -222,6 +220,10 @@ async def test_controller_prefers_internal_execution_contract(tmp_path: Path):
         app.state.controller.store.histories()[0]["media"][0]["filename"]
         == "internal.png"
     )
+    assert (
+        app.state.controller.store.histories()[0]["attempts"][0]["status"]
+        == "completed"
+    )
     await app.state.controller.close()
 
 
@@ -262,14 +264,14 @@ async def test_controller_lists_and_routes_models(tmp_path):
             headers={"Authorization": "Bearer control-key"},
             json={"model": "worker/worker/image", "prompt": "test"},
         )
-        status = await client.get("/api/status")
+        status = await client.get("/ops/status")
         history = status.json()["history"][0]
         media = await client.get(
-            f"/api/history/{history['id']}/media/{history['media'][0]['id']}"
+            f"/ops/history/{history['id']}/media/{history['media'][0]['id']}"
         )
         logout = await client.post("/logout", follow_redirects=False)
         denied_media = await client.get(
-            f"/api/history/{history['id']}/media/{history['media'][0]['id']}"
+            f"/ops/history/{history['id']}/media/{history['media'][0]['id']}"
         )
 
     assert health.json() == {
@@ -332,16 +334,16 @@ async def test_settings_are_admin_only_versioned_and_encrypted(tmp_path):
         transport=httpx.ASGITransport(app=app), base_url="http://control"
     ) as client:
         denied = await client.get(
-            "/api/settings", headers={"Authorization": "Bearer control-key"}
+            "/ops/settings", headers={"Authorization": "Bearer control-key"}
         )
         await sign_in(client)
-        initial = await client.get("/api/settings")
+        initial = await client.get("/ops/settings")
         revision = initial.json()["revision"]
         missing_confirmation = await client.patch(
-            "/api/settings", json={"revision": revision, "values": {}}
+            "/ops/settings", json={"revision": revision, "values": {}}
         )
         updated = await client.patch(
-            "/api/settings",
+            "/ops/settings",
             headers={"x-comfy-control-settings": "update"},
             json={
                 "revision": revision,
@@ -352,7 +354,7 @@ async def test_settings_are_admin_only_versioned_and_encrypted(tmp_path):
             },
         )
         invalid = await client.patch(
-            "/api/settings",
+            "/ops/settings",
             headers={"x-comfy-control-settings": "update"},
             json={
                 "revision": updated.json()["revision"],
@@ -363,7 +365,7 @@ async def test_settings_are_admin_only_versioned_and_encrypted(tmp_path):
             },
         )
         stale = await client.patch(
-            "/api/settings",
+            "/ops/settings",
             headers={"x-comfy-control-settings": "update"},
             json={"revision": revision, "values": {"worker_image": "stale"}},
         )
@@ -446,16 +448,16 @@ async def test_dashboard_tests_provider_and_shows_control_logs(tmp_path):
     ) as client:
         await sign_in(client)
         tested = await client.post(
-            "/api/providers/worker/test",
+            "/ops/providers/worker/test",
             json={
                 "model": "public/image",
                 "prompt": "test from the dashboard",
                 "size": "512x512",
             },
         )
-        logs = await client.get("/api/providers/worker/logs")
+        logs = await client.get("/ops/providers/worker/logs")
         media = await client.get(
-            "/api/history/"
+            "/ops/history/"
             f"{tested.json()['history_id']}/media/{tested.json()['media'][0]['id']}"
         )
 
@@ -477,9 +479,21 @@ async def test_controller_rewrites_worker_image_url_to_archived_media(tmp_path):
     async def provider_ready() -> dict[str, str]:
         return {"status": "ready"}
 
-    @provider_app.post("/v1/images/generations")
-    async def provider_generation() -> dict[str, object]:
-        return {"created": 1, "data": [{"url": "/generated.png"}]}
+    @provider_app.post("/internal/executions")
+    async def provider_generation(request: Request) -> dict[str, object]:
+        spec = json.loads(str((await request.form())["spec"]))
+        return {
+            "execution_id": spec["execution_id"],
+            "outputs": [
+                {
+                    "content_type": "image/png",
+                    "filename": "generated.png",
+                    "index": 0,
+                    "url": "http://worker/generated.png",
+                }
+            ],
+            "status": "completed",
+        }
 
     @provider_app.get("/generated.png")
     async def provider_media() -> Response:
@@ -497,14 +511,18 @@ async def test_controller_rewrites_worker_image_url_to_archived_media(tmp_path):
         generated = await client.post(
             "/v1/images/generations",
             headers={"Authorization": "Bearer control-key"},
-            json={"model": "public/image", "prompt": "test"},
+            json={
+                "model": "public/image",
+                "prompt": "test",
+                "response_format": "url",
+            },
         )
         archived_url = generated.json()["data"][0]["url"]
         archived = await client.get(
             archived_url, headers={"Authorization": "Bearer control-key"}
         )
 
-    assert archived_url.startswith("http://control/api/history/")
+    assert archived_url.startswith("http://control/ops/history/")
     assert archived.content == b"archived-image"
     assert archived.headers["content-type"] == "image/png"
     await app.state.controller.close()
@@ -586,8 +604,8 @@ async def test_controller_owns_video_job_and_output_url(tmp_path):
 
     assert submitted.status_code == 200
     assert status.json()["model"] == "public/video"
-    assert content.status_code == 302
-    assert content.headers["location"] == "https://objects.example/video.mp4"
+    assert content.status_code == 200
+    assert content.content == b"video"
     await app.state.controller.close()
 
 
@@ -690,27 +708,6 @@ async def test_controller_persists_multipart_video_until_completion(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_controller_archives_video_from_worker_content(tmp_path):
-    app = create_app(settings(tmp_path))
-    await attach_worker(app)
-    controller = app.state.controller
-    controller.store.save_history(
-        "video_history",
-        "video_generation",
-        "public/video",
-        '{"model":"public/video"}',
-    )
-
-    await controller.archive_video("video_history", "worker", {"id": "upstream-video"})
-
-    archived = controller.store.media_for_history("video_history")
-    assert len(archived) == 1
-    assert Path(archived[0].path).read_bytes() == b"video"
-    assert archived[0].content_type == "video/mp4"
-    await controller.close()
-
-
-@pytest.mark.asyncio
 async def test_history_and_media_survive_controller_restart(tmp_path):
     configured = settings(tmp_path)
     first = create_app(configured)
@@ -731,10 +728,10 @@ async def test_history_and_media_survive_controller_restart(tmp_path):
         transport=httpx.ASGITransport(app=second), base_url="http://control"
     ) as client:
         await sign_in(client)
-        history = await client.get("/api/history")
+        history = await client.get("/ops/history")
         item = history.json()["data"][0]
         media = await client.get(
-            f"/api/history/{history_id}/media/{item['media'][0]['id']}"
+            f"/ops/history/{history_id}/media/{item['media'][0]['id']}"
         )
 
     assert item["id"] == history_id
@@ -759,7 +756,7 @@ async def test_dashboard_paginates_persisted_history_and_events(tmp_path):
         transport=httpx.ASGITransport(app=app), base_url="http://control"
     ) as client:
         response = await client.get(
-            "/api/status?event_page=2&history_page=2",
+            "/ops/status?event_page=2&history_page=2",
             headers={"Authorization": "Bearer control-key"},
         )
 
@@ -815,10 +812,29 @@ providers:
         async def ready() -> dict[str, str]:
             return {"status": "ready"}
 
-        @provider_app.post("/v1/images/generations")
-        async def image() -> JSONResponse:
+        @provider_app.post("/internal/executions")
+        async def image(request: Request) -> JSONResponse:
             calls[status_code] = calls.get(status_code, 0) + 1
-            return JSONResponse({"provider": status_code}, status_code=status_code)
+            spec = json.loads(str((await request.form())["spec"]))
+            return JSONResponse(
+                {
+                    "execution_id": spec["execution_id"],
+                    "outputs": [
+                        {
+                            "content_type": "image/png",
+                            "filename": "image.png",
+                            "index": 0,
+                            "url": f"http://fallback/output/{status_code}",
+                        }
+                    ],
+                    "status": "completed",
+                },
+                status_code=status_code,
+            )
+
+        @provider_app.get("/output/{code}")
+        async def output(code: int) -> Response:
+            return Response(str(code).encode(), media_type="image/png")
 
         return provider_app
 
@@ -855,9 +871,14 @@ async def test_controller_reserves_provider_before_readiness_check(tmp_path):
         assert runtime.active_requests == 1
         return {"status": "ready"}
 
-    @provider_app.post("/v1/images/generations")
-    async def image() -> dict[str, object]:
-        return {"data": []}
+    @provider_app.post("/internal/executions")
+    async def image(request: Request) -> dict[str, object]:
+        spec = json.loads(str((await request.form())["spec"]))
+        return {
+            "execution_id": spec["execution_id"],
+            "outputs": [],
+            "status": "completed",
+        }
 
     await runtime.client.aclose()
     runtime.client = httpx.AsyncClient(
@@ -931,12 +952,12 @@ providers:
         transport=httpx.ASGITransport(app=app), base_url="http://control"
     ) as client:
         bearer = {"Authorization": "Bearer control-key"}
-        status = await client.get("/api/status", headers=bearer)
+        status = await client.get("/ops/status", headers=bearer)
         rejected = await client.post(
-            "/api/providers/worker/actions/deploy", headers=bearer
+            "/ops/providers/worker/actions/deploy", headers=bearer
         )
         deployed = await client.post(
-            "/api/providers/worker/actions/deploy",
+            "/ops/providers/worker/actions/deploy",
             headers={
                 **bearer,
                 "x-comfy-control-action": "worker/deploy",
@@ -1000,12 +1021,12 @@ providers:
     ) as client:
         await sign_in(client)
         deployed = await client.post(
-            "/api/providers/worker/actions/deploy",
+            "/ops/providers/worker/actions/deploy",
             headers={"x-comfy-control-action": "worker/deploy"},
         )
-        status = await client.get("/api/status")
+        status = await client.get("/ops/status")
         destroyed_response = await client.post(
-            "/api/providers/worker/actions/destroy",
+            "/ops/providers/worker/actions/destroy",
             headers={"x-comfy-control-action": "worker/destroy"},
         )
 
@@ -1384,3 +1405,36 @@ def test_media_library_fuzzy_search_filters_and_lineage(tmp_path: Path):
     assert result["data"][0]["parameters"]["steps"] == 8
     assert [item["filename"] for item in lineage["derivatives"]] == ["output.png"]
     store.close()
+
+
+def test_media_metadata_and_schema_migrations_are_persisted(tmp_path: Path):
+    store = ControlStore(tmp_path / "control.db")
+    store.save_history("image_1", "image_generation", "public/image", "{}")
+    image = tmp_path / "dimensions.png"
+    image.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + b"\0" * 8
+        + (640).to_bytes(4, "big")
+        + (480).to_bytes(4, "big")
+    )
+    store.save_media(
+        "image_1", "image/png", "dimensions.png", image, image.stat().st_size
+    )
+    item = store.media_library()["data"][0]
+    versions = store.connection.execute(
+        "SELECT version FROM schema_migrations ORDER BY version"
+    ).fetchall()
+
+    assert (item["width"], item["height"]) == (640, 480)
+    assert [row["version"] for row in versions] == [1]
+    store.close()
+
+
+def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):
+    app = create_app(settings(tmp_path))
+    schema = app.openapi()
+
+    assert schema["info"]["version"] == "current"
+    assert "/ops/media" in schema["paths"]
+    assert not any(path.startswith("/api/") for path in schema["paths"])
+    assert schema["components"]["securitySchemes"]["bearerAuth"]["scheme"] == "bearer"

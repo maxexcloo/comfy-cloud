@@ -16,17 +16,16 @@ from urllib.parse import quote, urlencode
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
     JSONResponse,
     RedirectResponse,
     Response,
-    StreamingResponse,
 )
 from jinja2 import Environment, select_autoescape
 from pydantic import ValidationError
-from starlette.background import BackgroundTask
 
 from .control_config import ControlSettings
 from .control_preferences import ConfigurationConflict
@@ -599,13 +598,39 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     async def operations_media(request: Request) -> Response:
         if not bearer_authorised(request, settings):
             return Response(status_code=401)
-        result = controller.store.media_library(
-            query=request.query_params.get("q", ""),
-            include_inputs=request.query_params.get("include_inputs") == "true",
-            sort=request.query_params.get("sort", "newest"),
-            limit=min(max(int(request.query_params.get("limit", "50")), 1), 500),
-        )
+        try:
+            filters = []
+            for name in ("model", "operation", "provider", "status"):
+                if value := request.query_params.get(name):
+                    filters.append({"path": name, "operator": "equals", "value": value})
+            for value in request.query_params.getlist("filter"):
+                path, operator, raw = value.split("|", 2)
+                try:
+                    parsed: object = float(raw)
+                except ValueError:
+                    parsed = raw
+                filters.append({"path": path, "operator": operator, "value": parsed})
+            result = controller.store.media_library(
+                query=request.query_params.get("q", ""),
+                filters=filters,
+                include_inputs=request.query_params.get("include_inputs") == "true",
+                sort=request.query_params.get("sort", "newest"),
+                limit=min(max(int(request.query_params.get("limit", "50")), 1), 500),
+                offset=max(int(request.query_params.get("offset", "0")), 0),
+            )
+        except ValueError as exc:
+            return error(str(exc), 400, "invalid_filter")
         return JSONResponse(result)
+
+    @app.get(
+        "/ops/media/facets",
+        tags=["operations"],
+        operation_id="media_facets",
+    )
+    async def operations_media_facets(request: Request) -> Response:
+        if not bearer_authorised(request, settings):
+            return Response(status_code=401)
+        return JSONResponse(controller.store.media_facets())
 
     @app.get(
         "/ops/media/{asset_id}/lineage",
@@ -618,6 +643,36 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         if controller.store.media_asset(asset_id) is None:
             return error("media was not found", 404, "not_found")
         return JSONResponse(controller.store.media_lineage(asset_id))
+
+    @app.get(
+        "/ops/media/{asset_id}",
+        tags=["operations"],
+        operation_id="media_detail",
+    )
+    async def operations_media_detail(asset_id: int, request: Request) -> Response:
+        if not bearer_authorised(request, settings):
+            return Response(status_code=401)
+        detail = controller.store.media_detail(asset_id)
+        if detail is None:
+            return error("media was not found", 404, "not_found")
+        return JSONResponse(detail)
+
+    @app.get(
+        "/ops/media/{asset_id}/content",
+        tags=["operations"],
+        operation_id="media_content",
+    )
+    async def operations_media_content(asset_id: int, request: Request) -> Response:
+        if not bearer_authorised(request, settings):
+            return Response(status_code=401)
+        asset = controller.store.media_asset(asset_id)
+        if asset is None or not Path(asset.path).is_file():
+            return error("media was not found", 404, "not_found")
+        return FileResponse(
+            asset.path,
+            media_type=asset.content_type,
+            headers={"X-Content-Type-Options": "nosniff"},
+        )
 
     @app.get("/login")
     async def login(request: Request) -> Response:
@@ -667,7 +722,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         response.delete_cookie(SESSION_COOKIE, path="/")
         return response
 
-    @app.get("/api/status")
+    @app.get("/ops/status", tags=["operations"], operation_id="operations_status")
     async def status(request: Request) -> Response:
         if not (
             ui_authorised(request, settings) or bearer_authorised(request, settings)
@@ -770,7 +825,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             }
         )
 
-    @app.get("/api/providers/{provider_id}/logs")
+    @app.get(
+        "/ops/providers/{provider_id}/logs",
+        tags=["operations"],
+        operation_id="provider_logs",
+    )
     async def provider_logs(provider_id: str, request: Request) -> Response:
         if not (
             ui_authorised(request, settings) or bearer_authorised(request, settings)
@@ -784,13 +843,13 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         except KeyError as exc:
             return error(str(exc), 404, "provider_not_found")
 
-    @app.get("/api/settings")
+    @app.get("/ops/settings", tags=["operations"], operation_id="get_preferences")
     async def get_settings(request: Request) -> Response:
         if not ui_authorised(request, settings):
             return Response(status_code=401)
         return JSONResponse(controller.describe_configuration())
 
-    @app.patch("/api/settings")
+    @app.patch("/ops/settings", tags=["operations"], operation_id="update_preferences")
     async def update_settings(request: Request) -> Response:
         if not ui_authorised(request, settings):
             return Response(status_code=401)
@@ -825,7 +884,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         controller.store.event("info", "control configuration updated")
         return JSONResponse(controller.describe_configuration())
 
-    @app.get("/api/history")
+    @app.get("/ops/history", tags=["operations"], operation_id="generation_history")
     async def history(request: Request) -> Response:
         if not ui_authorised(request, settings):
             return Response(status_code=401)
@@ -848,7 +907,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             }
         )
 
-    @app.get("/api/history/{history_id}/media/{media_id}")
+    @app.get(
+        "/ops/history/{history_id}/media/{media_id}",
+        tags=["operations"],
+        operation_id="generation_media",
+    )
     async def history_media(
         history_id: str, media_id: int, request: Request
     ) -> Response:
@@ -872,7 +935,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             },
         )
 
-    @app.post("/api/providers/{provider_id}/actions/{action_name}")
+    @app.post(
+        "/ops/providers/{provider_id}/actions/{action_name}",
+        tags=["operations"],
+        operation_id="provider_action",
+    )
     async def provider_action(
         provider_id: str, action_name: str, request: Request
     ) -> Response:
@@ -916,7 +983,11 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             return error(exception_message(exc), 502, "action_failed")
         return JSONResponse(result)
 
-    @app.post("/api/providers/{provider_id}/test")
+    @app.post(
+        "/ops/providers/{provider_id}/test",
+        tags=["operations"],
+        operation_id="test_provider",
+    )
     async def provider_test(provider_id: str, request: Request) -> Response:
         if not (
             ui_authorised(request, settings) or bearer_authorised(request, settings)
@@ -961,28 +1032,41 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         controller.store.update_history(
             history_id, "in_progress", provider=target.provider
         )
+        attempt_id = controller.store.start_attempt(history_id, target.provider)
         started = time.monotonic()
         try:
-            response = await controller.forward(
-                target,
-                "POST",
-                "/v1/images/generations",
-                json.dumps(
-                    {
-                        "model": target.model,
-                        "n": 1,
-                        "prompt": prompt,
-                        "response_format": "b64_json",
-                        "size": size,
-                    },
-                    separators=(",", ":"),
-                ).encode(),
-                {"content-type": "application/json"},
-                request_id,
-            )
-            if not response.is_success:
-                raise RuntimeError(f"provider returned HTTP {response.status_code}")
-            await controller.archive_images(history_id, target.provider, response)
+            if controller.providers[target.provider].config.type == "proxy":
+                response = await controller.forward(
+                    target,
+                    "POST",
+                    "/v1/images/generations",
+                    json.dumps(
+                        {
+                            "model": target.model,
+                            "n": 1,
+                            "prompt": prompt,
+                            "response_format": "b64_json",
+                            "size": size,
+                        },
+                        separators=(",", ":"),
+                    ).encode(),
+                    {"content-type": "application/json"},
+                    request_id,
+                )
+                if not response.is_success:
+                    raise RuntimeError(f"provider returned HTTP {response.status_code}")
+                await controller.archive_images(history_id, target.provider, response)
+            else:
+                width, height = size.split("x", 1)
+                outputs = await controller.execute_internal(
+                    target,
+                    history_id,
+                    "image_generation",
+                    {"height": int(height), "prompt": prompt, "width": int(width)},
+                )
+                for content, content_type, filename in outputs:
+                    controller.save_media(history_id, content, content_type, filename)
+            controller.store.finish_attempt(attempt_id, "completed")
             controller.store.update_history(
                 history_id, "completed", provider=target.provider
             )
@@ -994,6 +1078,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             )
         except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
             message = exception_message(exc)
+            controller.store.finish_attempt(attempt_id, "failed", message)
             controller.store.update_history(history_id, "failed", error=message)
             controller.store.event(
                 "error", message, provider=target.provider, request_id=request_id
@@ -1097,9 +1182,10 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             controller.store.update_history(
                 history_id, "in_progress", provider=target.provider
             )
+            attempt_id = controller.store.start_attempt(history_id, target.provider)
             try:
-                outputs = None
-                if controller.providers[target.provider].config.type != "proxy":
+                is_proxy = controller.providers[target.provider].config.type == "proxy"
+                if not is_proxy:
                     parameters = canonical_parameters(forwarded)
                     count = int(forwarded.get("n", 1))
                     outputs = []
@@ -1113,11 +1199,10 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                             operation,
                             indexed,
                         )
-                        if result is None:
-                            outputs = None
-                            break
                         outputs.extend(result)
-                if outputs is None:
+                    response = None
+                else:
+                    outputs = None
                     response = await controller.forward(
                         target,
                         request.method,
@@ -1126,10 +1211,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                         headers,
                         request_id,
                     )
-                else:
-                    response = None
             except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
                 message = exception_message(exc)
+                controller.store.finish_attempt(attempt_id, "failed", message)
                 failures.append(f"{target.provider}: {message}")
                 controller.store.event(
                     "error",
@@ -1139,6 +1223,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 )
                 continue
             if response is None or response.is_success:
+                controller.store.finish_attempt(attempt_id, "completed")
                 if response is not None:
                     await controller.archive_images(
                         history_id, target.provider, response
@@ -1178,6 +1263,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     },
                 )
             assert response is not None
+            controller.store.finish_attempt(
+                attempt_id, "failed", f"HTTP {response.status_code}"
+            )
             failures.append(f"{target.provider}: HTTP {response.status_code}")
             if response.status_code < 500 and response.status_code != 429:
                 controller.store.update_history(
@@ -1290,6 +1378,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             controller.store.update_history(
                 history_id, "in_progress", provider=target.provider
             )
+            attempt_id = controller.store.start_attempt(history_id, target.provider)
             encoded = httpx.Request(
                 "POST",
                 "http://multipart.invalid",
@@ -1297,8 +1386,8 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                 files=files,
             )
             try:
-                outputs = None
-                if controller.providers[target.provider].config.type != "proxy":
+                is_proxy = controller.providers[target.provider].config.type == "proxy"
+                if not is_proxy:
                     parameters = canonical_parameters(field_values)
                     outputs = []
                     for index in range(count):
@@ -1312,11 +1401,10 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                             indexed,
                             files,
                         )
-                        if result is None:
-                            outputs = None
-                            break
                         outputs.extend(result)
-                if outputs is None:
+                    response = None
+                else:
+                    outputs = None
                     response = await controller.forward(
                         target,
                         "POST",
@@ -1325,12 +1413,13 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                         {"content-type": encoded.headers["content-type"]},
                         request_id,
                     )
-                else:
-                    response = None
             except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
-                failures.append(f"{target.provider}: {exception_message(exc)}")
+                message = exception_message(exc)
+                controller.store.finish_attempt(attempt_id, "failed", message)
+                failures.append(f"{target.provider}: {message}")
                 continue
             if response is None or response.is_success:
+                controller.store.finish_attempt(attempt_id, "completed")
                 if response is not None:
                     await controller.archive_images(
                         history_id, target.provider, response
@@ -1364,6 +1453,9 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     },
                 )
             assert response is not None
+            controller.store.finish_attempt(
+                attempt_id, "failed", f"HTTP {response.status_code}"
+            )
             failures.append(f"{target.provider}: HTTP {response.status_code}")
             if response.status_code < 500 and response.status_code != 429:
                 controller.store.update_history(
@@ -1412,11 +1504,12 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         except KeyError as exc:
             return error(str(exc), 404, "model_not_found")
         public_id = f"video_{uuid.uuid4().hex}"
+        files: list[dict[str, str]] = []
+        remote_source: str | None = None
         if request.headers.get("content-type", "").startswith("multipart/form-data"):
             directory = controller.uploads_path / public_id
             directory.mkdir(parents=True)
             fields: list[tuple[str, str]] = []
-            files: list[dict[str, str]] = []
             for key, value in form.multi_items():
                 if hasattr(value, "read"):
                     path = directory / str(len(files))
@@ -1450,8 +1543,47 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
         else:
             forwarded = dict(values)
             forwarded.pop("provider", None)
-            request_json = json.dumps(forwarded, separators=(",", ":"))
-            parameters = values
+            image_reference = forwarded.pop("image", None)
+            if image_reference is None:
+                request_json = json.dumps(forwarded, separators=(",", ":"))
+                parameters = values
+            else:
+                try:
+                    (
+                        content,
+                        content_type,
+                        filename,
+                        remote_source,
+                    ) = await controller.remote_input(image_reference)
+                except (httpx.HTTPError, OSError, ValueError) as exc:
+                    return error(str(exc), 400, "invalid_image")
+                directory = controller.uploads_path / public_id
+                directory.mkdir(parents=True)
+                path = directory / "0"
+                path.write_bytes(content)
+                files = [
+                    {
+                        "content_type": content_type,
+                        "field": "image",
+                        "filename": filename,
+                        "path": str(path),
+                    }
+                ]
+                fields = [(str(key), str(value)) for key, value in forwarded.items()]
+                request_json = json.dumps(
+                    {"_control_multipart": {"fields": fields, "files": files}},
+                    separators=(",", ":"),
+                )
+                parameters = dict(forwarded) | {
+                    "input_media": [
+                        {
+                            "content_type": content_type,
+                            "filename": filename,
+                            "size": len(content),
+                            "source_url": remote_source,
+                        }
+                    ]
+                }
         selected_provider = targets[0].provider if provider else None
         controller.store.save_job(
             public_id, model.id, request_json, provider=selected_provider
@@ -1462,7 +1594,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             model_id,
             json.dumps(history_parameters(parameters), separators=(",", ":")),
         )
-        if request.headers.get("content-type", "").startswith("multipart/form-data"):
+        if files:
             for item in files:
                 controller.save_input_media(
                     public_id,
@@ -1470,6 +1602,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
                     item["content_type"],
                     item["filename"],
                     item["field"],
+                    source_url=remote_source,
                 )
         job = controller.store.job(public_id)
         assert job is not None
@@ -1528,27 +1661,34 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
             return FileResponse(item.path, media_type=item.content_type)
         if output_url := response_data.get("output_url"):
             return Response(status_code=302, headers={"Location": output_url})
-        runtime = controller.providers[job.provider]
-        await controller.ensure_ready(runtime, job.id[:16])
-        upstream = await runtime.client.send(
-            runtime.client.build_request(
-                "GET",
-                f"/v1/videos/{job.upstream_id}/content",
-                headers={"Authorization": f"Bearer {runtime.config.api_key}"},
-            ),
-            stream=True,
-        )
-        if upstream.is_redirect:
-            location = upstream.headers.get("location", "")
-            await upstream.aclose()
-            return Response(
-                status_code=upstream.status_code, headers={"Location": location}
-            )
-        return StreamingResponse(
-            upstream.aiter_bytes(),
-            status_code=upstream.status_code,
-            media_type=upstream.headers.get("content-type"),
-            background=BackgroundTask(upstream.aclose),
-        )
+        return error("video output was not archived", 409, "video_output_missing")
 
+    def current_openapi() -> dict[str, object]:
+        if app.openapi_schema is None:
+            schema = get_openapi(
+                title=app.title,
+                version=app.version,
+                description=(
+                    "Current OpenAI-compatible inference and Comfy Control "
+                    "operations contract."
+                ),
+                routes=app.routes,
+            )
+            schema["paths"] = {
+                path: value
+                for path, value in schema["paths"].items()
+                if path.startswith(("/ops/", "/v1/"))
+            }
+            components = schema.setdefault("components", {})
+            components.setdefault("securitySchemes", {})["bearerAuth"] = {
+                "scheme": "bearer",
+                "type": "http",
+            }
+            for value in schema["paths"].values():
+                for operation in value.values():
+                    operation["security"] = [{"bearerAuth": []}]
+            app.openapi_schema = schema
+        return app.openapi_schema
+
+    app.openapi = current_openapi  # type: ignore[method-assign]
     return app

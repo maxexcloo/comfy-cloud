@@ -34,7 +34,7 @@ The container workflow separately builds and smoke-tests the Comfy Control image
 - Keep built-in provider capabilities, lifecycle and telemetry in the provider
   registry and adapters.
 - Keep safe user-editable preferences in `ControlPreferences` and SQLite.
-- Keep ComfyUI workers primary and the fixed CLI Proxy API fallback last.
+- Keep OpenAI-compatible routing in the controller and canonical execution in workers.
 
 ## Command-Line Interface
 

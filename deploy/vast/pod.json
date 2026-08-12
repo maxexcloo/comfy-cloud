@@ -1,7 +1,5 @@
 {
   "disk_space": 100,
-  "env": {
-    "JOBS_DIR": "/opt/ComfyUI/models/.comfy-control/jobs"
-  },
+  "env": {},
   "ports": [8000]
 }

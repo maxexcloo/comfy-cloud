@@ -4,10 +4,5 @@
   "ports": "8000/http",
   "volumeInGb": 100,
   "volumeMountPath": "/opt/ComfyUI/models",
-  "env": [
-    {
-      "key": "JOBS_DIR",
-      "value": "/opt/ComfyUI/models/.comfy-control/jobs"
-    }
-  ]
+  "env": []
 }

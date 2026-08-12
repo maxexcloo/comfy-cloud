@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import ipaddress
 import json
 import os
+import socket
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -31,7 +33,11 @@ from .media import (
     media_type_from_filename,
     safe_filename,
 )
-from .provider_adapters import provider_adapter, provider_panel_url
+from .provider_adapters import (
+    available_provider_actions,
+    provider_adapter,
+    provider_panel_url,
+)
 from .provider_modal import (
     provider_action as modal_provider_action,
 )
@@ -782,6 +788,86 @@ class Controller:
             source_url=source_url,
         )
 
+    async def remote_input(
+        self, reference: object
+    ) -> tuple[bytes, str, str, str | None]:
+        if isinstance(reference, dict):
+            reference = reference.get("url")
+        if not isinstance(reference, str) or not reference:
+            raise ValueError("image must be an uploaded file, data URL, or HTTP URL")
+        if reference.startswith("data:"):
+            header, separator, encoded = reference.partition(",")
+            if not separator or ";base64" not in header:
+                raise ValueError("image data URL must use base64 encoding")
+            content_type = header[5:].split(";", 1)[0]
+            try:
+                content = base64.b64decode(encoded, validate=True)
+            except ValueError as exc:
+                raise ValueError("image data URL is invalid") from exc
+            if len(content) > self.preferences.control_maximum_request_bytes:
+                raise ValueError("remote image is too large")
+            return content, content_type, "input" + media_extension(content_type), None
+
+        parsed = urlparse(reference)
+        local_media = parsed.path.startswith("/media/") or parsed.path.startswith(
+            "/ops/media/"
+        )
+        if local_media and parsed.path.endswith("/content"):
+            try:
+                parts = parsed.path.split("/")
+                asset_id = int(parts[3] if parts[1] == "ops" else parts[2])
+            except (IndexError, ValueError) as exc:
+                raise ValueError("media URL is invalid") from exc
+            asset = self.store.media_asset(asset_id)
+            if asset is None or not Path(asset.path).is_file():
+                raise ValueError("media URL was not found")
+            return (
+                Path(asset.path).read_bytes(),
+                asset.content_type,
+                Path(asset.path).name,
+                reference,
+            )
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("image URL must use HTTP or HTTPS")
+        if parsed.username or parsed.password:
+            raise ValueError("image URL must not contain credentials")
+
+        current = reference
+        for _ in range(6):
+            current_url = urlparse(current)
+            assert current_url.hostname is not None
+            addresses = await asyncio.to_thread(
+                socket.getaddrinfo,
+                current_url.hostname,
+                current_url.port or (443 if current_url.scheme == "https" else 80),
+                type=socket.SOCK_STREAM,
+            )
+            for address in addresses:
+                ip = ipaddress.ip_address(address[4][0])
+                if not ip.is_global:
+                    raise ValueError("image URL resolves to a private address")
+            async with self.media_client.stream(
+                "GET", current, follow_redirects=False
+            ) as response:
+                if response.is_redirect:
+                    location = response.headers.get("location")
+                    if not location:
+                        raise ValueError("image URL redirect has no location")
+                    current = urljoin(current, location)
+                    continue
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "").split(";", 1)[0]
+                if not content_type.startswith("image/"):
+                    raise ValueError("image URL did not return an image")
+                chunks = bytearray()
+                async for chunk in response.aiter_bytes():
+                    chunks.extend(chunk)
+                    if len(chunks) > self.preferences.control_maximum_request_bytes:
+                        raise ValueError("remote image is too large")
+                filename = unquote(Path(current_url.path).name) or "input"
+                return bytes(chunks), content_type, filename, reference
+        raise ValueError("image URL redirected too many times")
+
     async def download_media(
         self,
         history_id: str,
@@ -863,18 +949,11 @@ class Controller:
         self, history_id: str, provider: str, response: dict[str, object]
     ) -> None:
         try:
-            if output_url := response.get("output_url"):
-                await self.download_media(
-                    history_id, provider, str(output_url), "video.mp4"
-                )
-                return
-            runtime = self.providers[provider]
-            upstream_id = str(response.get("id", ""))
+            output_url = response.get("output_url")
+            if not output_url:
+                raise RuntimeError("video provider returned no output URL")
             await self.download_media(
-                history_id,
-                provider,
-                self.worker_url(runtime, f"/v1/videos/{upstream_id}/content"),
-                "video.mp4",
+                history_id, provider, str(output_url), "video.mp4"
             )
         except Exception as exc:  # noqa: BLE001 - archival must not fail inference
             self.store.event(
@@ -901,6 +980,7 @@ class Controller:
             )
             for target in targets:
                 self.store.update_job(job.id, "in_progress", provider=target.provider)
+                attempt_id = self.store.start_attempt(job.id, target.provider)
                 try:
                     response: httpx.Response | None = None
                     internal_outputs: list[tuple[bytes, str, str]] | None = None
@@ -945,23 +1025,14 @@ class Controller:
                             parameters,
                             files,
                         )
-                        if internal_outputs is None:
-                            response = await self.forward(
-                                target,
-                                "POST",
-                                "/v1/videos?wait=true",
-                                *self.video_request(job, target.model),
-                                request_id,
-                            )
-                            data = response.json()
-                        else:
-                            data = {
-                                "id": job.id,
-                                "model": job.model,
-                                "status": "completed",
-                            }
+                        data = {
+                            "id": job.id,
+                            "model": job.model,
+                            "status": "completed",
+                        }
                 except (httpx.HTTPError, RuntimeError, TimeoutError, ValueError) as exc:
                     message = exception_message(exc)
+                    self.store.finish_attempt(attempt_id, "failed", message)
                     failures.append(f"{target.provider}: {message}")
                     self.store.event(
                         "error",
@@ -973,6 +1044,7 @@ class Controller:
                 if (response is None or response.is_success) and data.get(
                     "status"
                 ) == "completed":
+                    self.store.finish_attempt(attempt_id, "completed")
                     upstream_id = str(data.get("id", ""))
                     archive_data = dict(data)
                     data["id"] = job.id
@@ -1005,6 +1077,7 @@ class Controller:
                     if response is not None
                     else "video generation failed"
                 )
+                self.store.finish_attempt(attempt_id, "failed", str(message))
                 failures.append(f"{target.provider}: {message}")
             failure = "; ".join(failures) or "all providers failed"
             self.store.update_job(job.id, "failed", error=failure)
@@ -1046,39 +1119,6 @@ class Controller:
             "model": target.model,
             "output_url": output_url,
             "status": "completed",
-        }
-
-    def video_request(self, job: Job, model: str) -> tuple[bytes, dict[str, str]]:
-        value = json.loads(job.request_json)
-        multipart = value.get("_control_multipart")
-        if multipart is None:
-            return rewrite_json_model(job.request_json.encode(), model), {
-                "content-type": "application/json",
-                "x-comfy-job-id": job.id,
-            }
-        fields = [
-            (key, model if key == "model" else item)
-            for key, item in multipart["fields"]
-        ]
-        if not any(key == "model" for key, _ in fields):
-            fields.append(("model", model))
-        files = [
-            (
-                item["field"],
-                (
-                    item["filename"],
-                    Path(item["path"]).read_bytes(),
-                    item["content_type"],
-                ),
-            )
-            for item in multipart["files"]
-        ]
-        encoded = httpx.Request(
-            "POST", "http://multipart.invalid", data=dict(fields), files=files
-        )
-        return encoded.read(), {
-            "content-type": encoded.headers["content-type"],
-            "x-comfy-job-id": job.id,
         }
 
     def remove_uploads(self, job_id: str) -> None:
@@ -1179,92 +1219,10 @@ class Controller:
 
     def available_actions(self, provider: str) -> dict[str, ProviderAction]:
         runtime = self.providers[provider]
-        actions = dict(runtime.config.actions)
-        if runtime.config.lifecycle.start is not None:
-            actions["start"] = runtime.config.lifecycle.start
-        if runtime.config.lifecycle.stop is not None:
-            actions["stop"] = runtime.config.lifecycle.stop
-        management = runtime.config.management
-        if management is not None and management.kind == "runpod-pod":
-            headers = {
-                "authorization": f"Bearer {self.required_preference('RUNPOD_API_KEY')}"
-            }
-            actions.setdefault(
-                "start",
-                ProviderAction(
-                    headers=headers,
-                    url="https://rest.runpod.io/v1/pods/{resource_id}/start",
-                ),
-            )
-            actions.setdefault(
-                "stop",
-                ProviderAction(
-                    confirmation="Stop the RunPod Pod?",
-                    headers=headers,
-                    url="https://rest.runpod.io/v1/pods/{resource_id}/stop",
-                ),
-            )
-        if management is not None and management.kind == "salad":
-            organisation = (
-                management.organisation or self.preferences.salad_organisation
-            )
-            project = management.project or self.preferences.salad_project
-            if organisation and project:
-                base_url = (
-                    "https://api.salad.com/api/public/organizations/"
-                    f"{quote(organisation, safe='')}/projects/{quote(project, safe='')}"
-                    f"/containers/{quote(management.name, safe='')}"
-                )
-                headers = {"Salad-Api-Key": self.required_preference("SALAD_API_KEY")}
-                actions.setdefault(
-                    "start", ProviderAction(headers=headers, url=f"{base_url}/start")
-                )
-                actions.setdefault(
-                    "stop",
-                    ProviderAction(
-                        confirmation="Stop the SaladCloud container group?",
-                        headers=headers,
-                        url=f"{base_url}/stop",
-                    ),
-                )
-        if management is not None and management.kind == "vast-pod":
-            headers = {
-                "authorization": f"Bearer {self.required_preference('VAST_API_KEY')}"
-            }
-            url = "https://console.vast.ai/api/v0/instances/{resource_id}/"
-            actions.setdefault(
-                "start",
-                ProviderAction(
-                    headers=headers,
-                    json={"state": "running"},
-                    method="PUT",
-                    url=url,
-                ),
-            )
-            actions.setdefault(
-                "stop",
-                ProviderAction(
-                    confirmation="Stop the Vast.ai Pod?",
-                    headers=headers,
-                    json={"state": "stopped"},
-                    method="PUT",
-                    url=url,
-                ),
-            )
-        resource_id = self.resource_id(provider)
-        return dict(
-            sorted(
-                (name, action)
-                for name, action in actions.items()
-                if not (name == "deploy" and resource_id)
-                and not (
-                    resource_id is None
-                    and name in {"delete", "destroy", "start", "stop", "terminate"}
-                )
-                and not (
-                    resource_id is None and action.url and "{resource_id}" in action.url
-                )
-            )
+        return available_provider_actions(
+            runtime.config,
+            self.preferences,
+            self.resource_id(provider),
         )
 
     async def run_provider_action(
@@ -1516,13 +1474,8 @@ class Controller:
         operation: str,
         parameters: dict[str, object],
         files: list[tuple[str, tuple[str, bytes, str]]] | None = None,
-    ) -> list[tuple[bytes, str, str]] | None:
-        """Execute through the current worker contract.
-
-        None means the worker predates the internal contract and the caller may use
-        the temporary legacy transport. All other failures remain normal provider
-        failures and participate in configured fallback.
-        """
+    ) -> list[tuple[bytes, str, str]]:
+        """Execute through the current controller-to-worker contract."""
         runtime = self.providers[target.provider]
         async with runtime.lock:
             runtime.active_requests += 1
@@ -1548,8 +1501,6 @@ class Controller:
                     "x-request-id": execution_id[:16],
                 },
             )
-            if response.status_code == 404:
-                return None
             response.raise_for_status()
             value = response.json()
             manifests = value.get("outputs") if isinstance(value, dict) else None

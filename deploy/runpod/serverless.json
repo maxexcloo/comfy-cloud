@@ -4,7 +4,6 @@
   "endpointType": "load-balancer",
   "ports": "8000/http",
   "env": [
-    { "key": "JOBS_DIR", "value": "/runpod-volume/jobs" },
     { "key": "MODELS_DIR", "value": "/runpod-volume/models" },
     { "key": "PORT", "value": "8000" },
     { "key": "PORT_HEALTH", "value": "8000" }

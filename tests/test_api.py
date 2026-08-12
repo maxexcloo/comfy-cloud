@@ -8,13 +8,27 @@ import pytest
 
 from comfy_control.comfy import OutputRef
 from comfy_control.config import Settings
-from comfy_control.worker import create_app as create_gateway
+from comfy_control.worker import create_app as create_worker
 
 ROOT = Path(__file__).parents[1]
 
 
-def create_app(settings: Settings):
-    app = create_gateway(settings)
+def settings(deployment_type: str = "serverless") -> Settings:
+    return Settings(
+        api_key="test-key",
+        catalogue_dirs=(ROOT / "catalogue",),
+        comfy_url="http://comfy.internal",
+        deployment_type=deployment_type,
+        models_dir=ROOT / "models",
+        request_timeout=1,
+        ui_password="ui-key",
+        ui_username="comfy",
+        workflow_timeout=1,
+    )
+
+
+def create_app(configured: Settings):
+    app = create_worker(configured)
     object_info = {}
     for workflow_path in ROOT.glob("catalogue/*/workflow.json"):
         for node in json.loads(workflow_path.read_text()).values():
@@ -25,597 +39,196 @@ def create_app(settings: Settings):
     return app
 
 
-def settings(deployment_type: str = "serverless") -> Settings:
-    return Settings(
-        api_key="test-key",
-        catalogue_dirs=(ROOT / "catalogue",),
-        comfy_url="http://comfy.internal",
-        deployment_type=deployment_type,
-        models_dir=ROOT / "models",
-        public_base_url="http://test",
-        request_timeout=1,
-        ui_password="ui-key",
-        ui_username="comfy",
-        workflow_timeout=1,
+def execution_spec(execution_id: str = "execution_1") -> str:
+    return json.dumps(
+        {
+            "execution_id": execution_id,
+            "model": "flux-2-klein-9b/text-to-image",
+            "operation": "image_generation",
+            "parameters": {"height": 512, "prompt": "a clean test", "width": 512},
+        }
     )
 
 
 @pytest.mark.asyncio
-async def test_models_are_workflows_and_require_auth():
+async def test_internal_info_requires_auth_and_lists_models():
     app = create_app(settings())
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        denied = await client.get("/v1/models")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        denied = await client.get("/internal/info")
         response = await client.get(
-            "/v1/models", headers={"Authorization": "Bearer test-key"}
-        )
-        detail = await client.get(
-            "/v1/models/flux-2-klein-9b/text-to-image",
-            headers={"Authorization": "Bearer test-key"},
+            "/internal/info", headers={"Authorization": "Bearer test-key"}
         )
 
     assert denied.status_code == 401
-    assert "flux-2-klein-9b/text-to-image" in {
-        model["id"] for model in response.json()["data"]
-    }
-    assert detail.json()["capabilities"]["operation"] == "image_generation"
+    assert response.json()["ready"] is True
+    assert "flux-2-klein-9b/text-to-image" in response.json()["models"]
 
 
 @pytest.mark.asyncio
-async def test_openai_image_generation_uses_workflow_model():
+async def test_internal_execution_returns_and_streams_manifest_output():
     app = create_app(settings())
     app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])
-    app.state.runtime.comfy.fetch_output = AsyncMock(
-        return_value=httpx.Response(
-            200, content=b"png-bytes", headers={"content-type": "image/png"}
-        )
-    )
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+
+    async def stream_output(_: OutputRef):
+        yield b"png-bytes"
+
+    app.state.runtime.comfy.stream_output = stream_output
+    headers = {"Authorization": "Bearer test-key"}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.post(
-            "/v1/images/generations",
-            headers={"Authorization": "Bearer test-key"},
-            json={
-                "model": "flux-2-klein-9b/text-to-image",
-                "prompt": "a clean test",
-                "size": "768x512",
-            },
+            "/internal/executions",
+            headers=headers,
+            files={"spec": (None, execution_spec())},
         )
+        output = await client.get(response.json()["outputs"][0]["url"], headers=headers)
 
     assert response.status_code == 200
-    assert response.json()["data"] == [{"b64_json": "cG5nLWJ5dGVz"}]
-    values = app.state.runtime.run.await_args.args[1]
-    assert values["prompt"] == "a clean test"
-    assert (values["width"], values["height"]) == (768, 512)
+    assert response.json()["status"] == "completed"
+    assert output.content == b"png-bytes"
+    assert app.state.runtime.run.await_args.args[1]["prompt"] == "a clean test"
 
 
 @pytest.mark.asyncio
-async def test_internal_execution_uses_canonical_contract():
+async def test_internal_execution_uploads_named_files():
     app = create_app(settings())
-    app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])
-    transport = httpx.ASGITransport(app=app)
+    app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.mp4")])
+    app.state.runtime.comfy.upload = AsyncMock(return_value="uploaded/frame.png")
     spec = json.dumps(
         {
-            "execution_id": "execution_1",
-            "model": "flux-2-klein-9b/text-to-image",
-            "operation": "image_generation",
-            "parameters": {"prompt": "a clean test", "width": 512, "height": 512},
+            "execution_id": "video_1",
+            "model": "minimax-h3/image-to-video",
+            "operation": "video_generation",
+            "parameters": {"prompt": "move"},
         }
     )
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.post(
             "/internal/executions",
             headers={"Authorization": "Bearer test-key"},
-            files={"spec": (None, spec)},
+            files={"image": ("frame.png", b"image", "image/png"), "spec": (None, spec)},
         )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "execution_id": "execution_1",
-        "outputs": [
-            {
-                "content_type": "image/png",
-                "filename": "result.png",
-                "index": 0,
-                "url": "http://test/internal/executions/execution_1/outputs/0",
-            }
-        ],
-        "status": "completed",
-    }
-    assert app.state.runtime.run.await_args.args[1]["prompt"] == "a clean test"
+    assert app.state.runtime.run.await_args.args[1]["image"] == "uploaded/frame.png"
+
+
+@pytest.mark.asyncio
+async def test_internal_execution_is_idempotent():
+    app = create_app(settings())
+    app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])
+    headers = {"Authorization": "Bearer test-key"}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        first = await client.post(
+            "/internal/executions",
+            headers=headers,
+            files={"spec": (None, execution_spec())},
+        )
+        second = await client.post(
+            "/internal/executions",
+            headers=headers,
+            files={"spec": (None, execution_spec())},
+        )
+
+    assert first.json() == second.json()
+    app.state.runtime.run.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_generation_queue_rejects_excess_work():
     app = create_app(replace(settings(), maximum_pending_generations=1))
     await app.state.runtime.reserve_generation()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.post(
-            "/v1/images/generations",
+            "/internal/executions",
             headers={"Authorization": "Bearer test-key"},
-            json={"model": "flux-2-klein-9b", "prompt": "test"},
+            files={"spec": (None, execution_spec())},
         )
 
     assert response.status_code == 429
-    assert response.json()["error"]["code"] == "rate_limit_exceeded"
+    assert response.json()["error"]["code"] == "execution_queue_full"
 
 
 @pytest.mark.asyncio
 async def test_request_size_limit_is_enforced():
     app = create_app(replace(settings(), maximum_request_bytes=8))
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.post(
-            "/v1/images/generations",
-            content=b'{"prompt":"too large"}',
-            headers={
-                "Authorization": "Bearer test-key",
-                "Content-Type": "application/json",
-            },
+            "/internal/executions",
+            headers={"Authorization": "Bearer test-key"},
+            content=b"0123456789",
         )
 
     assert response.status_code == 413
-    assert response.json()["error"]["code"] == "request_too_large"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("body", "parameter"),
-    [
-        ({"model": "flux-2-klein-9b", "prompt": "test", "n": "many"}, "n"),
-        (
-            {"model": "flux-2-klein-9b", "prompt": "test", "response_format": "jpeg"},
-            "response_format",
-        ),
-        ({"model": "flux-2-klein-9b", "prompt": "test", "seed": True}, "seed"),
-        ({"model": "flux-2-klein-9b", "prompt": "test", "size": "-1x512"}, "size"),
-    ],
-)
-async def test_image_generation_rejects_invalid_parameters(body, parameter):
+async def test_health_ping_and_metrics_report_comfy_readiness():
     app = create_app(settings())
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/v1/images/generations",
-            headers={"Authorization": "Bearer test-key"},
-            json=body,
-        )
-
-    assert response.status_code == 400
-    assert response.json()["error"]["param"] == parameter
-
-
-@pytest.mark.asyncio
-async def test_image_url_uses_request_base_when_not_configured():
-    app = create_app(replace(settings(), public_base_url=None))
-    app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])
-    transport = httpx.ASGITransport(app=app)
+    app.state.runtime.ready = AsyncMock(return_value=True)
     async with httpx.AsyncClient(
-        transport=transport, base_url="https://deployment.example"
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
-        response = await client.post(
-            "/v1/images/generations",
-            headers={"Authorization": "Bearer test-key"},
-            json={
-                "model": "flux-2-klein-9b",
-                "prompt": "test",
-                "response_format": "url",
-            },
-        )
-
-    assert response.json()["data"] == [
-        {
-            "url": "https://deployment.example/view?filename=result.png&subfolder=&type=output"
-        }
-    ]
-
-
-@pytest.mark.asyncio
-async def test_openai_image_edit_uses_multipart_and_workflow():
-    app = create_app(settings())
-    app.state.runtime.catalogue.get("flux-2-klein-9b-edit").required_files = []
-    run_values: list[dict] = []
-    app.state.runtime.run = AsyncMock(
-        side_effect=lambda model, values: (
-            run_values.append(dict(values))
-            or [OutputRef("edited.png"), OutputRef("edited_1.png")]
-        )
-    )
-    app.state.runtime.comfy.fetch_output = AsyncMock(
-        side_effect=[
-            httpx.Response(
-                200, content=b"edit-1", headers={"content-type": "image/png"}
-            ),
-            httpx.Response(
-                200, content=b"edit-2", headers={"content-type": "image/png"}
-            ),
-        ]
-    )
-    uploaded_content = b""
-
-    async def upload(filename, content, content_type):
-        nonlocal uploaded_content
-        uploaded_content = content.read()
-        return "uploaded.png"
-
-    app.state.runtime.comfy.upload = AsyncMock(side_effect=upload)
-    transport = httpx.ASGITransport(app=app)
-    files = {"image": ("source.png", b"image-bytes", "image/png")}
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/v1/images/edits",
-            headers={"Authorization": "Bearer test-key"},
-            data={
-                "model": "flux-2-klein-9b-edit",
-                "prompt": "make it blue",
-                "n": "2",
-                "seed": "10",
-                "steps": "8",
-            },
-            files=files,
-        )
-
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data == [{"b64_json": "ZWRpdC0x"}, {"b64_json": "ZWRpdC0y"}]
-    uploaded_name, _, content_type = app.state.runtime.comfy.upload.await_args.args
-    assert uploaded_name == "source.png"
-    assert uploaded_content == b"image-bytes"
-    assert content_type == "image/png"
-    assert app.state.runtime.run.call_count == 2
-    first_values = run_values[0]
-    assert first_values["image"] == "uploaded.png"
-    assert first_values["prompt"] == "make it blue"
-    assert first_values["seed"] == 10
-    assert first_values["steps"] == 8
-    assert run_values[1]["seed"] == 11
-
-
-@pytest.mark.asyncio
-async def test_image_edit_rejects_unsupported_parameters():
-    app = create_app(settings())
-    app.state.runtime.catalogue.get("flux-2-klein-9b-edit").required_files = []
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        no_prompt = await client.post(
-            "/v1/images/edits",
-            headers={"Authorization": "Bearer test-key"},
-            data={"model": "flux-2-klein-9b-edit"},
-            files={"image": ("source.png", b"image-bytes", "image/png")},
-        )
-        bad_size = await client.post(
-            "/v1/images/edits",
-            headers={"Authorization": "Bearer test-key"},
-            data={"model": "flux-2-klein-9b-edit", "prompt": "ok", "size": "512x512"},
-            files={"image": ("source.png", b"image-bytes", "image/png")},
-        )
-
-    assert no_prompt.status_code == 400
-    assert no_prompt.json()["error"]["code"] == "missing_required_parameter"
-    assert bad_size.status_code == 400
-    assert bad_size.json()["error"]["code"] == "invalid_value"
-
-
-@pytest.mark.asyncio
-async def test_image_to_video_accepts_multipart_upload():
-    app = create_app(settings())
-    app.state.runtime.catalogue.get("minimax-h3-i2v").required_files = []
-    run_values: list[dict] = []
-    app.state.runtime.run = AsyncMock(
-        side_effect=lambda model, values: (
-            run_values.append(dict(values))
-            or [OutputRef("result.mp4", media_type="video/mp4")]
-        )
-    )
-    app.state.runtime.comfy.upload = AsyncMock(return_value="frame.png")
-    transport = httpx.ASGITransport(app=app)
-    files = {"image": ("source.png", b"image-bytes", "image/png")}
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/v1/videos?wait=true",
-            headers={"Authorization": "Bearer test-key"},
-            data={
-                "model": "minimax-h3-i2v",
-                "prompt": "walk forward",
-                "seconds": "3",
-                "seed": "5",
-            },
-            files=files,
-        )
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "completed"
-    assert app.state.runtime.comfy.upload.await_args.args[0] == "source.png"
-    values = run_values[0]
-    assert values["image"] == "frame.png"
-    assert values["prompt"] == "walk forward"
-    assert values["seed"] == 5
-    assert values["length"] == 73
-
-
-@pytest.mark.asyncio
-async def test_image_to_video_requires_uploaded_image():
-    app = create_app(settings())
-    app.state.runtime.catalogue.get("minimax-h3-i2v").required_files = []
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/v1/videos",
-            headers={"Authorization": "Bearer test-key"},
-            json={"model": "minimax-h3-i2v", "prompt": "walk forward"},
-        )
-
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "missing_required_parameter"
-
-
-@pytest.mark.asyncio
-async def test_model_with_unregistered_nodes_is_not_advertised():
-    app = create_app(settings())
-    app.state.runtime.object_info = AsyncMock(return_value={})
-
-    async def comfy_handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/object_info":
-            return httpx.Response(200, json={})
-        return httpx.Response(200, json={"system": "ok"})
-
-    await app.state.runtime.comfy.http.aclose()
-    app.state.runtime.comfy.http = httpx.AsyncClient(
-        base_url="http://comfy.internal",
-        transport=httpx.MockTransport(comfy_handler),
-    )
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        listing = await client.get(
-            "/v1/models", headers={"Authorization": "Bearer test-key"}
-        )
-        detail = await client.get(
-            "/v1/models/flux-2-klein-9b/text-to-image",
-            headers={"Authorization": "Bearer test-key"},
-        )
-    await app.state.runtime.comfy.http.aclose()
-
-    assert listing.json()["data"] == []
-    assert detail.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_models_fail_closed_when_node_information_is_unavailable():
-    app = create_app(settings())
-    app.state.runtime.object_info = AsyncMock(return_value=None)
-    transport = httpx.ASGITransport(app=app)
-    headers = {"Authorization": "Bearer test-key"}
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        listing = await client.get("/v1/models", headers=headers)
-        detail = await client.get("/v1/models/does-not-exist", headers=headers)
-
-    assert listing.json()["data"] == []
-    assert detail.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_cliproxyapi_keeps_catalogue_models_available():
-    app = create_app(settings())
-    app.state.runtime.object_info = AsyncMock(return_value={})
-    app.state.runtime.cliproxy = AsyncMock()
-    app.state.runtime.cliproxy.ready.return_value = True
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get(
-            "/v1/models", headers={"Authorization": "Bearer test-key"}
-        )
-
-    assert response.status_code == 200
-    assert {model["id"] for model in response.json()["data"]} == {
-        model.id for model in app.state.runtime.catalogue.list()
-    }
-
-
-@pytest.mark.asyncio
-async def test_health_live_ready_and_metrics():
-    app = create_app(settings())
-    app.state.runtime.comfy.ready = AsyncMock(return_value=True)
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         live = await client.get("/health/live")
         ready = await client.get("/health/ready")
+        ping = await client.get("/ping")
         metrics = await client.get("/metrics")
-        first = await client.get(
-            "/v1/models", headers={"Authorization": "Bearer test-key"}
-        )
-        await client.get("/v1/models", headers={"Authorization": "Bearer test-key"})
 
-    assert live.status_code == 200
-    assert live.json() == {"status": "alive"}
-    assert ready.status_code == 200
-    assert ready.json()["status"] == "ready"
-    assert first.headers.get("x-request-id")
-    body = metrics.text
-    assert "comfy_control_requests_total 2" in body
-    assert 'comfy_control_requests_by_status_total{status="200"}' in body
-    assert "comfy_control_generations_total 0" in body
-
-
-@pytest.mark.asyncio
-async def test_runpod_ping_reports_comfy_readiness():
-    app = create_app(settings())
-    app.state.runtime.comfy.ready = AsyncMock(side_effect=[False, True])
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        loading = await client.get("/ping")
-        ready = await client.get("/ping")
-
-    assert loading.status_code == 204
-    assert ready.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_video_request_maps_openai_size_and_seconds_to_workflow():
-    app = create_app(settings())
-    app.state.runtime.catalogue.get("minimax-h3").required_files = []
-    app.state.runtime.run = AsyncMock(
-        return_value=[OutputRef("result.mp4", media_type="video/mp4")]
-    )
-    transport = httpx.ASGITransport(app=app)
-    body = {
-        "model": "minimax-h3",
-        "prompt": "a clean video test",
-        "seconds": 5,
-        "size": "1344x768",
-    }
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/v1/videos?wait=true",
-            headers={
-                "Authorization": "Bearer test-key",
-                "x-comfy-job-id": "video_gateway_job",
-            },
-            json=body,
-        )
-        repeated = await client.post(
-            "/v1/videos?wait=true",
-            headers={
-                "Authorization": "Bearer test-key",
-                "x-comfy-job-id": "video_gateway_job",
-            },
-            json=body,
-        )
-
-    assert response.status_code == 200
-    assert repeated.json()["id"] == response.json()["id"]
-    assert app.state.runtime.run.await_count == 1
-    values = app.state.runtime.run.await_args.args[1]
-    assert values["length"] == 124
-    assert (values["width"], values["height"]) == (1344, 768)
+    assert live.status_code == ready.status_code == ping.status_code == 200
+    assert "comfy_control_requests" in metrics.text
 
 
 @pytest.mark.asyncio
 async def test_serverless_blocks_frontend_but_proxies_native_api():
     app = create_app(settings())
-
-    async def comfy_handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/system_stats"
-        return httpx.Response(200, json={"system": "ok"})
-
-    await app.state.runtime.comfy.http.aclose()
     app.state.runtime.comfy.http = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, content=b"native")),
         base_url="http://comfy.internal",
-        transport=httpx.MockTransport(comfy_handler),
     )
-    transport = httpx.ASGITransport(app=app)
     headers = {"Authorization": "Bearer test-key"}
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        frontend = await client.get("/", headers=headers)
-        native = await client.get("/system_stats", headers=headers)
-    await app.state.runtime.comfy.http.aclose()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        frontend = await client.get("/extensions/core.js", headers=headers)
+        native = await client.get("/object_info", headers=headers)
 
     assert frontend.status_code == 404
-    assert native.json() == {"system": "ok"}
+    assert native.content == b"native"
 
 
 @pytest.mark.asyncio
 async def test_pod_proxies_frontend_with_basic_auth():
     app = create_app(settings("pod"))
-
-    async def comfy_handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200, text="ComfyUI", headers={"content-type": "text/html"}
-        )
-
-    await app.state.runtime.comfy.http.aclose()
     app.state.runtime.comfy.http = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, content=b"frontend")
+        ),
         base_url="http://comfy.internal",
-        transport=httpx.MockTransport(comfy_handler),
     )
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/", auth=("comfy", "ui-key"))
-    await app.state.runtime.comfy.http.aclose()
-
-    assert response.status_code == 200
-    assert response.text == "ComfyUI"
-
-
-@pytest.mark.asyncio
-async def test_image_generation_falls_back_to_cliproxyapi():
-    app = create_app(settings())
-    app.state.runtime.run = AsyncMock(side_effect=RuntimeError("ComfyUI failed"))
-    app.state.runtime.cliproxy = AsyncMock()
-    app.state.runtime.cliproxy.generate_image.return_value = httpx.Response(
-        200,
-        json={"created": 1, "data": [{"b64_json": "fallback-image"}]},
-        headers={"content-type": "application/json"},
-    )
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/v1/images/generations",
-            headers={"Authorization": "Bearer test-key"},
-            json={"model": "flux-2-klein-9b", "prompt": "draw"},
-        )
-
-    assert response.status_code == 200
-    assert response.headers["x-comfy-provider"] == "cliproxyapi"
-    assert response.json()["data"][0]["b64_json"] == "fallback-image"
-    assert app.state.runtime.cliproxy.generate_image.await_args.args[0]["model"] == (
-        "flux-2-klein-9b"
-    )
-
-
-@pytest.mark.asyncio
-async def test_image_edit_falls_back_to_cliproxyapi():
-    app = create_app(settings())
-    app.state.runtime.run = AsyncMock(side_effect=RuntimeError("ComfyUI failed"))
-    app.state.runtime.comfy.upload = AsyncMock(return_value="uploaded.png")
-    app.state.runtime.cliproxy = AsyncMock()
-    app.state.runtime.cliproxy.edit_image.return_value = httpx.Response(
-        200,
-        json={"created": 1, "data": [{"b64_json": "fallback-edit"}]},
-        headers={"content-type": "application/json"},
-    )
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/v1/images/edits",
-            headers={"Authorization": "Bearer test-key"},
-            data={"model": "flux-2-klein-9b-edit", "prompt": "change"},
-            files={"image": ("source.png", b"source-image", "image/png")},
-        )
-
-    assert response.status_code == 200
-    assert response.headers["x-comfy-provider"] == "cliproxyapi"
-    arguments = app.state.runtime.cliproxy.edit_image.await_args.args
-    assert arguments[0]["prompt"] == "change"
-    assert arguments[1:] == ("source.png", b"source-image", "image/png")
-
-
-@pytest.mark.asyncio
-async def test_video_generation_falls_back_to_cliproxyapi():
-    app = create_app(settings())
-    app.state.runtime.run = AsyncMock(side_effect=RuntimeError("ComfyUI failed"))
-    app.state.runtime.cliproxy = AsyncMock()
-    app.state.runtime.cliproxy.generate_video.return_value = (
-        "https://videos.example/fallback.mp4"
-    )
-    transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
-        transport=transport, base_url="http://test", follow_redirects=False
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
-        response = await client.post(
-            "/v1/videos?wait=true",
-            headers={"Authorization": "Bearer test-key"},
-            json={"model": "minimax-h3", "prompt": "move", "seconds": 5},
-        )
-        content = await client.get(
-            f"/v1/videos/{response.json()['id']}/content",
-            headers={"Authorization": "Bearer test-key"},
-        )
+        denied = await client.get("/extensions/core.js")
+        response = await client.get("/extensions/core.js", auth=("comfy", "ui-key"))
 
-    assert response.status_code == 200
-    assert response.json()["status"] == "completed"
-    assert response.json()["output_url"] == "https://videos.example/fallback.mp4"
-    assert content.status_code == 302
-    fallback_body = app.state.runtime.cliproxy.generate_video.await_args.args[0]
-    assert fallback_body["prompt"] == "move"
-    assert fallback_body["seconds"] == 5.0
+    assert denied.status_code == 401
+    assert response.content == b"frontend"
+
+
+def test_worker_openapi_publishes_only_current_internal_contract():
+    schema = create_app(settings()).openapi()
+
+    assert schema["info"]["version"] == "current"
+    assert "/internal/executions" in schema["paths"]
+    assert not any(path.startswith("/v1/") for path in schema["paths"])

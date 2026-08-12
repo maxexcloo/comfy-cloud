@@ -59,7 +59,6 @@ def worker_environment(
         "MAXIMUM_PENDING_GENERATIONS",
         "MAXIMUM_REQUEST_BYTES",
         "MODEL_PROFILES",
-        "PUBLIC_BASE_URL",
         "REQUEST_TIMEOUT",
         "WORKFLOW_TIMEOUT",
     ):

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol
+from urllib.parse import quote
 
 import httpx
 
-from .control_config import ControlSettings, Provider
+from .control_config import ControlSettings, Provider, ProviderAction
 from .control_preferences import ControlPreferences
 from .provider_deployment import deploy_provider, terminate_provider
 from .provider_telemetry import first_number, selected_fields
@@ -169,3 +170,91 @@ def provider_panel_url(
     if provider.type == "proxy" and base_url:
         return f"{base_url}/management.html"
     return base_url
+
+
+def available_provider_actions(
+    provider: Provider,
+    preferences: ControlPreferences,
+    resource_id: str | None,
+) -> dict[str, ProviderAction]:
+    actions = dict(provider.actions)
+    if provider.lifecycle.start is not None:
+        actions["start"] = provider.lifecycle.start
+    if provider.lifecycle.stop is not None:
+        actions["stop"] = provider.lifecycle.stop
+    management = provider.management
+    environment = preferences.environment()
+    if management is not None and management.kind == "runpod-pod":
+        headers = {"authorization": f"Bearer {environment['RUNPOD_API_KEY']}"}
+        actions.setdefault(
+            "start",
+            ProviderAction(
+                headers=headers,
+                url="https://rest.runpod.io/v1/pods/{resource_id}/start",
+            ),
+        )
+        actions.setdefault(
+            "stop",
+            ProviderAction(
+                confirmation="Stop the RunPod Pod?",
+                headers=headers,
+                url="https://rest.runpod.io/v1/pods/{resource_id}/stop",
+            ),
+        )
+    if management is not None and management.kind == "salad":
+        organisation = management.organisation or preferences.salad_organisation
+        project = management.project or preferences.salad_project
+        if organisation and project:
+            base_url = (
+                "https://api.salad.com/api/public/organizations/"
+                f"{quote(organisation, safe='')}/projects/{quote(project, safe='')}"
+                f"/containers/{quote(management.name, safe='')}"
+            )
+            headers = {"Salad-Api-Key": environment["SALAD_API_KEY"]}
+            actions.setdefault(
+                "start", ProviderAction(headers=headers, url=f"{base_url}/start")
+            )
+            actions.setdefault(
+                "stop",
+                ProviderAction(
+                    confirmation="Stop the SaladCloud container group?",
+                    headers=headers,
+                    url=f"{base_url}/stop",
+                ),
+            )
+    if management is not None and management.kind == "vast-pod":
+        headers = {"authorization": f"Bearer {environment['VAST_API_KEY']}"}
+        url = "https://console.vast.ai/api/v0/instances/{resource_id}/"
+        actions.setdefault(
+            "start",
+            ProviderAction(
+                headers=headers,
+                json={"state": "running"},
+                method="PUT",
+                url=url,
+            ),
+        )
+        actions.setdefault(
+            "stop",
+            ProviderAction(
+                confirmation="Stop the Vast.ai Pod?",
+                headers=headers,
+                json={"state": "stopped"},
+                method="PUT",
+                url=url,
+            ),
+        )
+    return dict(
+        sorted(
+            (name, action)
+            for name, action in actions.items()
+            if not (name == "deploy" and resource_id)
+            and not (
+                resource_id is None
+                and name in {"delete", "destroy", "start", "stop", "terminate"}
+            )
+            and not (
+                resource_id is None and action.url and "{resource_id}" in action.url
+            )
+        )
+    )

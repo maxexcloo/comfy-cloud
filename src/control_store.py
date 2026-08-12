@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import struct
 import threading
 import time
 from dataclasses import dataclass
@@ -43,6 +44,66 @@ class MediaAsset:
     path: str
     size: int
     created_at: int
+    width: int | None
+    height: int | None
+    duration: float | None
+
+
+def intrinsic_media_metadata(
+    path: Path, content_type: str
+) -> tuple[int | None, int | None, float | None]:
+    data = path.read_bytes()
+    width = height = None
+    duration = None
+    if content_type == "image/png" and data.startswith(b"\x89PNG") and len(data) >= 24:
+        width, height = struct.unpack(">II", data[16:24])
+    elif content_type == "image/gif" and len(data) >= 10:
+        width, height = struct.unpack("<HH", data[6:10])
+    elif content_type == "image/jpeg":
+        position = 2
+        frame_markers = {
+            0xC0,
+            0xC1,
+            0xC2,
+            0xC3,
+            0xC5,
+            0xC6,
+            0xC7,
+            0xC9,
+            0xCA,
+            0xCB,
+            0xCD,
+            0xCE,
+            0xCF,
+        }
+        while position + 9 < len(data):
+            if data[position] != 0xFF:
+                position += 1
+                continue
+            marker = data[position + 1]
+            if marker in frame_markers:
+                height, width = struct.unpack(">HH", data[position + 5 : position + 9])
+                break
+            if marker in {0xD8, 0xD9}:
+                position += 2
+                continue
+            if position + 4 > len(data):
+                break
+            position += 2 + struct.unpack(">H", data[position + 2 : position + 4])[0]
+    elif content_type == "image/webp" and data[12:16] == b"VP8X" and len(data) >= 30:
+        width = 1 + int.from_bytes(data[24:27], "little")
+        height = 1 + int.from_bytes(data[27:30], "little")
+    if content_type.startswith("video/"):
+        marker = data.find(b"mvhd")
+        if marker >= 0 and marker + 32 <= len(data):
+            version = data[marker + 4]
+            offset = marker + (24 if version else 16)
+            size = 8 if version else 4
+            timescale = int.from_bytes(data[offset : offset + 4], "big")
+            ticks = int.from_bytes(data[offset + 4 : offset + 4 + size], "big")
+            if timescale:
+                duration = ticks / timescale
+    return width, height, duration
 
 
 class ControlStore:
@@ -117,7 +178,10 @@ class ControlStore:
                     content_type TEXT NOT NULL,
                     path TEXT NOT NULL,
                     size INTEGER NOT NULL,
-                    created_at INTEGER NOT NULL
+                    created_at INTEGER NOT NULL,
+                    width INTEGER,
+                    height INTEGER,
+                    duration REAL
                 );
                 CREATE TABLE IF NOT EXISTS generation_media (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,6 +213,21 @@ class ControlStore:
                     ON generation_parameters (path, number_value, history_id);
                 CREATE INDEX IF NOT EXISTS generation_parameters_text
                     ON generation_parameters (path, text_value, history_id);
+                CREATE TABLE IF NOT EXISTS provider_attempts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    history_id TEXT NOT NULL REFERENCES history(id) ON DELETE CASCADE,
+                    provider TEXT NOT NULL,
+                    started_at INTEGER NOT NULL,
+                    finished_at INTEGER,
+                    status TEXT NOT NULL,
+                    error TEXT
+                );
+                CREATE INDEX IF NOT EXISTS provider_attempts_history
+                    ON provider_attempts (history_id, id);
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    applied_at INTEGER NOT NULL
+                );
                 """
             )
             self.connection.execute(
@@ -161,7 +240,45 @@ class ControlStore:
                 )
                 """
             )
+        self._apply_migrations()
         self._migrate_media_library()
+
+    def _apply_migrations(self) -> None:
+        with self.lock, self.connection:
+            columns = {
+                str(row["name"])
+                for row in self.connection.execute("PRAGMA table_info(media_assets)")
+            }
+            for name, value_type in (
+                ("duration", "REAL"),
+                ("height", "INTEGER"),
+                ("width", "INTEGER"),
+            ):
+                if name not in columns:
+                    self.connection.execute(
+                        f"ALTER TABLE media_assets ADD COLUMN {name} {value_type}"
+                    )
+            self.connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations (version, applied_at) "
+                "VALUES (1, ?)",
+                (int(time.time()),),
+            )
+            rows = self.connection.execute(
+                "SELECT id, content_type, path FROM media_assets "
+                "WHERE width IS NULL AND height IS NULL AND duration IS NULL"
+            ).fetchall()
+            for row in rows:
+                path = Path(str(row["path"]))
+                if not path.is_file():
+                    continue
+                width, height, duration = intrinsic_media_metadata(
+                    path, str(row["content_type"])
+                )
+                self.connection.execute(
+                    "UPDATE media_assets SET width = ?, height = ?, duration = ? "
+                    "WHERE id = ?",
+                    (width, height, duration, int(row["id"])),
+                )
 
     @staticmethod
     def _parameter_values(value: object, path: str = ""):
@@ -381,16 +498,34 @@ class ControlStore:
                 """,
                 (limit, offset),
             ).fetchall()
+            attempt_rows = self.connection.execute(
+                """
+                SELECT id, history_id, provider, started_at, finished_at, status, error
+                FROM provider_attempts
+                WHERE history_id IN (
+                    SELECT id FROM history
+                    ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?
+                )
+                ORDER BY id
+                """,
+                (limit, offset),
+            ).fetchall()
         media_by_history: dict[str, list[dict[str, object]]] = {}
         for row in media_rows:
             item = dict(row)
             history_id = str(item.pop("history_id"))
             media_by_history.setdefault(history_id, []).append(item)
+        attempts_by_history: dict[str, list[dict[str, object]]] = {}
+        for row in attempt_rows:
+            item = dict(row)
+            history_id = str(item.pop("history_id"))
+            attempts_by_history.setdefault(history_id, []).append(item)
         histories = []
         for row in rows:
             item = dict(row)
             item["parameters"] = json.loads(str(item.pop("parameters_json")))
             item["media"] = media_by_history.get(str(item["id"]), [])
+            item["attempts"] = attempts_by_history.get(str(item["id"]), [])
             histories.append(item)
         return histories
 
@@ -481,6 +616,35 @@ class ControlStore:
             if row is not None:
                 self._index_history(history_id, str(row["parameters_json"]))
 
+    def start_attempt(self, history_id: str, provider: str) -> int:
+        with self.lock, self.connection:
+            cursor = self.connection.execute(
+                "INSERT INTO provider_attempts "
+                "(history_id, provider, started_at, status) "
+                "VALUES (?, ?, ?, 'running')",
+                (history_id, provider, int(time.time())),
+            )
+        return int(cursor.lastrowid)
+
+    def finish_attempt(
+        self, attempt_id: int, status: str, error: str | None = None
+    ) -> None:
+        with self.lock, self.connection:
+            self.connection.execute(
+                "UPDATE provider_attempts SET finished_at = ?, status = ?, error = ? "
+                "WHERE id = ?",
+                (int(time.time()), status, error, attempt_id),
+            )
+
+    def attempts(self, history_id: str) -> list[dict[str, object]]:
+        with self.lock:
+            rows = self.connection.execute(
+                "SELECT id, provider, started_at, finished_at, status, error "
+                "FROM provider_attempts WHERE history_id = ? ORDER BY id",
+                (history_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def save_media(
         self,
         history_id: str,
@@ -524,13 +688,26 @@ class ControlStore:
         source_url: str | None = None,
     ) -> int:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        width, height, duration = intrinsic_media_metadata(
+            path, content_type.split(";", 1)[0]
+        )
         self.connection.execute(
             """
-            INSERT INTO media_assets (sha256, content_type, path, size, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO media_assets (
+                sha256, content_type, path, size, created_at, width, height, duration
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(sha256) DO NOTHING
             """,
-            (digest, content_type.split(";", 1)[0], str(path), size, int(time.time())),
+            (
+                digest,
+                content_type.split(";", 1)[0],
+                str(path),
+                size,
+                int(time.time()),
+                width,
+                height,
+                duration,
+            ),
         )
         asset = self.connection.execute(
             "SELECT id FROM media_assets WHERE sha256 = ?", (digest,)
@@ -605,6 +782,13 @@ class ControlStore:
         filters = filters or []
         clauses = ["(? OR generation_media.role = 'output')"]
         values: list[object] = [int(include_inputs)]
+        terms = [term for term in query.strip().split() if len(term) >= 3]
+        if terms:
+            escaped_terms = [
+                f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms
+            ]
+            clauses.append("generation_search MATCH ?")
+            values.append(" OR ".join(escaped_terms))
         for item in filters:
             path = str(item.get("path", ""))
             operator = str(item.get("operator", "equals"))
@@ -640,7 +824,10 @@ class ControlStore:
             SELECT
                 media_assets.id AS asset_id,
                 media_assets.content_type,
+                media_assets.duration,
+                media_assets.height,
                 media_assets.size,
+                media_assets.width,
                 generation_media.filename,
                 generation_media.field_name,
                 generation_media.role,
