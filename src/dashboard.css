@@ -262,6 +262,10 @@ dialog::backdrop {
   justify-content: space-between;
   padding: 1rem;
 }
+.dialog-actions {
+  display: flex;
+  gap: 0.5rem;
+}
 .dialog-body {
   display: grid;
   gap: 1rem;

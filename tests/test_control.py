@@ -989,6 +989,8 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert 'data-media-id="1"' in history.text
     assert 'id="media-dialog"' in media.text
     assert 'aria-labelledby="media-title"' in media.text
+    assert "data-next-media" in media.text
+    assert "data-previous-media" in media.text
     assert 'data-media-id="' in media.text
     assert detail.status_code == 200
     assert detail.json()["uses"][0]["prompt"] == "Wombat Needle Portrait"
@@ -1002,6 +1004,10 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert "if (!mediaDialog.open) mediaDialog.showModal()" in javascript.text
     assert 'labelledValue("Generation Time"' in javascript.text
     assert '["KiB", "MiB", "GiB"]' in javascript.text
+    assert 'event.key === "ArrowLeft"' in javascript.text
+    assert 'event.key === "ArrowRight"' in javascript.text
+    assert 'event.key === "Escape"' in javascript.text
+    assert "event.target === mediaDialog" in javascript.text
     assert log_stream.media_type == "text/event-stream"
     assert str(first_log_update).startswith("data:")
     await app.state.controller.close()

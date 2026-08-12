@@ -123,10 +123,30 @@ const formatDuration = (seconds) => {
 const mediaDialog = document.getElementById("media-dialog");
 if (mediaDialog) {
   const detailRoot = document.getElementById("media-detail");
+  const nextButton = mediaDialog.querySelector("[data-next-media]");
+  const previousButton = mediaDialog.querySelector("[data-previous-media]");
+  let activeAssetId = null;
+  let openRequest = 0;
+  const availableMediaIds = () => [
+    ...new Set(
+      [...document.querySelectorAll("[data-media-id]:not(.related-item)")].map(
+        (item) => item.dataset.mediaId,
+      ),
+    ),
+  ];
+  const updateNavigation = () => {
+    const disabled = availableMediaIds().length < 2;
+    nextButton.disabled = disabled;
+    previousButton.disabled = disabled;
+  };
   const openMedia = async (assetId, updateAddress = true) => {
+    activeAssetId = String(assetId);
+    const request = ++openRequest;
+    updateNavigation();
     detailRoot.replaceChildren(element("p", "", "Loading…"));
     if (!mediaDialog.open) mediaDialog.showModal();
     const response = await fetch(`/media/${assetId}`);
+    if (request !== openRequest) return;
     if (!response.ok) {
       detailRoot.replaceChildren(
         element("p", "error", "Media Could Not Be Loaded."),
@@ -210,6 +230,13 @@ if (mediaDialog) {
       history.pushState({ asset: item.id }, "", url);
     }
   };
+  const browseMedia = (direction) => {
+    const ids = availableMediaIds();
+    if (ids.length < 2) return;
+    const currentIndex = ids.indexOf(activeAssetId);
+    const baseIndex = currentIndex === -1 ? (direction > 0 ? -1 : 0) : currentIndex;
+    openMedia(ids[(baseIndex + direction + ids.length) % ids.length]);
+  };
   document.addEventListener("click", (event) => {
     const target = event.target.closest("[data-media-id]");
     if (target) openMedia(target.dataset.mediaId);
@@ -217,7 +244,25 @@ if (mediaDialog) {
   mediaDialog
     .querySelector("[data-close]")
     .addEventListener("click", () => mediaDialog.close());
+  previousButton.addEventListener("click", () => browseMedia(-1));
+  nextButton.addEventListener("click", () => browseMedia(1));
+  mediaDialog.addEventListener("click", (event) => {
+    if (event.target === mediaDialog) mediaDialog.close();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (!mediaDialog.open) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      mediaDialog.close();
+      return;
+    }
+    if (event.target.matches("input, select, textarea, [contenteditable]")) return;
+    if (event.key === "ArrowLeft") browseMedia(-1);
+    if (event.key === "ArrowRight") browseMedia(1);
+  });
   mediaDialog.addEventListener("close", () => {
+    activeAssetId = null;
+    openRequest += 1;
     const url = new URL(window.location);
     if (url.searchParams.has("asset")) {
       url.searchParams.delete("asset");
@@ -225,5 +270,6 @@ if (mediaDialog) {
     }
   });
   const initialAsset = new URL(window.location).searchParams.get("asset");
+  updateNavigation();
   if (initialAsset) openMedia(initialAsset, false);
 }
