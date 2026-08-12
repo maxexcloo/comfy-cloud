@@ -29,6 +29,22 @@ def current_provider_names(value: object) -> object:
     return value
 
 
+def current_provider_configuration(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            key: current_provider_configuration(item)
+            for key, item in value.items()
+            if key != "local_pod_url"
+        }
+    if isinstance(value, list):
+        return [
+            current_provider_configuration(item)
+            for item in value
+            if item != "local-pod"
+        ]
+    return current_provider_names(value)
+
+
 @dataclass(frozen=True)
 class Job:
     id: str
@@ -377,6 +393,29 @@ class ControlStore:
                 self.connection.execute("DELETE FROM generation_search")
                 self.connection.execute(
                     "INSERT INTO schema_migrations (version, applied_at) VALUES (3, ?)",
+                    (int(time.time()),),
+                )
+            migrated = self.connection.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = 4"
+            ).fetchone()
+            if migrated is None:
+                row = self.connection.execute(
+                    "SELECT document_json FROM control_configuration WHERE id = 1"
+                ).fetchone()
+                if row is not None:
+                    document = json.loads(str(row["document_json"]))
+                    current = current_provider_configuration(document)
+                    if current != document:
+                        self.connection.execute(
+                            "UPDATE control_configuration SET document_json = ? "
+                            "WHERE id = 1",
+                            (json.dumps(current),),
+                        )
+                self.connection.execute(
+                    "DELETE FROM provider_resources WHERE provider = 'local-pod'"
+                )
+                self.connection.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (4, ?)",
                     (int(time.time()),),
                 )
             rows = self.connection.execute(

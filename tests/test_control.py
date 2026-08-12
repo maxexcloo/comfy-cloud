@@ -1721,7 +1721,7 @@ def test_media_metadata_and_schema_migrations_are_persisted(tmp_path: Path):
     ).fetchall()
 
     assert (item["width"], item["height"]) == (640, 480)
-    assert [row["version"] for row in versions] == [1, 2, 3]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4]
     store.close()
 
 
@@ -1729,7 +1729,7 @@ def test_provider_identifiers_are_migrated_to_current_names(tmp_path: Path):
     database = tmp_path / "control.db"
     store = ControlStore(database)
     with store.connection:
-        store.connection.execute("DELETE FROM schema_migrations WHERE version = 3")
+        store.connection.execute("DELETE FROM schema_migrations WHERE version >= 3")
         store.connection.execute(
             "INSERT INTO history (id, operation, model, provider, provider_model, "
             "status, created_at, updated_at, parameters_json, error) "
@@ -1755,7 +1755,19 @@ def test_provider_identifiers_are_migrated_to_current_names(tmp_path: Path):
         store.connection.execute(
             "INSERT INTO control_configuration "
             "(id, revision, document_json, updated_at) VALUES (1, 1, ?, 1)",
-            ('{"routes":{"image-generation":["runpod-serverless"]}}',),
+            (
+                json.dumps(
+                    {
+                        "local_pod_url": "http://local",
+                        "routes": {
+                            "image-generation": [
+                                "local-pod",
+                                "runpod-serverless",
+                            ]
+                        },
+                    }
+                ),
+            ),
         )
     store.close()
 
@@ -1784,6 +1796,7 @@ def test_provider_identifiers_are_migrated_to_current_names(tmp_path: Path):
     assert [row["provider"] for row in resources] == ["runpod"]
     assert parameter["text_value"] == "modal"
     assert document["routes"]["image-generation"] == ["runpod"]
+    assert "local_pod_url" not in document
     migrated.close()
 
 
