@@ -12,8 +12,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from comfy_control.cliproxy import CliproxyClient
-from comfy_control.control import create_app, normalise_grok_image_options
+from comfy_control.control import create_app
 from comfy_control.control_config import ControlFile, ControlSettings
+from comfy_control.control_inference import normalise_grok_image_options
 from comfy_control.control_registry import control_file as registry_control_file
 from comfy_control.control_store import ControlStore
 from comfy_control.controller import history_parameters
