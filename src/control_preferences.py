@@ -11,6 +11,18 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .control_store import ControlStore
 
+DEFAULT_WORKER_IMAGE = "ghcr.io/maxexcloo/comfy-control:worker"
+WORKER_IMAGE_REPOSITORY = "ghcr.io/maxexcloo/comfy-control"
+
+
+def revision_worker_image() -> str | None:
+    revision = os.getenv("COMFY_CONTROL_REVISION", "").strip().lower()
+    if len(revision) < 7 or any(
+        character not in "0123456789abcdef" for character in revision
+    ):
+        return None
+    return f"{WORKER_IMAGE_REPOSITORY}:sha-{revision[:7]}-worker"
+
 
 class ConfigurationConflict(RuntimeError):
     pass
@@ -249,7 +261,7 @@ class ControlPreferences(BaseModel):
     salad_gpu_classes: list[str] = Field(default_factory=list)
     vast_maximum_workers: int = 1
     vast_minimum_gpu_memory_gb: int = 24
-    worker_image: str = "ghcr.io/maxexcloo/comfy-control:worker"
+    worker_image: str = DEFAULT_WORKER_IMAGE
     comfy_ui_username: str = "comfy"
     maximum_pending_generations: int = 8
     maximum_request_bytes: int = 100 * 1024 * 1024
@@ -356,20 +368,23 @@ class ControlPreferences(BaseModel):
             vast_maximum_workers=int(os.getenv("VAST_MAXIMUM_WORKERS", "1")),
             vast_minimum_gpu_memory_gb=int(minimum_gpu_memory or "24"),
             worker_api_key=os.getenv("WORKER_API_KEY", ""),
-            worker_image=os.getenv(
-                "WORKER_IMAGE", "ghcr.io/maxexcloo/comfy-control:worker"
-            ),
+            worker_image=os.getenv("WORKER_IMAGE")
+            or revision_worker_image()
+            or DEFAULT_WORKER_IMAGE,
             workflow_timeout=float(os.getenv("WORKFLOW_TIMEOUT", "900")),
         )
 
     @classmethod
     def environment_overrides(cls) -> dict[str, object]:
         configured = cls.from_environment().model_dump()
-        return {
+        overrides = {
             field: configured[field]
             for field, names in cls.ENVIRONMENT_FIELDS.items()
             if any(name in os.environ for name in names)
         }
+        if "WORKER_IMAGE" not in os.environ and revision_worker_image() is not None:
+            overrides["worker_image"] = configured["worker_image"]
+        return overrides
 
     def environment(self) -> dict[str, str]:
         values = {

@@ -19,10 +19,10 @@ ghcr.io/OWNER/comfy-control:0.1-control
 ghcr.io/OWNER/comfy-control:0.1-worker
 ```
 
-Deployment assets follow the moving role tags by default. Pin a full release tag
-when reproducibility is more important than automatic updates. Every build also
-receives a role-specific `sha-<short-sha>-control` or
-`sha-<short-sha>-worker` tag.
+Every build receives role-specific `sha-<short-sha>-control` and
+`sha-<short-sha>-worker` tags. A published control image automatically deploys the
+worker image built from the same source revision. An explicit `WORKER_IMAGE`
+override can instead select another immutable release or digest.
 
 The lightweight control image contains the API, dashboard and provider control
 plane. The CUDA-enabled worker image contains Comfy Control, pinned ComfyUI, the
@@ -67,14 +67,15 @@ discovered URL to become healthy, forward the request, and apply the configured 
 policy. Provider resource identifiers are saved in the controller database; serving
 URLs are rediscovered because they may change after a start or scale event.
 
-Configure provider credentials, `HF_TOKEN`, model profiles, the worker image and GPU
-preferences through Settings. Pin the worker image to a full release or SHA tag when
-reproducibility is more important than following the moving `worker` tag. SaladCloud
-also requires its organisation and project because its public API uses both slugs as
-security boundaries. Comfy Control discovers a suitable current GPU class for
-SaladCloud. RunPod and Vast.ai select suitable available GPU capacity through their
-APIs. GPU classes, regions, worker counts and minimum Vast.ai GPU memory are optional
-preferences rather than prerequisites.
+Configure provider credentials, `HF_TOKEN`, model profiles and GPU preferences
+through Settings. The packaged controller locks its worker image to the matching
+source revision. Set `WORKER_IMAGE` only to override that default with another
+immutable release tag or digest. SaladCloud also requires its organisation and
+project because its public API uses both slugs as security boundaries. Comfy Control
+discovers a suitable current GPU class for SaladCloud. RunPod and Vast.ai select
+suitable available GPU capacity through their APIs. GPU classes, regions, worker
+counts and minimum Vast.ai GPU memory are optional preferences rather than
+prerequisites.
 
 Optional provider and worker environment variables override their corresponding
 SQLite settings on every start. The dashboard marks those fields as controlled by

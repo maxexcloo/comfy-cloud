@@ -50,5 +50,8 @@ RUN --mount=type=secret,id=HF_TOKEN,env=HF_TOKEN \
         --models-dir /opt/ComfyUI/models; \
     fi
 
+ARG COMFY_CONTROL_REVISION
+ENV COMFY_CONTROL_REVISION=${COMFY_CONTROL_REVISION}
+
 EXPOSE 8000
 CMD ["comfy-control", "pod"]

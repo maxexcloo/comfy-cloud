@@ -20,5 +20,8 @@ RUN uv export --frozen --no-dev --extra modal --no-emit-project \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --no-deps /tmp/dist/*.whl \
     && rm -rf /tmp/dist /tmp/requirements.txt
 
+ARG COMFY_CONTROL_REVISION
+ENV COMFY_CONTROL_REVISION=${COMFY_CONTROL_REVISION}
+
 EXPOSE 8000
 CMD ["comfy-control", "control"]

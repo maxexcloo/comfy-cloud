@@ -18,6 +18,7 @@ from comfy_control.control_dashboard_routes import (
     provider_logs as dashboard_provider_logs,
 )
 from comfy_control.control_inference import normalise_grok_image_options
+from comfy_control.control_preferences import ControlPreferences
 from comfy_control.control_registry import control_file as registry_control_file
 from comfy_control.control_store import ControlStore
 from comfy_control.controller import history_parameters
@@ -474,6 +475,21 @@ async def test_environment_overrides_database_and_locks_settings(tmp_path, monke
         "https://control.example"
     )
     await restored.state.controller.close()
+
+
+def test_packaged_revision_locks_matching_worker_image(monkeypatch):
+    monkeypatch.delenv("WORKER_IMAGE", raising=False)
+    monkeypatch.setenv(
+        "COMFY_CONTROL_REVISION", "cd208c90d415720d783711fa6cbc7b14d1d71c05"
+    )
+
+    configured = ControlPreferences.from_environment()
+    overrides = ControlPreferences.environment_overrides()
+
+    assert configured.worker_image == (
+        "ghcr.io/maxexcloo/comfy-control:sha-cd208c9-worker"
+    )
+    assert overrides["worker_image"] == configured.worker_image
 
 
 @pytest.mark.asyncio
