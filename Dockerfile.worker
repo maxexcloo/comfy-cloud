@@ -22,7 +22,7 @@ RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/ubuntu.sources && \
     apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates ffmpeg git python3 python3-pip python3-venv && \
     rm -rf /var/lib/apt/lists/* && \
-    uv venv --system-site-packages "${VIRTUAL_ENV}" && \
+    uv venv "${VIRTUAL_ENV}" && \
     uv pip install --python "${VIRTUAL_ENV}/bin/python" pip
 
 RUN git init /opt/ComfyUI \
@@ -41,6 +41,7 @@ RUN uv export --frozen --no-dev --extra build --extra vast --no-emit-project \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /tmp/requirements.txt \
     && uv build --wheel --out-dir /tmp/dist \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --no-deps /tmp/dist/*.whl \
+    && sed -i 's/include-system-site-packages = false/include-system-site-packages = true/' "${VIRTUAL_ENV}/pyvenv.cfg" \
     && rm -rf /tmp/dist /tmp/requirements.txt
 
 RUN --mount=type=secret,id=HF_TOKEN,env=HF_TOKEN \
