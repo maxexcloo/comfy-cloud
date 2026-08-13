@@ -1055,6 +1055,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert 'aria-sort="descending"' in events.text
     assert "Unrelated Event" not in events.text
     assert f"/history?q={history_id}" in events.text
+    assert '<span class="font-monospace">image-wombat</span>' in events.text
     assert history.text.count(history_id) >= 1
     assert "Apply Filters" not in history.text
     assert "data-live-filter" in history.text

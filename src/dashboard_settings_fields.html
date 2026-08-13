@@ -1,5 +1,5 @@
 {% macro fields(items) -%}
-<div class="g-3 row">{% for field in items %}<label class="col-12 col-lg-6 form-label"
+<div class="g-3 row">{% for field in items %}<label class="col-12 {% if field.type != 'routes' %}col-lg-6 {% endif %}form-label"
   >{{ field.label }}{% if field.options %}<select class="form-select form-select-sm" name="{{ field.name }}"{% if field.locked %} disabled{% endif %}>
     {% if field.locked %}<option selected>Environment Controlled</option>{% endif %}
     {% for option in field.options %}<option value="{{ option }}"{% if not field.locked and field.value == option %} selected{% endif %}>{{ option }}</option>{% endfor %}

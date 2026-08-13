@@ -43,7 +43,7 @@
 }
 
 .filters {
-  align-items: end;
+  align-items: flex-end;
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;

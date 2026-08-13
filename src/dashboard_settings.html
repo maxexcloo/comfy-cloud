@@ -13,7 +13,7 @@
     <header class="card-header"><h2 class="card-title">{{ category }}</h2></header>
     <div class="card-body g-3 row">
       {% for group, fields in groups.items() %}
-      <fieldset class="col-12 col-xl-6">
+      <fieldset class="col-12">
         <legend>{{ group }}</legend>
         {{ ui.fields(fields) }}
       </fieldset>
