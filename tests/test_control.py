@@ -25,7 +25,7 @@ from comfy_control.control_inference import normalise_grok_image_options
 from comfy_control.control_preferences import ControlPreferences
 from comfy_control.control_registry import control_file as registry_control_file
 from comfy_control.control_store import ControlStore
-from comfy_control.controller import history_parameters
+from comfy_control.controller import Controller, history_parameters
 from comfy_control.provider_telemetry import normalise_usage, normalise_xai_quota
 
 ROOT = Path(__file__).parents[1]
@@ -554,6 +554,47 @@ def test_provider_routes_allow_multiple_models_per_provider():
         "flux-2-klein-9b",
         "krea-2-turbo",
     ]
+
+
+@pytest.mark.asyncio
+async def test_generated_control_file_keeps_multiple_models_per_provider(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("MODAL_TOKEN_ID", "modal-id")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "modal-secret")
+    monkeypatch.setenv("WORKER_API_KEY", "worker-key")
+    controller = Controller(
+        ControlSettings(
+            api_key="control-key",
+            config_file=None,
+            database_path=tmp_path / "control.db",
+            ui_password="ui-password",
+            ui_username="comfy",
+        )
+    )
+    preferences = controller.preferences.model_copy(
+        update={
+            "model_profiles": ["flux-2-klein-9b", "krea-2-turbo"],
+            "routes": {
+                "images": [
+                    {"model": "flux-2-klein-9b", "provider": "modal"},
+                    {"model": "krea-2-turbo", "provider": "modal"},
+                ],
+                "videos": [],
+            },
+        }
+    )
+
+    config = controller.load_control_file(preferences)
+    image_model = next(
+        model for model in config.models if model.id == "image-generation"
+    )
+
+    assert [(target.provider, target.model) for target in image_model.targets] == [
+        ("modal", "flux-2-klein-9b/text-to-image"),
+        ("modal", "krea-2-turbo/text-to-image"),
+    ]
+    await controller.close()
 
 
 @pytest.mark.asyncio

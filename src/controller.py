@@ -230,13 +230,11 @@ class Controller:
         }
 
     def load_control_file(self, preferences: ControlPreferences) -> ControlFile:
-        config = (
-            ControlFile.load(self.settings.config_file, preferences.environment())
-            if self.settings.config_file is not None
-            else control_registry.control_file(
+        if self.settings.config_file is None:
+            return control_registry.control_file(
                 preferences.environment(), preferences.routes
             )
-        )
+        config = ControlFile.load(self.settings.config_file, preferences.environment())
         models = []
         for model in config.models:
             family = control_registry.ROUTE_FAMILIES.get(
