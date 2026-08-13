@@ -9,8 +9,8 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   <input type="hidden" name="revision" value="{{ settings.revision }}" />
   {% for category, groups in settings.categories.items() %}
-  <section class="settings-category">
-    <div class="section-title"><h2>{{ category }}</h2></div>
+  <article class="settings-category">
+    <header><h2>{{ category }}</h2></header>
     <div class="settings-groups">
       {% for group, fields in groups.items() %}
       <fieldset{% if group in provider_settings_anchors %} id="{{ provider_settings_anchors[group] }}"{% endif %}>
@@ -81,7 +81,7 @@
       </fieldset>
       {% endfor %}
     </div>
-  </section>
+  </article>
   {% endfor %}
   <button>Save Settings</button>
 </form>

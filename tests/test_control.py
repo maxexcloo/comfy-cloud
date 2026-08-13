@@ -981,6 +981,11 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     )
     assert 'aria-current="page">Providers' in providers.text
     assert 'class="skip-link"' in providers.text
+    assert "@picocss/pico@2.1.1/css/pico.min.css" in providers.text
+    assert (
+        "sha384-L1dWfspMTHU/ApYnFiMz2QID/PlP1xCW9visvBdbEkOLkSSWsP6ZJWhPw6apiXxU"
+        in providers.text
+    )
     assert 'href="/assets/dashboard.css?current"' in providers.text
     assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text

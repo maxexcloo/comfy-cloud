@@ -4,15 +4,19 @@
 >
 {%- endmacro %} {% macro pagination(data) -%}
 <nav class="pagination" aria-label="Pagination">
-  {% if data.page > 1 %}<a
-    href="?page={{ data.page - 1 }}{{ data.query_suffix }}"
-    >Previous</a
-  >{% endif %}
-  <span>Page {{ data.page }} Of {{ data.pages }}</span>
-  {% if data.page < data.pages %}<a
-    href="?page={{ data.page + 1 }}{{ data.query_suffix }}"
-    >Next</a
-  >{% endif %}
+  <ul>
+    {% if data.page > 1 %}<li><a
+      href="?page={{ data.page - 1 }}{{ data.query_suffix }}"
+      >Previous</a
+    ></li>{% endif %}
+  </ul>
+  <ul><li>Page {{ data.page }} Of {{ data.pages }}</li></ul>
+  <ul>
+    {% if data.page < data.pages %}<li><a
+      href="?page={{ data.page + 1 }}{{ data.query_suffix }}"
+      >Next</a
+    ></li>{% endif %}
+  </ul>
 </nav>
 {%- endmacro %}
 

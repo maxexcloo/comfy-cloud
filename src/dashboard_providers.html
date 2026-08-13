@@ -6,7 +6,7 @@
     <small>Compute availability and lifecycle controls.</small>
   </div>
 </div>
-<section class="table-wrap" aria-label="Providers">
+<section class="overflow-auto" aria-label="Providers">
   <table>
     <thead>
       <tr>
@@ -23,9 +23,6 @@
       <tr id="{{ provider.id }}">
         <td>
           <div class="provider-name">
-            <span class="provider-icon" aria-hidden="true"
-              >{{ provider.platform[:2] | upper }}</span
-            >
             <div>
               {% if provider.panel_url %}<a
                 href="{{ provider.panel_url }}"
@@ -86,14 +83,16 @@
 </section>
 {% endblock %} {% block dialogs %}{% include "dashboard_log_dialog.html" %}
 <dialog id="deploy-dialog" aria-labelledby="deploy-title">
-  <div class="dialog-head"><div><small>Provider Deployment</small><h2 id="deploy-title">Deploy Provider</h2></div><button type="button" data-close>Close</button></div>
-  <form class="dialog-body" id="deploy-form" method="post">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <input type="hidden" name="memory_gb" id="deploy-memory" />
-    <label>GPU<select name="gpu" id="deploy-gpu"><option value="">Loading Availability…</option></select></label>
-    <p id="deploy-option-detail" class="notice">Checking current availability and pricing…</p>
-    <div class="dialog-actions"><button type="submit">Deploy</button><button type="button" data-close>Cancel</button></div>
-  </form>
+  <article>
+    <header class="dialog-head"><div><small>Provider Deployment</small><h2 id="deploy-title">Deploy Provider</h2></div><button class="secondary" type="button" data-close>Close</button></header>
+    <form class="dialog-body" id="deploy-form" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="memory_gb" id="deploy-memory" />
+      <label>GPU<select name="gpu" id="deploy-gpu"><option value="">Loading Availability…</option></select></label>
+      <p id="deploy-option-detail" class="notice">Checking current availability and pricing…</p>
+      <div class="dialog-actions"><button type="submit">Deploy</button><button class="secondary outline" type="button" data-close>Cancel</button></div>
+    </form>
+  </article>
 </dialog>
 {%
 endblock %}

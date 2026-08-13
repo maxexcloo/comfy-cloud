@@ -1,41 +1,49 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
     <title>
       {% block title %}{{ page | title }}{% endblock %} · Comfy Control
     </title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.min.css"
+      integrity="sha384-L1dWfspMTHU/ApYnFiMz2QID/PlP1xCW9visvBdbEkOLkSSWsP6ZJWhPw6apiXxU"
+      crossorigin="anonymous"
+    />
     <link rel="stylesheet" href="/assets/dashboard.css?current" />
   </head>
   <body>
     <a class="skip-link" href="#content">Skip To Content</a>
-    <header>
+    <header class="container">
       <a href="/media"
         ><small>GPU Orchestration</small>
         <h1>Comfy Control</h1></a
       >
     </header>
     {% include "dashboard_navigation.html" %}
-    <main id="content">
+    <main class="container" id="content">
       {% if message %}
       <p class="notice" role="status">{{ message }}</p>
       {% endif %} {% block content %}{% endblock %}
     </main>
     {% block dialogs %}{% endblock %}
     <dialog id="media-dialog" aria-labelledby="media-title">
-      <div class="dialog-head">
-        <div>
-          <small id="media-kind">Media</small>
-          <h2 id="media-title">Media Details</h2>
-        </div>
-        <div class="dialog-actions">
-          <button type="button" data-previous-media title="Previous Media (Left Arrow)">Previous</button>
-          <button type="button" data-next-media title="Next Media (Right Arrow)">Next</button>
-          <button type="button" data-close>Close</button>
-        </div>
-      </div>
-      <div class="dialog-body" id="media-detail"><p>Loading…</p></div>
+      <article>
+        <header class="dialog-head">
+          <div>
+            <small id="media-kind">Media</small>
+            <h2 id="media-title">Media Details</h2>
+          </div>
+          <div class="dialog-actions">
+            <button class="secondary outline" type="button" data-previous-media title="Previous Media (Left Arrow)">Previous</button>
+            <button class="secondary outline" type="button" data-next-media title="Next Media (Right Arrow)">Next</button>
+            <button class="secondary" type="button" data-close>Close</button>
+          </div>
+        </header>
+        <div class="dialog-body" id="media-detail"><p>Loading…</p></div>
+      </article>
     </dialog>
     <script src="/assets/dashboard.js?current"></script>
   </body>
