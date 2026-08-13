@@ -226,7 +226,9 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
             return httpx.Response(200, json=[])
         payload = json.loads(request.content)
         if request.url.path == "/v1/templates":
+            assert payload["containerDiskInGb"] == 100
             assert payload["dockerStartCmd"] == ["comfy-control", "serverless"]
+            assert payload["env"]["MODELS_DIR"] == "/models"
             assert payload["isServerless"] is True
             return httpx.Response(200, json={"id": "template-1"})
         assert payload["templateId"] == "template-1"
@@ -243,6 +245,42 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
         )
 
     assert requests == ["/v1/templates", "/v1/templates", "/v1/endpoints"]
+    assert response.json()["id"] == "endpoint-1"
+
+
+@pytest.mark.asyncio
+async def test_updates_existing_runpod_serverless_template(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
+    requests: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.path)
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json=[{"id": "template-1", "name": "comfy-control-template"}],
+            )
+        payload = json.loads(request.content)
+        if request.url.path.endswith("/update"):
+            assert payload["env"]["MODEL_PROFILES"] == "flux-2-klein-9b"
+            assert "isServerless" not in payload
+            return httpx.Response(200, json={"id": "template-1"})
+        assert payload["templateId"] == "template-1"
+        return httpx.Response(201, json={"id": "endpoint-1"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await deploy_provider(
+            client,
+            provider("runpod"),
+            preferences(),
+            settings(tmp_path),
+        )
+
+    assert requests == [
+        "/v1/templates",
+        "/v1/templates/template-1/update",
+        "/v1/endpoints",
+    ]
     assert response.json()["id"] == "endpoint-1"
 
 

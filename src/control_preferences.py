@@ -275,8 +275,8 @@ class ControlPreferences(BaseModel):
         if set(value) - {"images", "videos"}:
             raise ValueError("provider routes only support images and videos")
         for family, targets in value.items():
-            providers = [target.provider for target in targets]
-            if len(providers) != len(set(providers)):
+            routes = [(target.provider, target.model) for target in targets]
+            if len(routes) != len(set(routes)):
                 raise ValueError(f"{family} provider routes must be unique")
             if any(not target.provider or not target.model for target in targets):
                 raise ValueError(f"{family} provider routes require provider and model")

@@ -51,13 +51,16 @@ def test_proxy_panel_url_is_derived_without_an_adapter():
 
 
 @pytest.mark.asyncio
-async def test_runpod_usage_reports_account_credit():
+async def test_runpod_usage_reports_account_spend():
     request = None
 
     def respond(received: httpx.Request) -> httpx.Response:
         nonlocal request
         request = received
-        return httpx.Response(200, json={"data": {"myself": {"credit": 12.5}}})
+        return httpx.Response(
+            200,
+            json={"data": {"myself": {"currentSpendPerHr": 1.25, "spendLimit": 80}}},
+        )
 
     provider = Provider.model_validate(
         {
@@ -77,7 +80,10 @@ async def test_runpod_usage_reports_account_credit():
             lambda _: {},
         )
 
-    assert metrics == [{"label": "Credit balance", "unit": "USD", "value": 12.5}]
+    assert metrics == [
+        {"label": "Current Spend", "unit": "USD/hour", "value": 1.25},
+        {"label": "Spend Limit", "unit": "USD", "value": 80},
+    ]
     assert request is not None
     assert request.headers["authorization"] == "Bearer runpod-key"
 

@@ -1,10 +1,10 @@
 {
-  "containerDiskInGb": 30,
+  "containerDiskInGb": 100,
   "dockerArgs": "comfy-control serverless",
   "endpointType": "load-balancer",
   "ports": "8000/http",
   "env": [
-    { "key": "MODELS_DIR", "value": "/runpod-volume/models" },
+    { "key": "MODELS_DIR", "value": "/models" },
     { "key": "PORT", "value": "8000" },
     { "key": "PORT_HEALTH", "value": "8000" }
   ]

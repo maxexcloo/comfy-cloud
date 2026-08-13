@@ -99,6 +99,7 @@ class ProviderRuntime:
     active_requests: int = 0
     base_url: str | None = None
     last_used: float = field(default_factory=time.monotonic)
+    lifecycle_revision: int = 0
     ready: bool = False
     state: str = "unknown"
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -923,6 +924,7 @@ class Controller:
             if action_name == "deploy":
                 runtime.state = "starting"
             elif action_name in {"delete", "destroy", "terminate"}:
+                runtime.lifecycle_revision += 1
                 runtime.ready = False
                 runtime.state = "stopped"
             if action_name == "stop":
@@ -1000,19 +1002,24 @@ class Controller:
                     request_id=request_id,
                 )
                 await self.action(start_action, runtime.config.id, "start")
-            deadline = time.monotonic() + runtime.config.startup_timeout
-            while time.monotonic() < deadline:
-                if await self.check_ready(runtime):
-                    self.store.event(
-                        "info",
-                        "provider ready",
-                        provider=runtime.config.id,
-                        request_id=request_id,
-                    )
-                    return
-                await asyncio.sleep(2)
-            runtime.state = "failed"
-            raise TimeoutError(f"provider {runtime.config.id} did not become ready")
+        lifecycle_revision = runtime.lifecycle_revision
+        deadline = time.monotonic() + runtime.config.startup_timeout
+        while time.monotonic() < deadline:
+            if await self.check_ready(runtime):
+                self.store.event(
+                    "info",
+                    "provider ready",
+                    provider=runtime.config.id,
+                    request_id=request_id,
+                )
+                return
+            if runtime.lifecycle_revision != lifecycle_revision:
+                raise RuntimeError(
+                    f"provider {runtime.config.id} was terminated while starting"
+                )
+            await asyncio.sleep(2)
+        runtime.state = "failed"
+        raise TimeoutError(f"provider {runtime.config.id} did not become ready")
 
     async def idle_reaper(self) -> None:
         while True:

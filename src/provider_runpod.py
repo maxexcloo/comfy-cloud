@@ -90,13 +90,20 @@ class RunPodAdapter(BaseAdapter):
                     f"Bearer {required_preference('RUNPOD_API_KEY', preferences)}"
                 )
             },
-            json={"query": "query { myself { credit } }"},
+            json={"query": "query { myself { currentSpendPerHr spendLimit } }"},
         )
         response.raise_for_status()
-        credit = first_number(response.json(), "data.myself.credit")
-        if credit is None:
-            raise RuntimeError("RunPod credit response did not include a balance")
-        return [{"label": "Credit balance", "unit": "USD", "value": credit}]
+        payload = response.json()
+        metrics = []
+        for label, path, unit in (
+            ("Current Spend", "data.myself.currentSpendPerHr", "USD/hour"),
+            ("Spend Limit", "data.myself.spendLimit", "USD"),
+        ):
+            if (value := first_number(payload, path)) is not None:
+                metrics.append({"label": label, "unit": unit, "value": value})
+        if not metrics:
+            raise RuntimeError("RunPod usage response did not include spend data")
+        return metrics
 
 
 class RunPodPodAdapter(RunPodAdapter):

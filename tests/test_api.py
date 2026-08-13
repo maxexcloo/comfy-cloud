@@ -51,6 +51,18 @@ def execution_spec(execution_id: str = "execution_1") -> str:
 
 
 @pytest.mark.asyncio
+async def test_worker_readiness_requires_comfyui_node_information():
+    app = create_app(settings())
+    app.state.runtime.object_info = AsyncMock(return_value=None)
+
+    assert await app.state.runtime.ready() is False
+
+    app.state.runtime.object_info = AsyncMock(return_value={"KSampler": {}})
+
+    assert await app.state.runtime.ready() is True
+
+
+@pytest.mark.asyncio
 async def test_internal_info_requires_auth_and_lists_models():
     app = create_app(settings())
     async with httpx.AsyncClient(

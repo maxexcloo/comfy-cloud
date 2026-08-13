@@ -62,7 +62,7 @@ class Runtime:
         await self.comfy.close()
 
     async def ready(self) -> bool:
-        return await self.comfy.ready()
+        return await self.object_info() is not None
 
     async def run(
         self, model: WorkflowModel, values: dict[str, Any]

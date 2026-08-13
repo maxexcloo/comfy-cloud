@@ -142,7 +142,19 @@ async def deploy_serverless(
         )
         template_value = template_response.json()
     else:
-        template_value = existing
+        template_id = existing.get("id")
+        if not template_id:
+            raise RuntimeError("RunPod template response has no id")
+        update = dict(template)
+        update.pop("isServerless", None)
+        template_response = await checked_request(
+            client,
+            "POST",
+            f"https://rest.runpod.io/v1/templates/{quote(str(template_id), safe='')}/update",
+            headers=headers(preferences),
+            json=update,
+        )
+        template_value = template_response.json()
     template_id = template_value.get("id") if isinstance(template_value, dict) else None
     if not template_id:
         raise RuntimeError("RunPod template response has no id")

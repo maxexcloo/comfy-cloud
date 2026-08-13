@@ -537,6 +537,25 @@ async def test_provider_routes_have_a_typed_current_api(tmp_path):
     await app.state.controller.close()
 
 
+def test_provider_routes_allow_multiple_models_per_provider():
+    preferences = ControlPreferences.model_validate(
+        {
+            "routes": {
+                "images": [
+                    {"model": "flux-2-klein-9b", "provider": "modal"},
+                    {"model": "krea-2-turbo", "provider": "modal"},
+                ],
+                "videos": [],
+            }
+        }
+    )
+
+    assert [route.model for route in preferences.routes["images"]] == [
+        "flux-2-klein-9b",
+        "krea-2-turbo",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_environment_overrides_database_and_locks_settings(tmp_path, monkeypatch):
     monkeypatch.setenv("HF_TOKEN", "environment-secret")
