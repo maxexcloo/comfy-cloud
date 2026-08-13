@@ -21,6 +21,22 @@ from .control_preferences import ConfigurationConflict
 DASHBOARD_CSS = resources.files("comfy_control").joinpath("dashboard.css").read_text()
 DASHBOARD_JS = resources.files("comfy_control").joinpath("dashboard.js").read_text()
 PAGE_SIZE = 25
+PROVIDER_SETTINGS_ANCHORS = {
+    "CLI Proxy": "provider-settings-cliproxyapi",
+    "Modal": "provider-settings-modal",
+    "RunPod": "provider-settings-runpod",
+    "SaladCloud": "provider-settings-salad",
+    "Vast": "provider-settings-vast",
+}
+PROVIDER_SETTINGS_URLS = {
+    "cliproxyapi": "/settings#provider-settings-cliproxyapi",
+    "modal": "/settings#provider-settings-modal",
+    "runpod": "/settings#provider-settings-runpod",
+    "runpod-pod": "/settings#provider-settings-runpod",
+    "salad": "/settings#provider-settings-salad",
+    "vast": "/settings#provider-settings-vast",
+    "vast-pod": "/settings#provider-settings-vast",
+}
 
 router = APIRouter(tags=["dashboard"])
 
@@ -113,6 +129,7 @@ async def providers(request: Request) -> Response:
             "panel_url": statuses[runtime.config.id]["panel_url"],
             "platform": runtime.config.platform or runtime.config.id,
             "resource_id": controller.resource_id(runtime.config.id),
+            "settings_url": PROVIDER_SETTINGS_URLS.get(runtime.config.id),
             "state": runtime.state,
             "type": runtime.config.type,
         }
@@ -125,6 +142,7 @@ async def providers(request: Request) -> Response:
             "panel_url": None,
             "platform": provider["platform"],
             "resource_id": None,
+            "settings_url": PROVIDER_SETTINGS_URLS.get(str(provider["id"])),
             "state": "unconfigured",
             "type": provider["type"],
         }
@@ -227,6 +245,7 @@ async def settings_page(request: Request) -> Response:
         request,
         "dashboard_settings.html",
         "settings",
+        provider_settings_anchors=PROVIDER_SETTINGS_ANCHORS,
         settings={"categories": categories, "revision": description["revision"]},
     )
 

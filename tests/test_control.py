@@ -510,6 +510,8 @@ async def test_server_rendered_settings_require_csrf(tmp_path):
     assert page.status_code == 200
     assert 'action="/settings"' in page.text
     assert 'name="csrf_token"' in page.text
+    for anchor in ("cliproxyapi", "modal", "runpod", "salad", "vast"):
+        assert f'id="provider-settings-{anchor}"' in page.text
     assert rejected.status_code == 403
     await app.state.controller.close()
 

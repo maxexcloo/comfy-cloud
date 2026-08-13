@@ -134,6 +134,9 @@ fieldset {
   border: 1px solid var(--border);
   border-radius: 10px;
 }
+fieldset:target {
+  border-color: var(--accent);
+}
 .table-wrap {
   overflow: auto;
 }
@@ -186,6 +189,15 @@ tr:last-child td {
 }
 .state-log-link:hover {
   background: #19242c;
+}
+.settings-pill {
+  color: var(--muted);
+  margin-left: 0.3rem;
+  text-decoration: none;
+}
+.settings-pill:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .badge.completed,
 .badge.ready,

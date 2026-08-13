@@ -45,9 +45,8 @@
             data-log-provider="{{ provider.id }}"
             data-log-url="/providers/{{ provider.id }}/logs"
             >{{ provider.state.replace("_", " ").replace("-", " ") | title }}</a
-          >{% else %}{{ ui.badge(provider.state) }}{% endif %}{% if not provider.configured %}<br /><small
-            >Configure In Settings</small
-          >{% endif %}
+          >{% else %}{{ ui.badge(provider.state) }}{% endif %}
+          {% if provider.settings_url %}<a class="badge settings-pill" href="{{ provider.settings_url }}">Settings</a>{% endif %}
         </td>
         <td><code>{{ provider.resource_id or "—" }}</code></td>
         <td>

@@ -13,7 +13,7 @@
     <div class="section-title"><h2>{{ category }}</h2></div>
     <div class="settings-groups">
       {% for group, fields in groups.items() %}
-      <fieldset>
+      <fieldset{% if group in provider_settings_anchors %} id="{{ provider_settings_anchors[group] }}"{% endif %}>
         <legend>{{ group }}</legend>
         {% for field in fields %}<label
           >{{ field.label }}{% if field.locked %}<small class="field-note"
