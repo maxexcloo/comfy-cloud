@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -104,7 +103,6 @@ def settings(tmp_path: Path) -> ControlSettings:
         api_key="control-key",
         config_file=config,
         database_path=tmp_path / "control.db",
-        maximum_request_bytes=1024 * 1024,
         ui_password="ui-password",
         ui_username="comfy",
     )
@@ -443,7 +441,7 @@ async def test_environment_overrides_database_and_locks_settings(tmp_path, monke
             headers={"x-comfy-control-settings": "update"},
             json={
                 "revision": initial.json()["revision"],
-                "values": {"public_base_url": "https://control.example"},
+                "values": {"maximum_request_mib": 64},
             },
         )
         page = await client.get("/settings")
@@ -483,9 +481,7 @@ async def test_environment_overrides_database_and_locks_settings(tmp_path, monke
     assert restored.state.controller.preferences.worker_image == (
         "ghcr.io/maxexcloo/comfy-control:worker"
     )
-    assert restored.state.controller.preferences.public_base_url == (
-        "https://control.example"
-    )
+    assert restored.state.controller.preferences.maximum_request_mib == 64
     await restored.state.controller.close()
 
 
@@ -531,7 +527,11 @@ async def test_server_rendered_settings_require_csrf(monkeypatch, tmp_path):
     assert page.text.count("data-route-key=") == 2
     assert "data-route-provider" in page.text
     assert "data-route-template" in page.text
+    assert "Generation Queue Limit" in page.text
+    assert "Maximum Request Size (MiB)" in page.text
     assert "Provider Routes" in page.text
+    assert "Public Base URL" not in page.text
+    assert "Request Limits" not in page.text
     assert "Modal Token ID" not in page.text
     description = app.state.controller.describe_configuration()
     route_field = next(
@@ -1239,13 +1239,12 @@ async def test_controller_reserves_provider_before_readiness_check(tmp_path):
 
 @pytest.mark.asyncio
 async def test_controller_limits_chunked_requests_while_streaming(tmp_path):
-    configured = settings(tmp_path)
-    configured = replace(configured, maximum_request_bytes=8)
-    app = create_app(configured)
+    app = create_app(settings(tmp_path))
+    app.state.controller.preferences.maximum_request_mib = 1
 
     async def chunks():
-        yield b"12345"
-        yield b"67890"
+        yield b"1" * (512 * 1024)
+        yield b"2" * (512 * 1024 + 1)
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://control"
@@ -1470,13 +1469,11 @@ def test_control_settings_reject_placeholders(monkeypatch):
         ControlSettings.from_env()
 
 
-def test_control_settings_reject_non_positive_request_limit(monkeypatch):
-    monkeypatch.setenv("CONTROL_API_KEY", "secure-key")
-    monkeypatch.setenv("CONTROL_MAXIMUM_REQUEST_BYTES", "0")
-    monkeypatch.setenv("CONTROL_UI_PASSWORD", "secure-password")
+def test_control_preferences_reject_non_positive_request_limit(monkeypatch):
+    monkeypatch.setenv("MAXIMUM_REQUEST_MIB", "0")
 
-    with pytest.raises(ValueError, match="at least 1"):
-        ControlSettings.from_env()
+    with pytest.raises(ValueError, match="numeric configuration values"):
+        ControlPreferences.from_environment()
 
 
 def test_control_settings_use_packaged_registry_by_default(monkeypatch):
@@ -1822,7 +1819,7 @@ def test_media_metadata_and_schema_migrations_are_persisted(tmp_path: Path):
     ).fetchall()
 
     assert (item["width"], item["height"]) == (640, 480)
-    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6]
     store.close()
 
 
@@ -1861,13 +1858,19 @@ def test_provider_identifiers_are_migrated_to_current_names(tmp_path: Path):
                     {
                         "comfy_ui_password": "old-password",
                         "comfy_ui_username": "old-user",
+                        "control_maximum_request_bytes": 2 * 1024 * 1024,
                         "local_pod_url": "http://local",
+                        "maximum_pending_generations": 7,
+                        "maximum_request_bytes": 4 * 1024 * 1024,
+                        "public_base_url": "https://old.example",
+                        "request_timeout": 12,
                         "routes": {
                             "image-generation": [
                                 "local-pod",
                                 "runpod-serverless",
                             ]
                         },
+                        "workflow_timeout": 34,
                     }
                 ),
             ),
@@ -1900,9 +1903,14 @@ def test_provider_identifiers_are_migrated_to_current_names(tmp_path: Path):
     assert parameter["text_value"] == "modal"
     assert document["routes"]["images"] == ["runpod"]
     assert document["routes"]["videos"] == []
+    assert document["comfyui_request_timeout"] == 12
+    assert document["generation_queue_limit"] == 7
+    assert document["generation_timeout"] == 34
+    assert document["maximum_request_mib"] == 2
     assert "comfy_ui_password" not in document
     assert "comfy_ui_username" not in document
     assert "local_pod_url" not in document
+    assert "public_base_url" not in document
     migrated.close()
 
 

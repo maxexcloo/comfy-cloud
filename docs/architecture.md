@@ -117,8 +117,10 @@ rate limits and deployment selection in an external trusted gateway. Health and
 metrics endpoints intentionally remain unauthenticated and expose no generated
 content.
 
-`MAXIMUM_PENDING_GENERATIONS` defaults to `8`; `MAXIMUM_REQUEST_BYTES` defaults to
-100 MiB.
+`GENERATION_QUEUE_LIMIT` defaults to `8`; `MAXIMUM_REQUEST_MIB` defaults to `100`.
+`COMFYUI_REQUEST_TIMEOUT` bounds individual ComfyUI calls and defaults to 60
+seconds; `GENERATION_TIMEOUT` bounds a complete workflow and defaults to 900
+seconds.
 
 `comfy-control vast-serverless` adds Vast.ai's required request-envelope ingress
 in front of the normal Serverless worker.

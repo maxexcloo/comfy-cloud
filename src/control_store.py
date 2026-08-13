@@ -450,6 +450,46 @@ class ControlStore:
                     "INSERT INTO schema_migrations (version, applied_at) VALUES (5, ?)",
                     (int(time.time()),),
                 )
+            migrated = self.connection.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = 6"
+            ).fetchone()
+            if migrated is None:
+                row = self.connection.execute(
+                    "SELECT document_json FROM control_configuration WHERE id = 1"
+                ).fetchone()
+                if row is not None:
+                    document = json.loads(str(row["document_json"]))
+                    request_limits = [
+                        int(document.pop(name))
+                        for name in (
+                            "control_maximum_request_bytes",
+                            "maximum_request_bytes",
+                        )
+                        if document.get(name) is not None
+                    ]
+                    if request_limits:
+                        byte_limit = min(request_limits)
+                        document["maximum_request_mib"] = max(
+                            1, (byte_limit + 1024 * 1024 - 1) // (1024 * 1024)
+                        )
+                    for previous, current in (
+                        ("maximum_pending_generations", "generation_queue_limit"),
+                        ("maximum_concurrent_generations", "generation_queue_limit"),
+                        ("request_timeout", "comfyui_request_timeout"),
+                        ("workflow_timeout", "generation_timeout"),
+                    ):
+                        if previous in document:
+                            document[current] = document.pop(previous)
+                    document.pop("public_base_url", None)
+                    self.connection.execute(
+                        "UPDATE control_configuration SET document_json = ? "
+                        "WHERE id = 1",
+                        (json.dumps(document),),
+                    )
+                self.connection.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (6, ?)",
+                    (int(time.time()),),
+                )
             rows = self.connection.execute(
                 "SELECT id, content_type, path FROM media_assets "
                 "WHERE width IS NULL AND height IS NULL AND duration IS NULL"

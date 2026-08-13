@@ -36,10 +36,11 @@ class ControlPreferences(BaseModel):
         "cliproxy_api_key": ("CLIPROXY_API_KEY",),
         "cliproxy_management_key": ("CLIPROXY_MANAGEMENT_KEY",),
         "cliproxy_url": ("CLIPROXY_URL",),
-        "control_maximum_request_bytes": ("CONTROL_MAXIMUM_REQUEST_BYTES",),
+        "comfyui_request_timeout": ("COMFYUI_REQUEST_TIMEOUT",),
+        "generation_timeout": ("GENERATION_TIMEOUT",),
         "hf_token": ("HF_TOKEN",),
-        "maximum_pending_generations": ("MAXIMUM_PENDING_GENERATIONS",),
-        "maximum_request_bytes": ("MAXIMUM_REQUEST_BYTES",),
+        "generation_queue_limit": ("GENERATION_QUEUE_LIMIT",),
+        "maximum_request_mib": ("MAXIMUM_REQUEST_MIB",),
         "modal_gpu": ("MODAL_GPU",),
         "modal_minimum_containers": ("MODAL_MIN_CONTAINERS",),
         "modal_model_volume": ("MODAL_MODEL_VOLUME",),
@@ -47,8 +48,6 @@ class ControlPreferences(BaseModel):
         "modal_token_id": ("MODAL_TOKEN_ID",),
         "modal_token_secret": ("MODAL_TOKEN_SECRET",),
         "model_profiles": ("MODEL_PROFILES",),
-        "public_base_url": ("PUBLIC_BASE_URL",),
-        "request_timeout": ("REQUEST_TIMEOUT",),
         "runpod_api_key": ("RUNPOD_API_KEY",),
         "runpod_data_centres": ("RUNPOD_DATA_CENTRES",),
         "runpod_gpu_types": ("RUNPOD_GPU_TYPES",),
@@ -65,7 +64,6 @@ class ControlPreferences(BaseModel):
         ),
         "worker_api_key": ("WORKER_API_KEY",),
         "worker_image": ("WORKER_IMAGE",),
-        "workflow_timeout": ("WORKFLOW_TIMEOUT",),
     }
     FIELD_METADATA: ClassVar[dict[str, dict[str, object]]] = {
         "civitai_token": {
@@ -176,14 +174,26 @@ class ControlPreferences(BaseModel):
             "type": "number",
         },
         "worker_image": {"label": "Worker image", "section": "Deployment"},
-        "maximum_pending_generations": {
-            "label": "Maximum pending generations",
+        "comfyui_request_timeout": {
+            "label": "ComfyUI request timeout (seconds)",
+            "minimum": 0.1,
+            "section": "Worker",
+            "type": "number",
+        },
+        "generation_timeout": {
+            "label": "Generation timeout (seconds)",
+            "minimum": 0.1,
+            "section": "Worker",
+            "type": "number",
+        },
+        "generation_queue_limit": {
+            "label": "Generation queue limit",
             "minimum": 1,
             "section": "Worker",
             "type": "number",
         },
-        "maximum_request_bytes": {
-            "label": "Maximum worker request bytes",
+        "maximum_request_mib": {
+            "label": "Maximum request size (MiB)",
             "minimum": 1,
             "section": "Worker",
             "type": "number",
@@ -192,29 +202,6 @@ class ControlPreferences(BaseModel):
             "label": "Model profiles",
             "section": "Worker",
             "type": "list",
-        },
-        "public_base_url": {
-            "label": "Public base URL",
-            "section": "Worker",
-            "type": "url",
-        },
-        "request_timeout": {
-            "label": "Request timeout (seconds)",
-            "minimum": 0.1,
-            "section": "Worker",
-            "type": "number",
-        },
-        "workflow_timeout": {
-            "label": "Workflow timeout (seconds)",
-            "minimum": 0.1,
-            "section": "Worker",
-            "type": "number",
-        },
-        "control_maximum_request_bytes": {
-            "label": "Maximum control request bytes",
-            "minimum": 1,
-            "section": "Control",
-            "type": "number",
         },
         "routes": {"label": "Provider routes", "section": "Routing", "type": "routes"},
     }
@@ -246,14 +233,16 @@ class ControlPreferences(BaseModel):
     vast_maximum_workers: int = 1
     vast_minimum_gpu_memory_gb: int = 24
     worker_image: str = DEFAULT_WORKER_IMAGE
-    maximum_pending_generations: int = 8
-    maximum_request_bytes: int = 100 * 1024 * 1024
+    comfyui_request_timeout: float = 60
+    generation_timeout: float = 900
+    generation_queue_limit: int = 8
+    maximum_request_mib: int = 100
     model_profiles: list[str] = Field(default_factory=lambda: ["flux-2-klein-9b"])
-    public_base_url: str = ""
-    request_timeout: float = 60
-    workflow_timeout: float = 900
-    control_maximum_request_bytes: int = 100 * 1024 * 1024
     routes: dict[str, list[str]] = Field(default_factory=dict)
+
+    @property
+    def maximum_request_bytes(self) -> int:
+        return self.maximum_request_mib * 1024 * 1024
 
     @field_validator(
         "runpod_data_centres",
@@ -265,7 +254,7 @@ class ControlPreferences(BaseModel):
     def clean_list(cls, value: list[str]) -> list[str]:
         return list(dict.fromkeys(item.strip() for item in value if item.strip()))
 
-    @field_validator("cliproxy_url", "public_base_url")
+    @field_validator("cliproxy_url")
     @classmethod
     def validate_url(cls, value: str) -> str:
         value = value.strip().rstrip("/")
@@ -276,15 +265,14 @@ class ControlPreferences(BaseModel):
     @model_validator(mode="after")
     def validate_preferences(self) -> ControlPreferences:
         positive = (
-            self.control_maximum_request_bytes,
-            self.maximum_pending_generations,
-            self.maximum_request_bytes,
+            self.comfyui_request_timeout,
+            self.generation_timeout,
+            self.generation_queue_limit,
+            self.maximum_request_mib,
             self.modal_scaledown_window,
-            self.request_timeout,
             self.runpod_maximum_workers,
             self.vast_maximum_workers,
             self.vast_minimum_gpu_memory_gb,
-            self.workflow_timeout,
         )
         if any(value <= 0 for value in positive) or self.modal_minimum_containers < 0:
             raise ValueError("numeric configuration values must be positive")
@@ -317,16 +305,11 @@ class ControlPreferences(BaseModel):
             cliproxy_api_key=os.getenv("CLIPROXY_API_KEY", ""),
             cliproxy_management_key=os.getenv("CLIPROXY_MANAGEMENT_KEY", ""),
             cliproxy_url=os.getenv("CLIPROXY_URL", ""),
-            control_maximum_request_bytes=int(
-                os.getenv("CONTROL_MAXIMUM_REQUEST_BYTES", str(100 * 1024 * 1024))
-            ),
+            comfyui_request_timeout=float(os.getenv("COMFYUI_REQUEST_TIMEOUT", "60")),
+            generation_timeout=float(os.getenv("GENERATION_TIMEOUT", "900")),
             hf_token=os.getenv("HF_TOKEN", ""),
-            maximum_pending_generations=int(
-                os.getenv("MAXIMUM_PENDING_GENERATIONS", "8")
-            ),
-            maximum_request_bytes=int(
-                os.getenv("MAXIMUM_REQUEST_BYTES", str(100 * 1024 * 1024))
-            ),
+            generation_queue_limit=int(os.getenv("GENERATION_QUEUE_LIMIT", "8")),
+            maximum_request_mib=int(os.getenv("MAXIMUM_REQUEST_MIB", "100")),
             modal_gpu=os.getenv("MODAL_GPU", "L40S"),
             modal_minimum_containers=int(os.getenv("MODAL_MIN_CONTAINERS", "0")),
             modal_model_volume=os.getenv("MODAL_MODEL_VOLUME", "comfy-control-models"),
@@ -334,8 +317,6 @@ class ControlPreferences(BaseModel):
             modal_token_id=os.getenv("MODAL_TOKEN_ID", ""),
             modal_token_secret=os.getenv("MODAL_TOKEN_SECRET", ""),
             model_profiles=values("MODEL_PROFILES") or ["flux-2-klein-9b"],
-            public_base_url=os.getenv("PUBLIC_BASE_URL", ""),
-            request_timeout=float(os.getenv("REQUEST_TIMEOUT", "60")),
             runpod_api_key=os.getenv("RUNPOD_API_KEY", ""),
             runpod_data_centres=values("RUNPOD_DATA_CENTRES"),
             runpod_gpu_types=values("RUNPOD_GPU_TYPES"),
@@ -351,7 +332,6 @@ class ControlPreferences(BaseModel):
             worker_image=os.getenv("WORKER_IMAGE")
             or revision_worker_image()
             or DEFAULT_WORKER_IMAGE,
-            workflow_timeout=float(os.getenv("WORKFLOW_TIMEOUT", "900")),
         )
 
     @classmethod
@@ -373,8 +353,10 @@ class ControlPreferences(BaseModel):
             "CLIPROXY_MANAGEMENT_KEY": self.cliproxy_management_key,
             "CLIPROXY_URL": self.cliproxy_url,
             "HF_TOKEN": self.hf_token,
-            "MAXIMUM_PENDING_GENERATIONS": str(self.maximum_pending_generations),
-            "MAXIMUM_REQUEST_BYTES": str(self.maximum_request_bytes),
+            "COMFYUI_REQUEST_TIMEOUT": str(self.comfyui_request_timeout),
+            "GENERATION_TIMEOUT": str(self.generation_timeout),
+            "GENERATION_QUEUE_LIMIT": str(self.generation_queue_limit),
+            "MAXIMUM_REQUEST_MIB": str(self.maximum_request_mib),
             "MODAL_GPU": self.modal_gpu,
             "MODAL_MIN_CONTAINERS": str(self.modal_minimum_containers),
             "MODAL_MODEL_VOLUME": self.modal_model_volume,
@@ -382,8 +364,6 @@ class ControlPreferences(BaseModel):
             "MODAL_TOKEN_ID": self.modal_token_id,
             "MODAL_TOKEN_SECRET": self.modal_token_secret,
             "MODEL_PROFILES": ",".join(self.model_profiles),
-            "PUBLIC_BASE_URL": self.public_base_url,
-            "REQUEST_TIMEOUT": str(self.request_timeout),
             "RUNPOD_API_KEY": self.runpod_api_key,
             "RUNPOD_DATA_CENTRES": ",".join(self.runpod_data_centres),
             "RUNPOD_GPU_TYPES": ",".join(self.runpod_gpu_types),
@@ -397,7 +377,6 @@ class ControlPreferences(BaseModel):
             "VAST_MINIMUM_GPU_MEMORY_GB": str(self.vast_minimum_gpu_memory_gb),
             "WORKER_API_KEY": self.worker_api_key,
             "WORKER_IMAGE": self.worker_image,
-            "WORKFLOW_TIMEOUT": str(self.workflow_timeout),
         }
         return {name: value for name, value in values.items() if value != ""}
 

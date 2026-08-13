@@ -51,9 +51,9 @@ for (const editor of document.querySelectorAll("[data-route-editor]")) {
       ),
     );
     for (const route of editor.querySelectorAll("[data-route-key]")) {
-      const selected = [
-        ...route.querySelectorAll("[data-route-provider]"),
-      ].map((select) => select.value);
+      const selected = [...route.querySelectorAll("[data-route-provider]")].map(
+        (select) => select.value,
+      );
       for (const select of route.querySelectorAll("[data-route-provider]")) {
         for (const option of select.options)
           option.disabled =
@@ -107,7 +107,10 @@ for (const editor of document.querySelectorAll("[data-route-editor]")) {
       target.remove();
     } else if (event.target.closest("[data-route-up]")) {
       if (target.previousElementSibling)
-        target.parentElement.insertBefore(target, target.previousElementSibling);
+        target.parentElement.insertBefore(
+          target,
+          target.previousElementSibling,
+        );
     } else if (event.target.closest("[data-route-down]")) {
       if (target.nextElementSibling)
         target.parentElement.insertBefore(target.nextElementSibling, target);
@@ -126,7 +129,8 @@ if (providerRefresh) {
   url.searchParams.set("telemetry", "true");
   fetch(url)
     .then((response) => {
-      if (!response.ok) throw new Error("Provider Telemetry Could Not Be Loaded");
+      if (!response.ok)
+        throw new Error("Provider Telemetry Could Not Be Loaded");
       return response.text();
     })
     .then((html) => {
@@ -234,7 +238,9 @@ if (deployDialog) {
   const deployMemory = document.getElementById("deploy-memory");
   let deploymentOptions = [];
   const updateDeployDetail = () => {
-    const option = deploymentOptions.find((item) => item.id === deployGpu.value);
+    const option = deploymentOptions.find(
+      (item) => item.id === deployGpu.value,
+    );
     deployMemory.value = option?.memory_gb || "";
     if (!option) {
       deployDetail.textContent = "The Provider Will Choose Automatically.";
@@ -473,7 +479,8 @@ if (mediaDialog) {
     const ids = availableMediaIds();
     if (ids.length < 2) return;
     const currentIndex = ids.indexOf(activeAssetId);
-    const baseIndex = currentIndex === -1 ? (direction > 0 ? -1 : 0) : currentIndex;
+    const baseIndex =
+      currentIndex === -1 ? (direction > 0 ? -1 : 0) : currentIndex;
     openMedia(ids[(baseIndex + direction + ids.length) % ids.length]);
   };
   document.addEventListener("click", (event) => {
@@ -493,7 +500,8 @@ if (mediaDialog) {
       mediaDialog.close();
       return;
     }
-    if (event.target.matches("input, select, textarea, [contenteditable]")) return;
+    if (event.target.matches("input, select, textarea, [contenteditable]"))
+      return;
     if (event.key === "ArrowLeft") browseMedia(-1);
     if (event.key === "ArrowRight") browseMedia(1);
   });

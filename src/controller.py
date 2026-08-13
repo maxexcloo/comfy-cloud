@@ -117,10 +117,6 @@ class Controller:
             if settings.config_file is not None
             else control_registry.routes()
         )
-        if "CONTROL_MAXIMUM_REQUEST_BYTES" not in os.environ:
-            initial_preferences.control_maximum_request_bytes = (
-                settings.maximum_request_bytes
-            )
         self.configuration = ConfigurationManager(
             self.store,
             settings.secret_key,

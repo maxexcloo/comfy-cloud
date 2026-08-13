@@ -29,9 +29,7 @@ def test_worker_uses_control_ui_credentials(monkeypatch):
     assert configured.ui_username == "control-user"
 
 
-@pytest.mark.parametrize(
-    "name", ["MAXIMUM_PENDING_GENERATIONS", "MAXIMUM_REQUEST_BYTES"]
-)
+@pytest.mark.parametrize("name", ["GENERATION_QUEUE_LIMIT", "MAXIMUM_REQUEST_MIB"])
 def test_settings_reject_non_positive_limits(monkeypatch, name):
     monkeypatch.setenv("API_KEY", "test-key")
     monkeypatch.setenv(name, "0")

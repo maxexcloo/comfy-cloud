@@ -27,9 +27,7 @@ async def generate_image(request: Request, operation: str, path: str) -> Respons
     if not bearer_authorised(request, settings):
         return error("invalid API key", 401, "invalid_api_key")
     try:
-        body = await limited_body(
-            request, controller.preferences.control_maximum_request_bytes
-        )
+        body = await limited_body(request, controller.preferences.maximum_request_bytes)
     except RequestBodyTooLarge:
         return error("request body is too large", 413, "request_too_large")
     try:
@@ -225,9 +223,7 @@ async def image_edits(request: Request) -> Response:
     if not bearer_authorised(request, settings):
         return error("invalid API key", 401, "invalid_api_key")
     try:
-        await limited_body(
-            request, controller.preferences.control_maximum_request_bytes
-        )
+        await limited_body(request, controller.preferences.maximum_request_bytes)
     except RequestBodyTooLarge:
         return error("request body is too large", 413, "request_too_large")
     try:

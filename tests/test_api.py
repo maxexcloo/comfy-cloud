@@ -20,10 +20,10 @@ def settings(deployment_type: str = "serverless") -> Settings:
         comfy_url="http://comfy.internal",
         deployment_type=deployment_type,
         models_dir=ROOT / "models",
-        request_timeout=1,
+        comfyui_request_timeout=1,
         ui_password="ui-key",
         ui_username="comfy",
-        workflow_timeout=1,
+        generation_timeout=1,
     )
 
 
@@ -174,7 +174,7 @@ async def test_internal_execution_is_idempotent():
 
 @pytest.mark.asyncio
 async def test_generation_queue_rejects_excess_work():
-    app = create_app(replace(settings(), maximum_pending_generations=1))
+    app = create_app(replace(settings(), generation_queue_limit=1))
     await app.state.runtime.reserve_generation()
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"

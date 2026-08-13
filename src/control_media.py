@@ -107,7 +107,7 @@ class ControlMedia:
                 content = base64.b64decode(encoded, validate=True)
             except ValueError as exc:
                 raise ValueError("image data URL is invalid") from exc
-            if len(content) > self.controller.preferences.control_maximum_request_bytes:
+            if len(content) > self.controller.preferences.maximum_request_bytes:
                 raise ValueError("remote image is too large")
             return content, content_type, "input" + media_extension(content_type), None
 
@@ -165,10 +165,7 @@ class ControlMedia:
                 chunks = bytearray()
                 async for chunk in response.aiter_bytes():
                     chunks.extend(chunk)
-                    if (
-                        len(chunks)
-                        > self.controller.preferences.control_maximum_request_bytes
-                    ):
+                    if len(chunks) > self.controller.preferences.maximum_request_bytes:
                         raise ValueError("remote image is too large")
                 filename = unquote(Path(current_url.path).name) or "input"
                 return bytes(chunks), content_type, filename, reference

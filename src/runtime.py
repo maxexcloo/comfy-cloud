@@ -19,7 +19,7 @@ class Runtime:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.catalogue = Catalogue.load(settings.catalogue_dirs)
-        self.comfy = ComfyClient(settings.comfy_url, settings.request_timeout)
+        self.comfy = ComfyClient(settings.comfy_url, settings.comfyui_request_timeout)
         self.inference_lock = asyncio.Lock()
         self.admission_lock = asyncio.Lock()
         self.execution_lock = asyncio.Lock()
@@ -73,7 +73,7 @@ class Runtime:
                 prompt_id = await self.comfy.submit(graph)
                 try:
                     outputs = await self.comfy.wait(
-                        prompt_id, model.output.node, self.settings.workflow_timeout
+                        prompt_id, model.output.node, self.settings.generation_timeout
                     )
                 except (TimeoutError, asyncio.CancelledError):
                     await self.comfy.cancel(prompt_id)
@@ -111,7 +111,7 @@ class Runtime:
 
     async def reserve_generation(self) -> None:
         async with self.admission_lock:
-            if self.pending_generations >= self.settings.maximum_pending_generations:
+            if self.pending_generations >= self.settings.generation_queue_limit:
                 raise GenerationQueueFull("generation queue is full")
             self.pending_generations += 1
             self.pending.set(self.pending_generations)

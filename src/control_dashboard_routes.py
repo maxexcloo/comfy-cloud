@@ -100,8 +100,6 @@ def settings_group(name: str) -> tuple[str, str]:
         return "Worker", "Credentials"
     if name == "routes":
         return "Routing", "Provider Routes"
-    if name == "control_maximum_request_bytes":
-        return "Control", "Request Limits"
     return "Worker", "Runtime"
 
 
@@ -114,6 +112,7 @@ def title_label(value: object) -> str:
         "Gb": "GB",
         "Gpu": "GPU",
         "Id": "ID",
+        "Mib": "MiB",
         "Runpod": "RunPod",
         "Saladcloud": "SaladCloud",
         "Url": "URL",
@@ -345,7 +344,7 @@ async def settings_page(request: Request) -> Response:
             continue
         prepared = prepare_field(field)
         unordered.setdefault(category, {}).setdefault(group, []).append(prepared)
-    category_order = {"Providers": 0, "Routing": 1, "Worker": 2, "Control": 3}
+    category_order = {"Routing": 0, "Worker": 1}
     categories = {
         category: {
             group: sorted(fields, key=lambda item: str(item["label"]).casefold())

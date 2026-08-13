@@ -248,18 +248,12 @@ class ControlSettings:
     api_key: str
     config_file: Path | None
     database_path: Path
-    maximum_request_bytes: int
     ui_password: str
     ui_username: str
     secret_key: str = "test-control-secret-key-at-least-32-characters"
 
     @classmethod
     def from_env(cls) -> ControlSettings:
-        maximum_request_bytes = int(
-            os.getenv("CONTROL_MAXIMUM_REQUEST_BYTES", str(100 * 1024 * 1024))
-        )
-        if maximum_request_bytes < 1:
-            raise ValueError("CONTROL_MAXIMUM_REQUEST_BYTES must be at least 1")
         api_key = required_secret("CONTROL_API_KEY")
         secret_key = required_secret("CONTROL_SECRET_KEY")
         if len(secret_key) < 32:
@@ -272,7 +266,6 @@ class ControlSettings:
                 else None
             ),
             database_path=Path(os.getenv("CONTROL_DATABASE", "/data/comfy-control.db")),
-            maximum_request_bytes=maximum_request_bytes,
             secret_key=secret_key,
             ui_password=required_secret("CONTROL_UI_PASSWORD"),
             ui_username=os.getenv("CONTROL_UI_USERNAME", "comfy"),

@@ -47,11 +47,11 @@ def worker_environment(
     for name in (
         "CIVITAI_TOKEN",
         "HF_TOKEN",
-        "MAXIMUM_PENDING_GENERATIONS",
-        "MAXIMUM_REQUEST_BYTES",
+        "COMFYUI_REQUEST_TIMEOUT",
+        "GENERATION_TIMEOUT",
+        "GENERATION_QUEUE_LIMIT",
+        "MAXIMUM_REQUEST_MIB",
         "MODEL_PROFILES",
-        "REQUEST_TIMEOUT",
-        "WORKFLOW_TIMEOUT",
     ):
         if value := configured.get(name):
             environment[name] = value

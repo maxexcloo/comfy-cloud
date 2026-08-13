@@ -31,7 +31,6 @@ def settings(tmp_path: Path) -> ControlSettings:
         api_key="control-key",
         config_file=tmp_path / "control.yaml",
         database_path=tmp_path / "control.db",
-        maximum_request_bytes=1024,
         ui_password="ui-password",
         ui_username="comfy",
     )
