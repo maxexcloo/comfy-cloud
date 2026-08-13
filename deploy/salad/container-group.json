@@ -23,7 +23,8 @@
     "timeout_seconds": 5,
     "http": {
       "path": "/health/live",
-      "port": 8000
+      "port": 8000,
+      "scheme": "http"
     }
   },
   "networking": {
@@ -39,7 +40,8 @@
     "timeout_seconds": 3,
     "http": {
       "path": "/health/ready",
-      "port": 8000
+      "port": 8000,
+      "scheme": "http"
     }
   },
   "startup_probe": {
@@ -50,7 +52,8 @@
     "timeout_seconds": 3,
     "http": {
       "path": "/health/live",
-      "port": 8000
+      "port": 8000,
+      "scheme": "http"
     }
   }
 }

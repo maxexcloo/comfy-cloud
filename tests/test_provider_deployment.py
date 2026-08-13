@@ -205,6 +205,7 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
             assert payload["isServerless"] is True
             return httpx.Response(200, json={"id": "template-1"})
         assert payload["templateId"] == "template-1"
+        assert "endpointType" not in payload
         assert payload["workersMin"] == 0
         return httpx.Response(201, json={"id": "endpoint-1"})
 
@@ -234,6 +235,7 @@ async def test_deploys_salad_group_with_discovered_gpu(tmp_path, monkeypatch):
         payload = json.loads(request.content)
         assert payload["container"]["resources"]["gpu_classes"] == ["gpu-1"]
         assert payload["container"]["environment_variables"]["API_KEY"] == "worker-key"
+        assert payload["readiness_probe"]["http"]["scheme"] == "http"
         return httpx.Response(201, json={"id": "group-1"})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:

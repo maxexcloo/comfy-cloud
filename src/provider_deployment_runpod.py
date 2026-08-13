@@ -154,7 +154,6 @@ async def deploy_serverless(
         if item.strip()
     ]
     endpoint: dict[str, object] = {
-        "endpointType": "load-balancer",
         "executionTimeoutMs": int(provider.request_timeout * 1000),
         "gpuCount": 1,
         "gpuTypeIds": gpu_types,
