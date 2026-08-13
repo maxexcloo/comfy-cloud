@@ -1081,6 +1081,43 @@ class ControlStore:
             )
             self._index_history(history_id, parameters_json)
 
+    def save_imported_history(
+        self,
+        history_id: str,
+        operation: str,
+        model: str,
+        parameters_json: str,
+        *,
+        created_at: int,
+        provider: str,
+        provider_model: str,
+        status: str = "completed",
+    ) -> bool:
+        with self.lock, self.connection:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO history (
+                    id, operation, model, provider, provider_model, status,
+                    created_at, updated_at, parameters_json, error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                (
+                    history_id,
+                    operation,
+                    model,
+                    provider,
+                    provider_model,
+                    status,
+                    created_at,
+                    created_at,
+                    parameters_json,
+                ),
+            )
+            if cursor.rowcount:
+                self._index_history(history_id, parameters_json)
+        return bool(cursor.rowcount)
+
     def update_history(
         self,
         history_id: str,
@@ -1152,6 +1189,8 @@ class ControlStore:
         filename: str,
         path: Path,
         size: int,
+        *,
+        source_url: str | None = None,
     ) -> int:
         with self.lock, self.connection:
             cursor = self.connection.execute(
@@ -1171,6 +1210,7 @@ class ControlStore:
                 role="output",
                 field_name=None,
                 legacy_media_id=int(cursor.lastrowid),
+                source_url=source_url,
             )
         return int(cursor.lastrowid)
 
@@ -1338,6 +1378,7 @@ class ControlStore:
                 generation_media.filename,
                 generation_media.field_name,
                 generation_media.role,
+                generation_media.source_url,
                 generation_media.position,
                 history.id AS history_id,
                 history.operation,
@@ -1415,6 +1456,7 @@ class ControlStore:
                 """
                 SELECT generation_media.history_id, generation_media.role,
                        generation_media.field_name, generation_media.filename,
+                       generation_media.source_url,
                        history.model, history.operation, history.provider,
                        history.provider_model,
                        history.status, history.created_at, history.parameters_json,

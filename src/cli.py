@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 from .catalogue import Catalogue, WorkflowModel, workflow_operation_names
+from .catalogue_import import import_grok_catalogue
 from .control import create_app as create_control_app
 from .control_config import ControlSettings
 from .fetch import fetch_profile
@@ -63,6 +64,14 @@ def catalogue_list(args: argparse.Namespace) -> None:
                 for model in catalogue.list()
             ],
             indent=2,
+        )
+    )
+
+
+def catalogue_import(args: argparse.Namespace) -> None:
+    print(
+        json.dumps(
+            import_grok_catalogue(Path(args.source), Path(args.database)), indent=2
         )
     )
 
@@ -124,6 +133,14 @@ def create_parser() -> argparse.ArgumentParser:
     listing.add_argument("--catalogue-dir", default="catalogue")
     listing.add_argument("--models-dir", default="models")
     listing.set_defaults(func=catalogue_list)
+    catalogue_importer = sub.add_parser(
+        "catalogue-import", help="import a Grok catalogue export"
+    )
+    catalogue_importer.add_argument("source")
+    catalogue_importer.add_argument(
+        "--database", default=os.getenv("CONTROL_DATABASE", "/data/comfy-control.db")
+    )
+    catalogue_importer.set_defaults(func=catalogue_import)
     fetch = sub.add_parser(
         "models-fetch", help="fetch a pinned Hugging Face/Civitai profile"
     )

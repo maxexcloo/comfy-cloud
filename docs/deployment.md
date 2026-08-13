@@ -122,6 +122,25 @@ The controller copies successful images and videos into `/data/media` before a
 worker is stopped. Keep `/data` on persistent storage; API image URLs and completed
 video content are then served by Comfy Control with normal authentication.
 
+## Importing a Grok catalogue export
+
+`catalogue-import` imports the complete `assets.jsonl`, `media.jsonl`,
+`messages.jsonl`, and `images/` export layout into the current control database:
+
+```sh
+comfy-control catalogue-import /path/to/catalog-research \
+  --database /data/comfy-control.db
+```
+
+The command verifies every local asset against its SHA-256 digest, copies it into
+managed media storage, preserves source records and links as indexed parameters,
+and retains metadata-only media and conversation messages in history. Original
+message timestamps are preserved. Exports without media timestamps use the export
+files' modification time.
+
+Import identifiers are deterministic, so interrupted or repeated imports are
+safe: existing histories and media links are skipped.
+
 ## Important Limits
 
 - The project does not grant model redistribution rights.

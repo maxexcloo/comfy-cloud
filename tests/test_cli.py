@@ -10,6 +10,10 @@ def test_runtime_images_use_the_packaged_commands():
     worker = (ROOT / "Dockerfile.worker").read_text()
 
     assert parser.parse_args(["control"]).func.__name__ == "control"
+    assert (
+        parser.parse_args(["catalogue-import", "export"]).func.__name__
+        == "catalogue_import"
+    )
     assert parser.parse_args(["pod"]).func.__name__ == "pod"
     assert parser.parse_args(["serverless"]).func.__name__ == "serverless"
     assert (
