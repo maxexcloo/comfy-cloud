@@ -23,14 +23,11 @@ def normalise_usage(kind: str, value: object) -> list[dict[str, object]]:
             for record in records
             if isinstance(record, dict)
         )
-        return [
-            {"label": "Reported spend", "unit": "USD", "value": round(amount, 4)},
-            {"label": "Billing records", "value": len(records)},
-        ]
+        return [{"label": "Spend", "unit": "USD", "value": round(amount, 4)}]
     if kind == "vast":
         credit = first_number(value, "credit")
         if credit is not None:
-            metrics.append({"label": "Credit", "unit": "USD", "value": credit})
+            metrics.append({"label": "Credit balance", "unit": "USD", "value": credit})
         return metrics
     if kind == "salad":
         used = first_number(value, "container_groups_quotas.container_replicas_used")
@@ -39,6 +36,8 @@ def normalise_usage(kind: str, value: object) -> list[dict[str, object]]:
             metrics.append({"label": "Replicas used", "value": used})
         if quota is not None:
             metrics.append({"label": "Replica quota", "value": quota})
+        if used is not None and quota is not None:
+            metrics.append({"label": "Replicas available", "value": quota - used})
         return metrics
     if kind == "cliproxyapi":
         for label, paths in (

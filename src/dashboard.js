@@ -44,7 +44,7 @@ if (providerRefresh) {
   url.searchParams.set("telemetry", "true");
   fetch(url)
     .then((response) => {
-      if (!response.ok) throw new Error("Provider telemetry could not be loaded");
+      if (!response.ok) throw new Error("Provider Telemetry Could Not Be Loaded");
       return response.text();
     })
     .then((html) => {
@@ -70,6 +70,16 @@ const closeDialogOnBackdrop = (dialog) => {
     if (event.target === dialog) dialog.close();
   });
 };
+
+for (const button of document.querySelectorAll("[data-provider-settings]")) {
+  const dialog = document.getElementById(
+    `provider-settings-${button.dataset.providerSettings}`,
+  );
+  button.addEventListener("click", () => dialog.showModal());
+  for (const close of dialog.querySelectorAll("[data-close]"))
+    close.addEventListener("click", () => dialog.close());
+  closeDialogOnBackdrop(dialog);
+}
 
 const logDialog = document.getElementById("log-dialog");
 if (logDialog) {
@@ -145,7 +155,7 @@ if (deployDialog) {
     const option = deploymentOptions.find((item) => item.id === deployGpu.value);
     deployMemory.value = option?.memory_gb || "";
     if (!option) {
-      deployDetail.textContent = "The provider will choose automatically.";
+      deployDetail.textContent = "The Provider Will Choose Automatically.";
       return;
     }
     const details = [
@@ -167,7 +177,7 @@ if (deployDialog) {
       deployDialog.showModal();
       const response = await fetch(button.dataset.deployOptions);
       if (!response.ok) {
-        deployDetail.textContent = "Live availability could not be loaded.";
+        deployDetail.textContent = "Live Availability Could Not Be Loaded.";
         deployGpu.replaceChildren(new Option("Automatic", ""));
         deployGpu.disabled = false;
         return;

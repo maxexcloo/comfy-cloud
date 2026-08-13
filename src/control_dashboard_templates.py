@@ -19,6 +19,7 @@ TEMPLATE_NAMES = (
     "dashboard_navigation.html",
     "dashboard_providers.html",
     "dashboard_settings.html",
+    "dashboard_settings_fields.html",
     "media_library.html",
 )
 

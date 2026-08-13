@@ -23,21 +23,14 @@ from .provider_adapters import provider_panel_url
 DASHBOARD_CSS = resources.files("comfy_control").joinpath("dashboard.css").read_text()
 DASHBOARD_JS = resources.files("comfy_control").joinpath("dashboard.js").read_text()
 PAGE_SIZE = 25
-PROVIDER_SETTINGS_ANCHORS = {
-    "CLI Proxy": "provider-settings-cliproxyapi",
-    "Modal": "provider-settings-modal",
-    "RunPod": "provider-settings-runpod",
-    "SaladCloud": "provider-settings-salad",
-    "Vast": "provider-settings-vast",
-}
-PROVIDER_SETTINGS_URLS = {
-    "cliproxyapi": "/settings#provider-settings-cliproxyapi",
-    "modal": "/settings#provider-settings-modal",
-    "runpod": "/settings#provider-settings-runpod",
-    "runpod-pod": "/settings#provider-settings-runpod",
-    "salad": "/settings#provider-settings-salad",
-    "vast": "/settings#provider-settings-vast",
-    "vast-pod": "/settings#provider-settings-vast",
+PROVIDER_SETTINGS_PREFIXES = {
+    "cliproxyapi": "cliproxy_",
+    "modal": "modal_",
+    "runpod": "runpod_",
+    "runpod-pod": "runpod_",
+    "salad": "salad_",
+    "vast": "vast_",
+    "vast-pod": "vast_",
 }
 EVENT_SORTS = ("created_at", "level", "message", "provider", "request_id")
 HISTORY_SORTS = ("created_at", "model", "operation", "provider", "status")
@@ -131,6 +124,28 @@ def title_label(value: object) -> str:
     return label
 
 
+def prepare_field(field: dict[str, object]) -> dict[str, object]:
+    prepared = dict(field)
+    prepared["label"] = title_label(prepared["label"])
+    if prepared["name"] == "modal_gpu":
+        prepared["options"] = ["A100", "H100", "L40S"]
+    return prepared
+
+
+def provider_fields(
+    description: dict[str, object], provider_id: str
+) -> list[dict[str, object]]:
+    prefix = PROVIDER_SETTINGS_PREFIXES.get(provider_id, "")
+    return sorted(
+        (
+            prepare_field(field)
+            for field in description["fields"]
+            if prefix and str(field["name"]).startswith(prefix)
+        ),
+        key=lambda item: str(item["label"]).casefold(),
+    )
+
+
 @router.get("/", include_in_schema=False)
 async def home(request: Request) -> Response:
     if not ui_authorised(request, request.app.state.settings):
@@ -157,6 +172,7 @@ async def providers(request: Request) -> Response:
             }
             for name, runtime in controller.providers.items()
         }
+    description = controller.describe_configuration()
     items = [
         {
             "actions": [
@@ -170,7 +186,7 @@ async def providers(request: Request) -> Response:
             "panel_url": statuses[runtime.config.id]["panel_url"],
             "platform": runtime.config.platform or runtime.config.id,
             "resource_id": controller.resource_id(runtime.config.id),
-            "settings_url": PROVIDER_SETTINGS_URLS.get(runtime.config.id),
+            "settings": provider_fields(description, runtime.config.id),
             "state": runtime.state,
             "type": runtime.config.type,
             "usage": usage[runtime.config.id],
@@ -184,7 +200,7 @@ async def providers(request: Request) -> Response:
             "panel_url": None,
             "platform": provider["platform"],
             "resource_id": None,
-            "settings_url": PROVIDER_SETTINGS_URLS.get(str(provider["id"])),
+            "settings": provider_fields(description, str(provider["id"])),
             "state": "unconfigured",
             "type": provider["type"],
             "usage": {"status": "unconfigured"},
@@ -198,6 +214,7 @@ async def providers(request: Request) -> Response:
         "providers",
         providers=items,
         refresh=refresh,
+        revision=description["revision"],
     )
 
 
@@ -302,10 +319,10 @@ async def settings_page(request: Request) -> Response:
     unordered: dict[str, dict[str, list[dict[str, object]]]] = {}
     for field in description["fields"]:
         category, group = settings_group(str(field["name"]))
-        field["label"] = title_label(field["label"])
-        if field["name"] == "modal_gpu":
-            field["options"] = ["A100", "H100", "L40S"]
-        unordered.setdefault(category, {}).setdefault(group, []).append(field)
+        if category == "Providers":
+            continue
+        prepared = prepare_field(field)
+        unordered.setdefault(category, {}).setdefault(group, []).append(prepared)
     category_order = {"Providers": 0, "Routing": 1, "Worker": 2, "Control": 3}
     categories = {
         category: {
@@ -321,7 +338,6 @@ async def settings_page(request: Request) -> Response:
         request,
         "dashboard_settings.html",
         "settings",
-        provider_settings_anchors=PROVIDER_SETTINGS_ANCHORS,
         settings={"categories": categories, "revision": description["revision"]},
     )
 
@@ -356,6 +372,39 @@ async def save_settings(request: Request) -> Response:
     except (ConfigurationConflict, RuntimeError, TypeError, ValueError) as exc:
         return error(str(exc), 400, "invalid_configuration")
     return RedirectResponse("/settings?message=Settings+Saved", status_code=303)
+
+
+@router.post("/providers/{provider_id}/settings", include_in_schema=False)
+async def save_provider_settings(provider_id: str, request: Request) -> Response:
+    controller = request.app.state.controller
+    settings = request.app.state.settings
+    if not ui_authorised(request, settings):
+        return Response(status_code=401)
+    prefix = PROVIDER_SETTINGS_PREFIXES.get(provider_id)
+    if prefix is None:
+        return error("unknown provider", 404, "unknown_provider")
+    form = await request.form()
+    if not valid_csrf(request, settings, str(form.get("csrf_token", ""))):
+        return error("invalid CSRF token", 403, "invalid_csrf")
+    values: dict[str, object] = {}
+    for field in controller.describe_configuration()["fields"]:
+        name = str(field["name"])
+        if not name.startswith(prefix) or field.get("locked"):
+            continue
+        raw = str(form.get(name, ""))
+        if field.get("secret") and not raw:
+            continue
+        if field.get("type") == "number":
+            values[name] = float(raw) if "." in raw else int(raw)
+        elif field.get("type") == "list":
+            values[name] = [item.strip() for item in raw.split(",") if item.strip()]
+        else:
+            values[name] = raw
+    try:
+        await controller.update_preferences(values, int(str(form["revision"])))
+    except (ConfigurationConflict, RuntimeError, TypeError, ValueError) as exc:
+        return error(str(exc), 400, "invalid_configuration")
+    return RedirectResponse("/providers?message=Settings+Saved", status_code=303)
 
 
 @router.post("/providers/{provider_id}/actions/{action_name}", include_in_schema=False)

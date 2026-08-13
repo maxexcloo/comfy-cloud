@@ -346,7 +346,12 @@ class Controller:
                     self.preferences,
                     self.store.history_usage,
                 )
-                runtime.usage = {"metrics": metrics, "status": "ok"}
+                runtime.usage = {
+                    "metrics": sorted(
+                        metrics, key=lambda metric: str(metric["label"]).casefold()
+                    ),
+                    "status": "ok",
+                }
             except Exception as exc:  # noqa: BLE001 - optional account telemetry
                 runtime.usage = {
                     "error": exception_message(exc),

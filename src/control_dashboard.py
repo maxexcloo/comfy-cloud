@@ -74,13 +74,13 @@ def secure_cookie(request: Request) -> bool:
 
 def login_html(settings: ControlSettings, invalid: bool = False) -> str:
     message = (
-        '<p class="error" role="alert">Incorrect username or password.</p>'
+        '<p class="error" role="alert">Incorrect Username Or Password.</p>'
         if invalid
         else ""
     )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>Sign in · Comfy Control</title><style>
+<title>Sign In · Comfy Control</title><style>
 :root{{color-scheme:dark;font:15px system-ui;background:#101418;color:#e8edf2}}
 body{{display:grid;margin:0;min-height:100vh;place-items:center}}main{{background:#181e24;border:1px solid #2c3640;border-radius:10px;padding:2rem;width:min(320px,calc(100vw - 4rem))}}
 h1{{font-size:1.5rem;margin-top:0}}label{{display:grid;gap:.35rem;margin:1rem 0}}input{{background:#101418;border:1px solid #42576b;border-radius:5px;color:#e8edf2;padding:.65rem}}
@@ -88,4 +88,4 @@ button{{background:#263442;border:1px solid #42576b;border-radius:5px;color:#e8e
 </style></head><body><main><h1>Comfy Control</h1>{message}<form method="post" action="/login">
 <label>Username<input name="username" value="{escape(settings.ui_username)}" autocomplete="username" required></label>
 <label>Password<input name="password" type="password" autocomplete="current-password" required autofocus></label>
-<button type="submit">Sign in</button></form></main></body></html>"""
+<button type="submit">Sign In</button></form></main></body></html>"""

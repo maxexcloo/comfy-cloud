@@ -199,7 +199,7 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                         ),
                     ),
                     name="comfy-control",
-                    platform="RunPod (Pod)",
+                    platform="RunPod",
                     provider_type="pod",
                     usage=UsageProbe(
                         headers=headers,
@@ -303,7 +303,7 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                         ),
                     ),
                     name="comfy-control-pod",
-                    platform="Vast (Pod)",
+                    platform="Vast",
                     provider_type="pod",
                     usage=usage,
                 ),

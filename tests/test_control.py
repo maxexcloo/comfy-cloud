@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, Response
 from comfy_control.cliproxy import CliproxyClient
 from comfy_control.control import create_app
 from comfy_control.control_config import ControlFile, ControlSettings
+from comfy_control.control_dashboard_routes import provider_fields
 from comfy_control.control_dashboard_routes import (
     provider_logs as dashboard_provider_logs,
 )
@@ -500,7 +501,9 @@ def test_packaged_revision_locks_matching_worker_image(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_server_rendered_settings_require_csrf(tmp_path):
+async def test_server_rendered_settings_require_csrf(monkeypatch, tmp_path):
+    monkeypatch.setenv("MODAL_TOKEN_ID", "modal-id")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "modal-secret")
     app = create_app(settings(tmp_path))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://control"
@@ -510,13 +513,30 @@ async def test_server_rendered_settings_require_csrf(tmp_path):
         rejected = await client.post(
             "/settings", data={"csrf_token": "invalid", "revision": "1"}
         )
+        provider_rejected = await client.post(
+            "/providers/modal/settings",
+            data={"csrf_token": "invalid", "revision": "1"},
+        )
 
     assert page.status_code == 200
     assert 'action="/settings"' in page.text
     assert 'name="csrf_token"' in page.text
-    for anchor in ("cliproxyapi", "modal", "runpod", "salad", "vast"):
-        assert f'id="provider-settings-{anchor}"' in page.text
+    assert "Modal Token ID" not in page.text
+    assert [
+        field["name"]
+        for field in provider_fields(
+            app.state.controller.describe_configuration(), "modal"
+        )
+    ] == [
+        "modal_gpu",
+        "modal_minimum_containers",
+        "modal_model_volume",
+        "modal_scaledown_window",
+        "modal_token_id",
+        "modal_token_secret",
+    ]
     assert rejected.status_code == 403
+    assert provider_rejected.status_code == 403
     await app.state.controller.close()
 
 
@@ -995,12 +1015,11 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
         in providers.text
     )
     assert 'href="/assets/dashboard.css?current"' in providers.text
-    assert 'data-bs-theme="light"' in providers.text
+    assert 'data-bs-theme="dark"' in providers.text
     assert "data-provider-refresh" in providers.text
     assert "table-bordered" in providers.text
     assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text
-    assert "state-log-link" in providers.text
     assert 'id="log-dialog"' in providers.text
     assert 'id="deploy-dialog"' in providers.text
     assert ">Logs</button" not in providers.text
@@ -1631,12 +1650,12 @@ providers:
 
 def test_usage_normalisers():
     assert normalise_usage("runpod", [{"amount": 1.25}, {"amount": 2}])[0] == {
-        "label": "Reported spend",
+        "label": "Spend",
         "unit": "USD",
         "value": 3.25,
     }
     assert normalise_usage("vast", {"credit": 25}) == [
-        {"label": "Credit", "unit": "USD", "value": 25}
+        {"label": "Credit balance", "unit": "USD", "value": 25}
     ]
     assert normalise_usage(
         "cliproxyapi",
@@ -1657,6 +1676,7 @@ def test_usage_normalisers():
     ) == [
         {"label": "Replicas used", "value": 2},
         {"label": "Replica quota", "value": 10},
+        {"label": "Replicas available", "value": 8},
     ]
     assert normalise_xai_quota(
         {

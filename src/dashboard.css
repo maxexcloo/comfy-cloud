@@ -1,3 +1,12 @@
+/* Neutral dark theme */
+[data-bs-theme="dark"] {
+  --tblr-bg-surface: #202020;
+  --tblr-body-bg: #171717;
+  --tblr-border-color: #404040;
+  --tblr-secondary-bg: #292929;
+  --tblr-tertiary-bg: #222;
+}
+
 /* Filters */
 .filter-chip {
   align-items: center;
