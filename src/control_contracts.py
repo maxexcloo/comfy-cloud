@@ -64,8 +64,10 @@ class PreferenceUpdate(BaseModel):
 
 
 class ModelPackage(BaseModel):
+    assets: list[str]
     id: str
     installed: bool
+    minimum_vram_gb: int | None = None
     operations: list[str]
 
 

@@ -452,6 +452,13 @@ async def test_model_packages_have_a_typed_current_api(tmp_path):
         "minimax-h3",
     ]
     assert updated.status_code == 200
+    flux = next(
+        package
+        for package in initial.json()["data"]
+        if package["id"] == "flux-2-klein-9b"
+    )
+    assert flux["minimum_vram_gb"] == 24
+    assert "diffusion_models/flux-2-klein-9b-fp8.safetensors" in flux["assets"]
     assert app.state.controller.preferences.model_profiles == ["krea-2-turbo"]
     assert invalid.status_code == 400
     await app.state.controller.close()
@@ -590,6 +597,7 @@ async def test_server_rendered_settings_require_csrf(monkeypatch, tmp_path):
     assert "data-route-provider" in page.text
     assert "data-route-model" in page.text
     assert "data-route-template" in page.text
+    assert 'data-model-package="flux-2-klein-9b"' in page.text
     assert "Generation Queue Limit" in page.text
     assert "Maximum Request Size (MiB)" in page.text
     assert "Provider Routes" in page.text

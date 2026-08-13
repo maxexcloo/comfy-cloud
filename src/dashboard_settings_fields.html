@@ -29,7 +29,7 @@
   </div>
 </div>{% elif field.type == "models" %}<div class="col-12">
   <div class="form-label">{{ field.label }}</div>
-  <div class="card card-body"><div class="g-2 row">{% for option in field.options %}<label class="col-12 col-md-4 form-check"><input class="form-check-input" name="{{ field.name }}" type="checkbox" value="{{ option }}"{% if option in field.value %} checked{% endif %}{% if field.locked %} disabled{% endif %} /><span class="form-check-label">{{ option }}</span></label>{% endfor %}</div><small class="mt-2 text-secondary">Selected packages and all associated models or LoRAs are installed when a provider is next deployed. Cleared packages are removed from its managed model volume.</small></div>
+  <div class="card card-body"><div class="g-2 row">{% for option in field.options %}<label class="col-12 col-md-4 form-check form-switch"><input class="form-check-input" data-model-package="{{ option }}" name="{{ field.name }}" type="checkbox" value="{{ option }}"{% if option in field.value %} checked{% endif %}{% if field.locked %} disabled{% endif %} /><span class="form-check-label">{{ option }}</span></label>{% endfor %}</div><small class="mt-2 text-secondary">Selected packages and all associated models or LoRAs are installed when a provider is next deployed. Cleared packages are removed from its managed model volume.</small></div>
 </div>{% else %}<label class="col-12 col-lg-6 form-label"
   >{{ field.label }}{% if field.options %}<select class="form-select form-select-sm" name="{{ field.name }}"{% if field.locked %} disabled{% endif %}>
     {% if field.locked %}<option selected>Environment Controlled</option>{% endif %}

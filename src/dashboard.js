@@ -66,6 +66,17 @@ for (const editor of document.querySelectorAll("[data-route-editor]")) {
         ]),
       ),
     );
+    const selectedModels = new Set(
+      [...editor.querySelectorAll("[data-route-model]")].map(
+        (select) => select.value,
+      ),
+    );
+    for (const model of selectedModels) {
+      const installation = document.querySelector(
+        `[data-model-package="${CSS.escape(model)}"]`,
+      );
+      if (installation && !installation.disabled) installation.checked = true;
+    }
     for (const route of editor.querySelectorAll("[data-route-key]")) {
       const selected = [...route.querySelectorAll("[data-route-provider]")].map(
         (select) => select.value,
