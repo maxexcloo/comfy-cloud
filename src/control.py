@@ -18,6 +18,7 @@ from .control_operations_history import router as history_operations_router
 from .control_operations_media import router as media_operations_router
 from .control_operations_models import router as model_operations_router
 from .control_operations_providers import router as provider_operations_router
+from .control_operations_routes import router as route_operations_router
 from .control_operations_settings import router as settings_operations_router
 from .control_operations_status import router as status_operations_router
 from .controller import Controller
@@ -51,6 +52,7 @@ def create_app(settings: ControlSettings | None = None) -> FastAPI:
     app.include_router(media_operations_router)
     app.include_router(model_operations_router)
     app.include_router(provider_operations_router)
+    app.include_router(route_operations_router)
     app.include_router(settings_operations_router)
     app.include_router(status_operations_router)
 

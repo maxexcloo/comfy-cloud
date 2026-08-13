@@ -13,7 +13,10 @@ from fastapi.responses import JSONResponse, Response
 from comfy_control.cliproxy import CliproxyClient
 from comfy_control.control import create_app
 from comfy_control.control_config import ControlFile, ControlSettings
-from comfy_control.control_dashboard_routes import provider_fields
+from comfy_control.control_dashboard_routes import (
+    provider_fields,
+    usage_with_resource_cost,
+)
 from comfy_control.control_dashboard_routes import (
     provider_logs as dashboard_provider_logs,
 )
@@ -451,6 +454,27 @@ async def test_model_packages_have_a_typed_current_api(tmp_path):
     assert updated.status_code == 200
     assert app.state.controller.preferences.model_profiles == ["krea-2-turbo"]
     assert invalid.status_code == 400
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_provider_routes_have_a_typed_current_api(tmp_path):
+    app = create_app(settings(tmp_path))
+    headers = {"Authorization": "Bearer control-key"}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        initial = await client.get("/ops/provider-routes", headers=headers)
+        updated = await client.put(
+            "/ops/provider-routes",
+            headers=headers,
+            json={**initial.json()},
+        )
+
+    assert initial.status_code == 200
+    assert initial.json()["images"] == [{"model": "worker/image", "provider": "worker"}]
+    assert updated.status_code == 200
+    assert updated.json()["videos"] == [{"model": "worker/video", "provider": "worker"}]
     await app.state.controller.close()
 
 
@@ -1721,6 +1745,19 @@ providers:
 
 
 def test_usage_normalisers():
+    assert usage_with_resource_cost(
+        {
+            "metrics": [{"label": "Credit balance", "unit": "USD", "value": 25}],
+            "status": "ok",
+        },
+        {"details": {"dph_total": 0.42}},
+    ) == {
+        "metrics": [
+            {"label": "Credit balance", "unit": "USD", "value": 25},
+            {"label": "Running cost", "unit": "USD/hour", "value": 0.42},
+        ],
+        "status": "ok",
+    }
     assert normalise_usage("runpod", [{"amount": 1.25}, {"amount": 2}])[0] == {
         "label": "Spend",
         "unit": "USD",
@@ -1763,7 +1800,12 @@ def test_usage_normalisers():
                 "monthlyLimit": {"val": 5000},
                 "onDemandCap": {"val": 2000},
                 "onDemandUsed": {"val": 500},
-                "productUsage": [{"product": "Grok Imagine", "usagePercent": 40}],
+                "productUsage": [
+                    {"product": "GrokBuild", "usagePercent": 10},
+                    {"product": "GrokChat", "usagePercent": 20},
+                    {"product": "GrokImagine", "usagePercent": 40},
+                    {"product": "MonthlyIncluded", "usagePercent": 50},
+                ],
                 "used": {"val": 1250},
             }
         },
@@ -1774,6 +1816,18 @@ def test_usage_normalisers():
             "label": "Weekly remaining",
             "unit": "%",
             "value": 75,
+        },
+        {
+            "detail": "Account 1",
+            "label": "Grok Build remaining",
+            "unit": "%",
+            "value": 90,
+        },
+        {
+            "detail": "Account 1",
+            "label": "Grok Chat remaining",
+            "unit": "%",
+            "value": 80,
         },
         {
             "detail": "Account 1",
@@ -2079,6 +2133,12 @@ def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):
 
     assert schema["info"]["version"] == "current"
     assert "/ops/media" in schema["paths"]
+    assert schema["paths"]["/ops/model-packages"]["put"]["operationId"] == (
+        "set_model_packages"
+    )
+    assert schema["paths"]["/ops/provider-routes"]["put"]["operationId"] == (
+        "set_provider_routes"
+    )
     assert not any(path.startswith("/api/") for path in schema["paths"])
     assert schema["components"]["securitySchemes"]["bearerAuth"]["scheme"] == "bearer"
     status_schema = schema["paths"]["/ops/status"]["get"]["responses"]["200"]

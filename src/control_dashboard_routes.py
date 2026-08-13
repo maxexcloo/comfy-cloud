@@ -19,6 +19,7 @@ from .control_dashboard_templates import pagination_context, render_dashboard
 from .control_http import error
 from .control_preferences import ConfigurationConflict
 from .provider_adapters import provider_panel_url
+from .provider_telemetry import first_number
 
 DASHBOARD_CSS = resources.files("comfy_control").joinpath("dashboard.css").read_text()
 DASHBOARD_JS = resources.files("comfy_control").joinpath("dashboard.js").read_text()
@@ -131,6 +132,20 @@ def prepare_field(field: dict[str, object]) -> dict[str, object]:
     return prepared
 
 
+def usage_with_resource_cost(
+    usage: dict[str, object], status: dict[str, object]
+) -> dict[str, object]:
+    details = status.get("details")
+    hourly = first_number(details, "costPerHr", "dph_total")
+    if hourly is None:
+        return usage
+    metrics = [
+        *(usage.get("metrics", []) if isinstance(usage.get("metrics"), list) else []),
+        {"label": "Running cost", "unit": "USD/hour", "value": hourly},
+    ]
+    return {**usage, "metrics": metrics, "status": "ok"}
+
+
 def provider_fields(
     description: dict[str, object], provider_id: str
 ) -> list[dict[str, object]]:
@@ -208,7 +223,9 @@ async def providers(request: Request) -> Response:
             "settings": provider_fields(description, runtime.config.id),
             "state": runtime.state,
             "type": runtime.config.type,
-            "usage": usage[runtime.config.id],
+            "usage": usage_with_resource_cost(
+                usage[runtime.config.id], statuses[runtime.config.id]
+            ),
         }
         for runtime in controller.providers.values()
     ] + [

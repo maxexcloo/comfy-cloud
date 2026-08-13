@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 
 def first_number(value: object, *paths: str) -> float | int | None:
     for path in paths:
@@ -121,19 +119,27 @@ def normalise_xai_quota(value: object, account: int) -> list[dict[str, object]]:
         for product in products:
             if not isinstance(product, dict):
                 continue
-            name = str(product.get("product") or "").strip()
-            words = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name).replace("-", " ")
-            words = " ".join(words.split())
-            if not any(
-                word in words.casefold() for word in ("build", "chat", "imagine")
-            ):
+            name = str(product.get("product") or "").casefold()
+            product_name = next(
+                (
+                    canonical
+                    for key, canonical in (
+                        ("build", "Grok Build"),
+                        ("chat", "Grok Chat"),
+                        ("imagine", "Grok Imagine"),
+                    )
+                    if key in name
+                ),
+                None,
+            )
+            if product_name is None:
                 continue
             used = first_number(product, "usagePercent", "usage_percent")
             if used is not None:
                 metrics.append(
                     {
                         "detail": detail,
-                        "label": f"{words} remaining",
+                        "label": f"{product_name} remaining",
                         "unit": "%",
                         "value": max(0, round(100 - used, 2)),
                     }

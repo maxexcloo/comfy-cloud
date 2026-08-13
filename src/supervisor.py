@@ -32,8 +32,6 @@ def _prepare_models() -> None:
         for profile in os.getenv("MODEL_PROFILES", "").split(",")
         if profile.strip()
     ]
-    if not profiles:
-        return
     models_dir = Path(os.getenv("MODELS_DIR", "/opt/ComfyUI/models"))
     profiles_dir = Path(os.getenv("PROFILES_DIR", "/opt/comfy-control/profiles"))
     for profile in profiles:

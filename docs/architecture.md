@@ -51,6 +51,9 @@ implement that operation. Arbitrary provider URLs, headers and request bodies ar
 not editable through the dashboard. `CONTROL_CONFIG` remains an advanced explicit
 override for development and private provider catalogues.
 
+Automation can read or atomically replace both route families through `GET` or
+`PUT /ops/provider-routes`; the live contract is published at `/openapi.json`.
+
 ## Request Flow
 
 1. The control plane authenticates the request and selects configured targets.

@@ -42,6 +42,21 @@ def test_configured_model_profile_is_prepared(monkeypatch, tmp_path):
     assert calls == [(profile, tmp_path / "models")]
 
 
+def test_empty_model_selection_prunes_all_managed_profiles(monkeypatch, tmp_path):
+    calls = []
+    models = tmp_path / "models"
+    monkeypatch.setenv("MODEL_PROFILES", "")
+    monkeypatch.setenv("MODELS_DIR", str(models))
+    monkeypatch.setattr(
+        "comfy_control.supervisor.prune_profiles",
+        lambda selected, models_dir: calls.append((selected, models_dir)) or [],
+    )
+
+    _prepare_models()
+
+    assert calls == [(set(), models)]
+
+
 def test_comfyui_output_is_captured_as_worker_logs(monkeypatch, tmp_path):
     monkeypatch.setenv("WORKER_LOG_PATH", str(tmp_path / "worker.jsonl"))
     output = StringIO()

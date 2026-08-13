@@ -79,6 +79,23 @@ class ModelPackageUpdate(BaseModel):
     revision: int
 
 
+class ProviderRouteTarget(BaseModel):
+    model: str
+    provider: str
+
+
+class ProviderRoutes(BaseModel):
+    images: list[ProviderRouteTarget]
+    revision: int
+    videos: list[ProviderRouteTarget]
+
+
+class ProviderRouteUpdate(BaseModel):
+    images: list[ProviderRouteTarget]
+    revision: int
+    videos: list[ProviderRouteTarget]
+
+
 class HistoryPage(BaseModel):
     data: list[dict[str, Any]]
     pagination: Pagination
