@@ -4,10 +4,11 @@ import asyncio
 import json
 import uuid
 from importlib import resources
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import (
+    JSONResponse,
     RedirectResponse,
     Response,
     StreamingResponse,
@@ -37,6 +38,33 @@ PROVIDER_SETTINGS_URLS = {
     "vast": "/settings#provider-settings-vast",
     "vast-pod": "/settings#provider-settings-vast",
 }
+EVENT_SORTS = ("created_at", "level", "message", "provider", "request_id")
+HISTORY_SORTS = ("created_at", "model", "operation", "provider", "status")
+
+
+def sort_links(
+    request: Request, columns: tuple[str, ...], current: str, direction: str
+) -> dict[str, str]:
+    values = [
+        (key, value)
+        for key, value in request.query_params.multi_items()
+        if key not in {"direction", "page", "sort"}
+    ]
+    return {
+        column: "?"
+        + urlencode(
+            [
+                *values,
+                ("sort", column),
+                (
+                    "direction",
+                    "asc" if current == column and direction == "desc" else "desc",
+                ),
+            ]
+        )
+        for column in columns
+    }
+
 
 router = APIRouter(tags=["dashboard"])
 
@@ -115,7 +143,9 @@ async def providers(request: Request) -> Response:
     if not ui_authorised(request, request.app.state.settings):
         return RedirectResponse("/login", status_code=303)
     async with controller.configuration_lock:
-        statuses = await controller.provider_statuses()
+        usage, statuses = await asyncio.gather(
+            controller.usage(), controller.provider_statuses()
+        )
     items = [
         {
             "actions": [
@@ -132,6 +162,7 @@ async def providers(request: Request) -> Response:
             "settings_url": PROVIDER_SETTINGS_URLS.get(runtime.config.id),
             "state": runtime.state,
             "type": runtime.config.type,
+            "usage": usage[runtime.config.id],
         }
         for runtime in controller.providers.values()
     ] + [
@@ -145,6 +176,7 @@ async def providers(request: Request) -> Response:
             "settings_url": PROVIDER_SETTINGS_URLS.get(str(provider["id"])),
             "state": "unconfigured",
             "type": provider["type"],
+            "usage": {"status": "unconfigured"},
         }
         for provider in controller.available_providers
         if provider["id"] not in controller.providers
@@ -166,12 +198,18 @@ async def events(request: Request) -> Response:
     query = request.query_params.get("q", "").strip()
     level = request.query_params.get("level", "")
     provider = request.query_params.get("provider", "")
+    sort = request.query_params.get("sort", "created_at")
+    direction = request.query_params.get("direction", "desc")
+    if sort not in EVENT_SORTS or direction not in {"asc", "desc"}:
+        return error("invalid event sort", 400, "invalid_sort")
     result = controller.store.event_page(
+        direction=direction,
         limit=PAGE_SIZE,
         offset=(page - 1) * PAGE_SIZE,
         level=level,
         provider=provider,
         query=query,
+        sort=sort,
     )
     facets = controller.store.event_facets()
     return render_dashboard(
@@ -186,6 +224,9 @@ async def events(request: Request) -> Response:
         },
         levels=facets["level"],
         providers=facets["provider"],
+        sort=sort,
+        sort_direction=direction,
+        sort_links=sort_links(request, EVENT_SORTS, sort, direction),
     )
 
 
@@ -202,12 +243,18 @@ async def history(request: Request) -> Response:
     operation = request.query_params.get("operation", "")
     provider = request.query_params.get("provider", "")
     status = request.query_params.get("status", "")
+    sort = request.query_params.get("sort", "created_at")
+    direction = request.query_params.get("direction", "desc")
+    if sort not in HISTORY_SORTS or direction not in {"asc", "desc"}:
+        return error("invalid history sort", 400, "invalid_sort")
     result = controller.store.history_page(
+        direction=direction,
         limit=PAGE_SIZE,
         offset=(page - 1) * PAGE_SIZE,
         operation=operation,
         provider=provider,
         query=query,
+        sort=sort,
         status=status,
     )
     facets = controller.store.history_facets()
@@ -224,6 +271,9 @@ async def history(request: Request) -> Response:
         history=pagination_context(request, result, page, PAGE_SIZE),
         operations=facets["operation"],
         providers=facets["provider"],
+        sort=sort,
+        sort_direction=direction,
+        sort_links=sort_links(request, HISTORY_SORTS, sort, direction),
         statuses=facets["status"],
     )
 
@@ -234,13 +284,24 @@ async def settings_page(request: Request) -> Response:
     if not ui_authorised(request, request.app.state.settings):
         return RedirectResponse("/login", status_code=303)
     description = controller.describe_configuration()
-    categories: dict[str, dict[str, list[dict[str, object]]]] = {}
+    unordered: dict[str, dict[str, list[dict[str, object]]]] = {}
     for field in description["fields"]:
         category, group = settings_group(str(field["name"]))
         field["label"] = title_label(field["label"])
         if field["name"] == "modal_gpu":
             field["options"] = ["A100", "H100", "L40S"]
-        categories.setdefault(category, {}).setdefault(group, []).append(field)
+        unordered.setdefault(category, {}).setdefault(group, []).append(field)
+    category_order = {"Providers": 0, "Routing": 1, "Worker": 2, "Control": 3}
+    categories = {
+        category: {
+            group: sorted(fields, key=lambda item: str(item["label"]).casefold())
+            for group, fields in sorted(groups.items())
+        }
+        for category, groups in sorted(
+            unordered.items(),
+            key=lambda item: (category_order.get(item[0], 99), item[0]),
+        )
+    }
     return render_dashboard(
         request,
         "dashboard_settings.html",
@@ -293,9 +354,27 @@ async def provider_action(
     form = await request.form()
     if not valid_csrf(request, settings, str(form.get("csrf_token", ""))):
         return error("invalid CSRF token", 403, "invalid_csrf")
+    preferences = None
+    if action_name == "deploy" and (gpu := str(form.get("gpu", "")).strip()):
+        updates: dict[str, object] = {}
+        if provider_id == "modal":
+            updates["modal_gpu"] = gpu
+        elif provider_id in {"runpod", "runpod-pod"}:
+            updates["runpod_gpu_types"] = [gpu]
+        elif provider_id == "salad":
+            updates["salad_gpu_classes"] = [gpu]
+        elif provider_id in {"vast", "vast-pod"}:
+            memory = str(form.get("memory_gb", "")).strip()
+            if memory:
+                updates["vast_minimum_gpu_memory_gb"] = max(1, int(float(memory)))
+        if updates:
+            preferences = controller.preferences.model_copy(update=updates)
     try:
         await controller.run_provider_action(
-            provider_id, action_name, uuid.uuid4().hex[:16]
+            provider_id,
+            action_name,
+            uuid.uuid4().hex[:16],
+            preferences=preferences,
         )
     except Exception as exc:  # noqa: BLE001 - provider SDK boundary
         return error(str(exc), 400, "provider_action_failed")
@@ -303,6 +382,18 @@ async def provider_action(
         f"/providers?message={quote(f'{provider_id} {action_name} completed'.title())}",
         status_code=303,
     )
+
+
+@router.get("/providers/{provider_id}/deployment-options", include_in_schema=False)
+async def provider_deployment_options(provider_id: str, request: Request) -> Response:
+    controller = request.app.state.controller
+    if not ui_authorised(request, request.app.state.settings):
+        return Response(status_code=401)
+    try:
+        options = await controller.deployment_options(provider_id)
+    except (KeyError, RuntimeError) as exc:
+        return error(str(exc), 400, "deployment_options_unavailable")
+    return JSONResponse({"options": options, "provider": provider_id})
 
 
 @router.get("/providers/{provider_id}/logs", include_in_schema=False)

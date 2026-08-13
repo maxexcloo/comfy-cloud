@@ -22,6 +22,42 @@ def headers(preferences: ControlPreferences) -> dict[str, str]:
     }
 
 
+async def deployment_options(
+    client: httpx.AsyncClient, preferences: ControlPreferences
+) -> list[dict[str, object]]:
+    response = await checked_request(
+        client,
+        "POST",
+        "https://console.vast.ai/api/v0/bundles/",
+        headers=headers(preferences),
+        json={
+            "gpu_ram": {"gte": preferences.vast_minimum_gpu_memory_gb * 1000},
+            "limit": 20,
+            "num_gpus": {"eq": 1},
+            "order": [["dph_total", "asc"]],
+            "rentable": {"eq": True},
+            "rented": {"eq": False},
+            "type": "ondemand",
+            "verified": {"eq": True},
+        },
+    )
+    payload = response.json()
+    values = payload.get("offers", []) if isinstance(payload, dict) else []
+    if isinstance(values, dict):
+        values = [values]
+    return [
+        {
+            "available": True,
+            "cost_per_hour": item.get("dph_total"),
+            "id": str(item.get("id") or item.get("ask_contract_id")),
+            "label": str(item.get("gpu_name") or "Vast GPU"),
+            "memory_gb": round(float(item.get("gpu_ram", 0)) / 1000, 1),
+        }
+        for item in values
+        if isinstance(item, dict) and (item.get("id") or item.get("ask_contract_id"))
+    ]
+
+
 async def deploy_pod(
     client: httpx.AsyncClient,
     provider: Provider,

@@ -15,7 +15,11 @@ from comfy_control.control_config import (
 )
 from comfy_control.control_preferences import ControlPreferences
 from comfy_control.provider_adapter import ProviderNotDeployed
-from comfy_control.provider_deployment import deploy_provider, terminate_provider
+from comfy_control.provider_deployment import (
+    deploy_provider,
+    deployment_options,
+    terminate_provider,
+)
 from comfy_control.provider_deployment_common import configured_environment
 from comfy_control.provider_modal import ModalAdapter
 
@@ -71,6 +75,41 @@ async def test_deploys_runpod_pod_from_credentials(tmp_path, monkeypatch):
         )
 
     assert response.json()["id"] == "pod-1"
+
+
+@pytest.mark.asyncio
+async def test_runpod_deployment_options_include_live_cost_and_availability(
+    monkeypatch,
+):
+    monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/gpuTypes"
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "communityCloud": True,
+                    "communityPrice": 0.42,
+                    "displayName": "NVIDIA L40S",
+                    "id": "L40S",
+                    "memoryInGb": 48,
+                }
+            ],
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        options = await deployment_options(client, provider("runpod"), preferences())
+
+    assert options == [
+        {
+            "available": True,
+            "cost_per_hour": 0.42,
+            "id": "L40S",
+            "label": "NVIDIA L40S",
+            "memory_gb": 48,
+        }
+    ]
 
 
 def test_worker_ui_credentials_fall_back_when_compose_values_are_empty(

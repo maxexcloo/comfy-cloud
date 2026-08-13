@@ -6,7 +6,8 @@
     <small>Controller and provider activity.</small>
   </div>
 </div>
-<form class="filters" method="get">
+<form class="filters" method="get" data-live-filter>
+  <input type="hidden" name="sort" value="{{ sort }}" /><input type="hidden" name="direction" value="{{ sort_direction }}" />
   <label class="search"
     >Search<input
       name="q"
@@ -33,17 +34,17 @@
       {% endfor %}
     </select></label
   >
-  <button>Apply Filters</button><a class="button" href="/events">Clear</a>
+  <a class="button" href="/events">Clear</a>
 </form>
 <section class="table-wrap" aria-label="Events">
   <table>
     <thead>
       <tr>
-        <th>Date</th>
-        <th>Level</th>
-        <th>Provider</th>
-        <th>Message</th>
-        <th>Request</th>
+        {{ ui.sortable_header("Date", "created_at", sort_links, sort, sort_direction) }}
+        {{ ui.sortable_header("Level", "level", sort_links, sort, sort_direction) }}
+        {{ ui.sortable_header("Provider", "provider", sort_links, sort, sort_direction) }}
+        {{ ui.sortable_header("Request", "request_id", sort_links, sort, sort_direction) }}
+        {{ ui.sortable_header("Message", "message", sort_links, sort, sort_direction) }}
       </tr>
     </thead>
     <tbody>
@@ -60,13 +61,13 @@
             >{{ item.provider }}</a
           >{% else %}—{% endif %}
         </td>
-        <td>{{ item.message }}</td>
         <td>
           {% if item.request_id %}<a
             href="/history?q={{ item.request_id | urlencode }}"
             ><code>{{ item.request_id }}</code></a
           >{% else %}—{% endif %}
         </td>
+        <td>{{ item.message }}</td>
       </tr>
       {% else %}
       <tr>

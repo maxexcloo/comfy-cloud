@@ -15,3 +15,25 @@
   >{% endif %}
 </nav>
 {%- endmacro %}
+
+{% macro sortable_header(label, name, links, current, direction) -%}
+<th aria-sort="{% if current == name %}{{ 'ascending' if direction == 'asc' else 'descending' }}{% else %}none{% endif %}">
+  <a class="sort-link" href="{{ links[name] }}">{{ label }}{% if current == name %}<span aria-hidden="true">{{ '↑' if direction == 'asc' else '↓' }}</span>{% endif %}</a>
+</th>
+{%- endmacro %}
+
+{% macro usage(data) -%}
+{% if data.status == "ok" and data.metrics %}
+<div class="usage-list">
+  {% for metric in data.metrics %}
+  {% if metric.unit == "%" %}
+  <div class="usage-meter"><div><span>{{ metric.label }}</span><strong>{{ metric.value }}%</strong></div><progress max="100" value="{{ metric.value }}">{{ metric.value }}%</progress></div>
+  {% elif metric.unit == "USD" %}
+  <span class="usage-value"><small>{{ metric.label }}</small><strong>${{ "%.2f" | format(metric.value) }}</strong></span>
+  {% else %}
+  <span class="usage-value"><small>{{ metric.label }}</small><strong>{{ metric.value }}</strong></span>
+  {% endif %}
+  {% endfor %}
+</div>
+{% else %}<small>{{ data.status.replace("_", " ") | title }}</small>{% endif %}
+{%- endmacro %}

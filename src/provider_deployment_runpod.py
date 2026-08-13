@@ -28,6 +28,30 @@ def headers(preferences: ControlPreferences) -> dict[str, str]:
     }
 
 
+async def deployment_options(
+    client: httpx.AsyncClient, preferences: ControlPreferences
+) -> list[dict[str, object]]:
+    response = await checked_request(
+        client,
+        "GET",
+        "https://rest.runpod.io/v1/gpuTypes",
+        headers=headers(preferences),
+    )
+    payload = response.json()
+    values = payload if isinstance(payload, list) else []
+    return [
+        {
+            "available": bool(item.get("secureCloud") or item.get("communityCloud")),
+            "cost_per_hour": item.get("securePrice") or item.get("communityPrice"),
+            "id": str(item.get("id")),
+            "label": str(item.get("displayName") or item.get("id")),
+            "memory_gb": item.get("memoryInGb"),
+        }
+        for item in values
+        if isinstance(item, dict) and item.get("id")
+    ]
+
+
 async def deploy_pod(
     client: httpx.AsyncClient,
     provider: Provider,

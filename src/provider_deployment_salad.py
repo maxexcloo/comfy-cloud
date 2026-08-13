@@ -76,6 +76,38 @@ async def gpu_classes(
     return matches
 
 
+async def deployment_options(
+    client: httpx.AsyncClient,
+    provider: Provider,
+    preferences: ControlPreferences,
+) -> list[dict[str, object]]:
+    organisation, _ = scope(provider, preferences)
+    response = await checked_request(
+        client,
+        "GET",
+        "https://api.salad.com/api/public/organizations/"
+        f"{quote(organisation, safe='')}/gpu-classes",
+        headers=headers(preferences),
+    )
+    payload = response.json()
+    values = payload.get("items", []) if isinstance(payload, dict) else payload
+    return (
+        [
+            {
+                "available": item.get("is_available", item.get("available", True)),
+                "cost_per_hour": item.get("price") or item.get("price_per_hour"),
+                "id": str(item.get("id")),
+                "label": str(item.get("name") or item.get("id")),
+                "memory_gb": item.get("memory_gb") or item.get("gpu_memory_gb"),
+            }
+            for item in values
+            if isinstance(item, dict) and item.get("id")
+        ]
+        if isinstance(values, list)
+        else []
+    )
+
+
 async def deploy(
     client: httpx.AsyncClient,
     provider: Provider,

@@ -16,9 +16,7 @@
       <fieldset{% if group in provider_settings_anchors %} id="{{ provider_settings_anchors[group] }}"{% endif %}>
         <legend>{{ group }}</legend>
         {% for field in fields %}<label
-          >{{ field.label }}{% if field.locked %}<small class="field-note"
-            >Controlled By Environment</small
-          >{% endif %} {% if field.options %}<select
+          >{{ field.label }}{% if field.options %}<select
             name="{{ field.name }}"
             {%
             if
@@ -60,8 +58,8 @@
             {%
             if
             field.secret
-            %}placeholder="{% if field.configured %}Configured{% endif %}"
-            autocomplete="new-password"
+            %}autocomplete="new-password"
+            placeholder="{% if field.locked %}Environment Controlled{% elif field.configured %}Configured{% endif %}"
             {%
             endif
             %}
@@ -75,12 +73,10 @@
             endif
             %}
             {%
-            if
-            field.locked
-            %}disabled{%
+            if field.locked %}disabled title="Environment Controlled"{%
             endif
             %}
-          />{% endif %} </label
+          />{% endif %}{% if field.locked %}<small class="environment-controlled">Environment Controlled</small>{% endif %} </label
         >{% endfor %}
       </fieldset>
       {% endfor %}

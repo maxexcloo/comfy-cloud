@@ -149,7 +149,32 @@ td {
   border-bottom: 1px solid var(--border);
   padding: 0.72rem;
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
+}
+th {
+  text-align: left;
+}
+.sort-link {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.35rem;
+  text-decoration: none;
+}
+.usage-list {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 180px;
+}
+.usage-meter > div,
+.usage-value {
+  align-items: baseline;
+  display: flex;
+  gap: 0.6rem;
+  justify-content: space-between;
+}
+.usage-meter progress {
+  accent-color: var(--accent);
+  width: 100%;
 }
 th {
   color: var(--muted);
@@ -258,7 +283,8 @@ select:disabled,
 textarea:disabled {
   opacity: 0.6;
 }
-.field-note {
+.environment-controlled {
+  color: var(--muted);
   font-size: 0.75rem;
 }
 dialog {

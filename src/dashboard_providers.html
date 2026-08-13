@@ -12,8 +12,9 @@
       <tr>
         <th>Provider</th>
         <th>Type</th>
-        <th>State</th>
-        <th>Resource</th>
+        <th>Status</th>
+        <th>Usage</th>
+        <th title="The provider-assigned deployment, endpoint, Pod, or instance identifier used for lifecycle actions.">Resource</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -48,6 +49,7 @@
           >{% else %}{{ ui.badge(provider.state) }}{% endif %}
           {% if provider.settings_url %}<a class="badge settings-pill" href="{{ provider.settings_url }}">Settings</a>{% endif %}
         </td>
+        <td>{{ ui.usage(provider.usage) }}</td>
         <td><code>{{ provider.resource_id or "—" }}</code></td>
         <td>
           <div class="actions">
@@ -62,6 +64,7 @@
                 value="{{ csrf_token }}"
               /><button
                 class="{% if action.name in ['delete', 'destroy', 'terminate'] %}danger{% endif %}"
+                {% if action.name == "deploy" %}type="button" data-deploy-provider="{{ provider.id }}" data-deploy-action="/providers/{{ provider.id }}/actions/deploy" data-deploy-options="/providers/{{ provider.id }}/deployment-options"{% endif %}
                 {%
                 if
                 action.confirmation
@@ -81,5 +84,16 @@
     </tbody>
   </table>
 </section>
-{% endblock %} {% block dialogs %}{% include "dashboard_log_dialog.html" %}{%
+{% endblock %} {% block dialogs %}{% include "dashboard_log_dialog.html" %}
+<dialog id="deploy-dialog" aria-labelledby="deploy-title">
+  <div class="dialog-head"><div><small>Provider Deployment</small><h2 id="deploy-title">Deploy Provider</h2></div><button type="button" data-close>Close</button></div>
+  <form class="dialog-body" id="deploy-form" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="memory_gb" id="deploy-memory" />
+    <label>GPU<select name="gpu" id="deploy-gpu"><option value="">Loading Availability…</option></select></label>
+    <p id="deploy-option-detail" class="notice">Checking current availability and pricing…</p>
+    <div class="dialog-actions"><button type="submit">Deploy</button><button type="button" data-close>Cancel</button></div>
+  </form>
+</dialog>
+{%
 endblock %}

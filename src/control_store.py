@@ -770,8 +770,14 @@ class ControlStore:
         operation: str = "",
         provider: str = "",
         query: str = "",
+        sort: str = "created_at",
         status: str = "",
+        direction: str = "desc",
     ) -> dict[str, object]:
+        if sort not in {"created_at", "model", "operation", "provider", "status"}:
+            raise ValueError("invalid history sort")
+        if direction not in {"asc", "desc"}:
+            raise ValueError("invalid history sort direction")
         clauses = ["1 = 1"]
         values: list[object] = []
         for column, value in (
@@ -793,12 +799,13 @@ class ControlStore:
                     f"SELECT COUNT(*) AS count FROM history WHERE {where}", values
                 ).fetchone()["count"]
             )
+            order = f"{sort} {direction.upper()}, rowid {direction.upper()}"
             rows = self.connection.execute(
                 f"""
                 SELECT id, operation, model, provider, provider_model, status,
                        created_at, updated_at, parameters_json, error
                 FROM history WHERE {where}
-                ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?
+                ORDER BY {order} LIMIT ? OFFSET ?
                 """,
                 [*values, limit, offset],
             ).fetchall()
@@ -1411,7 +1418,13 @@ class ControlStore:
         level: str = "",
         provider: str = "",
         query: str = "",
+        sort: str = "created_at",
+        direction: str = "desc",
     ) -> dict[str, object]:
+        if sort not in {"created_at", "level", "message", "provider", "request_id"}:
+            raise ValueError("invalid event sort")
+        if direction not in {"asc", "desc"}:
+            raise ValueError("invalid event sort direction")
         clauses = ["1 = 1"]
         values: list[object] = []
         for column, value in (("level", level), ("provider", provider)):
@@ -1429,11 +1442,12 @@ class ControlStore:
                     f"SELECT COUNT(*) AS count FROM events WHERE {where}", values
                 ).fetchone()["count"]
             )
+            order = f"{sort} {direction.upper()}, id {direction.upper()}"
             rows = self.connection.execute(
                 f"""
                 SELECT created_at, level, message, provider, request_id
                 FROM events WHERE {where}
-                ORDER BY id DESC LIMIT ? OFFSET ?
+                ORDER BY {order} LIMIT ? OFFSET ?
                 """,
                 [*values, limit, offset],
             ).fetchall()

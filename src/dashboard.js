@@ -22,6 +22,27 @@ for (const button of document.querySelectorAll("[data-confirmation]")) {
   });
 }
 
+for (const form of document.querySelectorAll("[data-live-filter]")) {
+  let timer;
+  const submit = () => {
+    clearTimeout(timer);
+    form.requestSubmit();
+  };
+  form.addEventListener("input", (event) => {
+    if (event.target.matches('input[type="search"], input[name="q"]')) {
+      clearTimeout(timer);
+      timer = setTimeout(() => form.requestSubmit(), 300);
+    }
+  });
+  form.addEventListener("change", submit);
+}
+
+const closeDialogOnBackdrop = (dialog) => {
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+};
+
 const logDialog = document.getElementById("log-dialog");
 if (logDialog) {
   const logBody = logDialog.querySelector(".dialog-body");
@@ -82,6 +103,68 @@ if (logDialog) {
       logSource = undefined;
     }
   });
+  closeDialogOnBackdrop(logDialog);
+}
+
+const deployDialog = document.getElementById("deploy-dialog");
+if (deployDialog) {
+  const deployDetail = document.getElementById("deploy-option-detail");
+  const deployForm = document.getElementById("deploy-form");
+  const deployGpu = document.getElementById("deploy-gpu");
+  const deployMemory = document.getElementById("deploy-memory");
+  let deploymentOptions = [];
+  const updateDeployDetail = () => {
+    const option = deploymentOptions.find((item) => item.id === deployGpu.value);
+    deployMemory.value = option?.memory_gb || "";
+    if (!option) {
+      deployDetail.textContent = "The provider will choose automatically.";
+      return;
+    }
+    const details = [
+      option.available ? "Available" : "Currently Unavailable",
+      option.memory_gb ? `${option.memory_gb} GB GPU Memory` : null,
+      Number.isFinite(option.cost_per_hour)
+        ? `$${Number(option.cost_per_hour).toFixed(3)} Per Hour`
+        : "Provider-Managed Pricing",
+    ].filter(Boolean);
+    deployDetail.textContent = details.join(" · ");
+  };
+  for (const button of document.querySelectorAll("[data-deploy-provider]")) {
+    button.addEventListener("click", async () => {
+      document.getElementById("deploy-title").textContent =
+        `Deploy ${button.dataset.deployProvider}`;
+      deployForm.action = button.dataset.deployAction;
+      deployGpu.replaceChildren(new Option("Loading Availability…", ""));
+      deployGpu.disabled = true;
+      deployDialog.showModal();
+      const response = await fetch(button.dataset.deployOptions);
+      if (!response.ok) {
+        deployDetail.textContent = "Live availability could not be loaded.";
+        deployGpu.replaceChildren(new Option("Automatic", ""));
+        deployGpu.disabled = false;
+        return;
+      }
+      deploymentOptions = (await response.json()).options;
+      deployGpu.replaceChildren(
+        new Option("Automatic (Recommended)", ""),
+        ...deploymentOptions.map(
+          (item) =>
+            new Option(
+              `${item.label}${Number.isFinite(item.cost_per_hour) ? ` · $${Number(item.cost_per_hour).toFixed(3)}/h` : ""}`,
+              item.id,
+              false,
+              false,
+            ),
+        ),
+      );
+      deployGpu.disabled = false;
+      updateDeployDetail();
+    });
+  }
+  deployGpu.addEventListener("change", updateDeployDetail);
+  for (const button of deployDialog.querySelectorAll("[data-close]"))
+    button.addEventListener("click", () => deployDialog.close());
+  closeDialogOnBackdrop(deployDialog);
 }
 
 const addFilter = document.getElementById("add-filter");
@@ -106,10 +189,13 @@ if (addFilter) {
     chip.append(remove);
     document.getElementById("filter-chips").append(chip);
     document.getElementById("filter-value").value = "";
+    document.getElementById("media-search").requestSubmit();
   });
   document.getElementById("filter-chips").addEventListener("click", (event) => {
-    if (event.target.matches("[data-remove-filter]"))
+    if (event.target.matches("[data-remove-filter]")) {
       event.target.closest(".filter-chip").remove();
+      document.getElementById("media-search").requestSubmit();
+    }
   });
 }
 
@@ -272,9 +358,7 @@ if (mediaDialog) {
     .addEventListener("click", () => mediaDialog.close());
   previousButton.addEventListener("click", () => browseMedia(-1));
   nextButton.addEventListener("click", () => browseMedia(1));
-  mediaDialog.addEventListener("click", (event) => {
-    if (event.target === mediaDialog) mediaDialog.close();
-  });
+  closeDialogOnBackdrop(mediaDialog);
   document.addEventListener("keydown", (event) => {
     if (!mediaDialog.open) return;
     if (event.key === "Escape") {

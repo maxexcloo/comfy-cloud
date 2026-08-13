@@ -11,10 +11,16 @@ from .provider_deployment_runpod import (
     deploy_serverless as deploy_runpod_serverless,
 )
 from .provider_deployment_runpod import (
+    deployment_options as runpod_deployment_options,
+)
+from .provider_deployment_runpod import (
     terminate as terminate_runpod,
 )
 from .provider_deployment_salad import (
     deploy as deploy_salad,
+)
+from .provider_deployment_salad import (
+    deployment_options as salad_deployment_options,
 )
 from .provider_deployment_salad import (
     terminate as terminate_salad,
@@ -26,8 +32,33 @@ from .provider_deployment_vast import (
     deploy_serverless as deploy_vast_serverless,
 )
 from .provider_deployment_vast import (
+    deployment_options as vast_deployment_options,
+)
+from .provider_deployment_vast import (
     terminate as terminate_vast,
 )
+
+
+async def deployment_options(
+    client: httpx.AsyncClient,
+    provider: Provider,
+    preferences: ControlPreferences,
+) -> list[dict[str, object]]:
+    management = provider.management
+    if management is None:
+        return []
+    if management.kind == "modal":
+        return [
+            {"available": True, "cost_per_hour": None, "id": gpu, "label": gpu}
+            for gpu in ("A100", "H100", "L40S")
+        ]
+    if management.kind in {"runpod", "runpod-pod"}:
+        return await runpod_deployment_options(client, preferences)
+    if management.kind == "salad":
+        return await salad_deployment_options(client, provider, preferences)
+    if management.kind in {"vast", "vast-pod"}:
+        return await vast_deployment_options(client, preferences)
+    return []
 
 
 async def deploy_provider(

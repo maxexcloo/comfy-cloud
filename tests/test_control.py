@@ -448,7 +448,8 @@ async def test_environment_overrides_database_and_locks_settings(tmp_path, monke
     assert "environment-controlled" in rejected.text
     assert updated.status_code == 200
     assert "Worker Image" in page.text
-    assert "Controlled By Environment" in page.text
+    assert "Environment Controlled" in page.text
+    assert "Controlled By Environment" not in page.text
     assert "disabled" in page.text
     assert (
         app.state.controller.store.connection.execute(
@@ -984,13 +985,29 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text
     assert "state-log-link" in providers.text
+    assert 'id="log-dialog"' in providers.text
+    assert 'id="deploy-dialog"' in providers.text
     assert ">Logs</button" not in providers.text
+    assert (
+        providers.text.index("<th>Provider</th>")
+        < providers.text.index("<th>Type</th>")
+        < providers.text.index("<th>Status</th>")
+        < providers.text.index("<th>Usage</th>")
+        < providers.text.index("Resource</th>")
+        < providers.text.index("<th>Actions</th>")
+    )
     assert 'href="http://worker"' in providers.text
     assert "Open Panel" not in providers.text
     assert events.text.count("Wombat Needle Event") == 1
+    assert "Apply Filters" not in events.text
+    assert "data-live-filter" in events.text
+    assert 'aria-sort="descending"' in events.text
     assert "Unrelated Event" not in events.text
     assert f"/history?q={history_id}" in events.text
     assert history.text.count(history_id) >= 1
+    assert "Apply Filters" not in history.text
+    assert "data-live-filter" in history.text
+    assert "Provider Model:" not in history.text
     assert "Unrelated Prompt" not in history.text
     assert 'data-media-id="1"' in history.text
     assert 'id="media-dialog"' in media.text
@@ -998,6 +1015,8 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert "data-next-media" in media.text
     assert "data-previous-media" in media.text
     assert 'data-media-id="' in media.text
+    assert "Apply Filters" not in media.text
+    assert "data-live-filter" in media.text
     assert detail.status_code == 200
     assert detail.json()["uses"][0]["prompt"] == "Wombat Needle Portrait"
     assert "path" not in detail.json()
@@ -1013,7 +1032,10 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert 'event.key === "ArrowLeft"' in javascript.text
     assert 'event.key === "ArrowRight"' in javascript.text
     assert 'event.key === "Escape"' in javascript.text
-    assert "event.target === mediaDialog" in javascript.text
+    assert "closeDialogOnBackdrop(mediaDialog)" in javascript.text
+    assert "closeDialogOnBackdrop(logDialog)" in javascript.text
+    assert "form.requestSubmit()" in javascript.text
+    assert "closeDialogOnBackdrop(deployDialog)" in javascript.text
     assert "logBody.scrollTop = logBody.scrollHeight" in javascript.text
     assert 'following ? "Following" : "Paused"' in javascript.text
     assert "[...data.entries]" in javascript.text

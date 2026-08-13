@@ -31,6 +31,7 @@ from .provider_adapters import (
     provider_adapter,
     provider_panel_url,
 )
+from .provider_deployment import deployment_options
 from .provider_modal import (
     provider_action as modal_provider_action,
 )
@@ -702,8 +703,13 @@ class Controller:
         directory.rmdir()
 
     async def action(
-        self, action: ProviderAction, provider: str, action_name: str = "lifecycle"
+        self,
+        action: ProviderAction,
+        provider: str,
+        action_name: str = "lifecycle",
+        preferences: ControlPreferences | None = None,
     ) -> httpx.Response:
+        selected_preferences = preferences or self.preferences
         if action_name == "deploy" and self.resource_id(provider) is not None:
             raise RuntimeError(f"provider {provider} is already deployed")
         if action.internal in {"modal-deploy", "modal-terminate"}:
@@ -711,7 +717,7 @@ class Controller:
                 modal_provider_action,
                 action.internal,
                 self.providers[provider].config,
-                self.preferences,
+                selected_preferences,
                 self.settings,
             )
         elif action.internal == "provider-deploy":
@@ -721,7 +727,7 @@ class Controller:
             response = await adapter.deploy(
                 self.lifecycle_client,
                 self.providers[provider].config,
-                self.preferences,
+                selected_preferences,
                 self.settings,
             )
         elif action.internal == "provider-terminate":
@@ -773,6 +779,14 @@ class Controller:
         )
         return response
 
+    async def deployment_options(self, provider: str) -> list[dict[str, object]]:
+        runtime = self.providers.get(provider)
+        if runtime is None:
+            raise KeyError(f"unknown provider: {provider}")
+        return await deployment_options(
+            self.lifecycle_client, runtime.config, self.preferences
+        )
+
     def resource_id(self, provider: str) -> str | None:
         return (
             self.store.provider_resource(provider)
@@ -804,13 +818,23 @@ class Controller:
         )
 
     async def run_provider_action(
-        self, provider: str, action_name: str, request_id: str
+        self,
+        provider: str,
+        action_name: str,
+        request_id: str,
+        preferences: ControlPreferences | None = None,
     ) -> dict[str, object]:
         async with self.configuration_lock:
-            return await self._run_provider_action(provider, action_name, request_id)
+            return await self._run_provider_action(
+                provider, action_name, request_id, preferences
+            )
 
     async def _run_provider_action(
-        self, provider: str, action_name: str, request_id: str
+        self,
+        provider: str,
+        action_name: str,
+        request_id: str,
+        preferences: ControlPreferences | None = None,
     ) -> dict[str, object]:
         try:
             runtime = self.providers[provider]
@@ -830,7 +854,9 @@ class Controller:
                 raise RuntimeError("provider has active requests")
             if action_name == "stop":
                 runtime.state = "stopping"
-            response = await self.action(action, provider, action_name)
+            response = await self.action(
+                action, provider, action_name, preferences=preferences
+            )
             if action_name == "deploy":
                 runtime.state = "starting"
             elif action_name in {"delete", "destroy", "terminate"}:
