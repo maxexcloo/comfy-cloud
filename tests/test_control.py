@@ -1076,6 +1076,8 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert stylesheet.headers["cache-control"] == "no-store"
     assert "@media (max-width: 767.98px)" in stylesheet.text
     assert ".media-grid" in stylesheet.text
+    assert "--tblr-border-color: #707070" in stylesheet.text
+    assert "--tblr-link-color: #8bc5ff" in stylesheet.text
     assert javascript.headers["content-type"].startswith("text/javascript")
     assert javascript.headers["cache-control"] == "no-store"
     assert "if (!mediaDialog.open) mediaDialog.showModal()" in javascript.text
