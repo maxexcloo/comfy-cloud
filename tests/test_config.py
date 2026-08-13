@@ -12,10 +12,21 @@ def test_settings_require_api_key(monkeypatch):
 
 def test_pod_settings_require_ui_password(monkeypatch):
     monkeypatch.setenv("API_KEY", "test-key")
-    monkeypatch.setenv("COMFY_UI_PASSWORD", "REPLACE_ME")
+    monkeypatch.setenv("CONTROL_UI_PASSWORD", "REPLACE_ME")
 
-    with pytest.raises(ValueError, match="COMFY_UI_PASSWORD"):
+    with pytest.raises(ValueError, match="CONTROL_UI_PASSWORD"):
         Settings.from_env("pod")
+
+
+def test_worker_uses_control_ui_credentials(monkeypatch):
+    monkeypatch.setenv("API_KEY", "test-key")
+    monkeypatch.setenv("CONTROL_UI_PASSWORD", "control-password")
+    monkeypatch.setenv("CONTROL_UI_USERNAME", "control-user")
+
+    configured = Settings.from_env("pod")
+
+    assert configured.ui_password == "control-password"
+    assert configured.ui_username == "control-user"
 
 
 @pytest.mark.parametrize(

@@ -36,8 +36,6 @@ class ControlPreferences(BaseModel):
         "cliproxy_api_key": ("CLIPROXY_API_KEY",),
         "cliproxy_management_key": ("CLIPROXY_MANAGEMENT_KEY",),
         "cliproxy_url": ("CLIPROXY_URL",),
-        "comfy_ui_password": ("COMFY_UI_PASSWORD",),
-        "comfy_ui_username": ("COMFY_UI_USERNAME",),
         "control_maximum_request_bytes": ("CONTROL_MAXIMUM_REQUEST_BYTES",),
         "hf_token": ("HF_TOKEN",),
         "maximum_pending_generations": ("MAXIMUM_PENDING_GENERATIONS",),
@@ -82,11 +80,6 @@ class ControlPreferences(BaseModel):
         },
         "cliproxy_management_key": {
             "label": "CLI Proxy API management key",
-            "section": "Credentials",
-            "secret": True,
-        },
-        "comfy_ui_password": {
-            "label": "ComfyUI password",
             "section": "Credentials",
             "secret": True,
         },
@@ -183,7 +176,6 @@ class ControlPreferences(BaseModel):
             "type": "number",
         },
         "worker_image": {"label": "Worker image", "section": "Deployment"},
-        "comfy_ui_username": {"label": "ComfyUI username", "section": "Worker"},
         "maximum_pending_generations": {
             "label": "Maximum pending generations",
             "minimum": 1,
@@ -233,7 +225,6 @@ class ControlPreferences(BaseModel):
     civitai_token: str = ""
     cliproxy_api_key: str = ""
     cliproxy_management_key: str = ""
-    comfy_ui_password: str = ""
     hf_token: str = ""
     modal_token_id: str = ""
     modal_token_secret: str = ""
@@ -255,7 +246,6 @@ class ControlPreferences(BaseModel):
     vast_maximum_workers: int = 1
     vast_minimum_gpu_memory_gb: int = 24
     worker_image: str = DEFAULT_WORKER_IMAGE
-    comfy_ui_username: str = "comfy"
     maximum_pending_generations: int = 8
     maximum_request_bytes: int = 100 * 1024 * 1024
     model_profiles: list[str] = Field(default_factory=lambda: ["flux-2-klein-9b"])
@@ -327,8 +317,6 @@ class ControlPreferences(BaseModel):
             cliproxy_api_key=os.getenv("CLIPROXY_API_KEY", ""),
             cliproxy_management_key=os.getenv("CLIPROXY_MANAGEMENT_KEY", ""),
             cliproxy_url=os.getenv("CLIPROXY_URL", ""),
-            comfy_ui_password=os.getenv("COMFY_UI_PASSWORD", ""),
-            comfy_ui_username=os.getenv("COMFY_UI_USERNAME", "comfy"),
             control_maximum_request_bytes=int(
                 os.getenv("CONTROL_MAXIMUM_REQUEST_BYTES", str(100 * 1024 * 1024))
             ),
@@ -384,8 +372,6 @@ class ControlPreferences(BaseModel):
             "CLIPROXY_API_KEY": self.cliproxy_api_key,
             "CLIPROXY_MANAGEMENT_KEY": self.cliproxy_management_key,
             "CLIPROXY_URL": self.cliproxy_url,
-            "COMFY_UI_PASSWORD": self.comfy_ui_password,
-            "COMFY_UI_USERNAME": self.comfy_ui_username,
             "HF_TOKEN": self.hf_token,
             "MAXIMUM_PENDING_GENERATIONS": str(self.maximum_pending_generations),
             "MAXIMUM_REQUEST_BYTES": str(self.maximum_request_bytes),

@@ -112,17 +112,13 @@ async def test_runpod_deployment_options_include_live_cost_and_availability(
     ]
 
 
-def test_worker_ui_credentials_fall_back_when_compose_values_are_empty(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setenv("COMFY_UI_PASSWORD", "")
-    monkeypatch.setenv("COMFY_UI_USERNAME", "")
+def test_worker_ui_credentials_match_control_ui_credentials(tmp_path):
     environment = configured_environment(
         {}, provider("runpod-pod"), preferences(), settings(tmp_path)
     )
 
-    assert environment["COMFY_UI_PASSWORD"] == "ui-password"
-    assert environment["COMFY_UI_USERNAME"] == "comfy"
+    assert environment["CONTROL_UI_PASSWORD"] == "ui-password"
+    assert environment["CONTROL_UI_USERNAME"] == "comfy"
 
 
 def test_modal_function_uses_worker_image_python(monkeypatch):

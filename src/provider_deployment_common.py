@@ -41,10 +41,8 @@ def worker_environment(
     configured = preferences.environment()
     environment = {
         "API_KEY": provider.api_key,
-        "COMFY_UI_PASSWORD": configured.get("COMFY_UI_PASSWORD", "").strip()
-        or settings.ui_password,
-        "COMFY_UI_USERNAME": configured.get("COMFY_UI_USERNAME", "").strip()
-        or settings.ui_username,
+        "CONTROL_UI_PASSWORD": settings.ui_password,
+        "CONTROL_UI_USERNAME": settings.ui_username,
     }
     for name in (
         "CIVITAI_TOKEN",

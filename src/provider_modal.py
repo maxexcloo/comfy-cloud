@@ -39,12 +39,8 @@ def provider_action(
     specification.loader.exec_module(module)
     environment = preferences.environment()
     environment["API_KEY"] = preferences.worker_api_key
-    environment["COMFY_UI_PASSWORD"] = (
-        preferences.comfy_ui_password or settings.ui_password
-    )
-    environment["COMFY_UI_USERNAME"] = (
-        preferences.comfy_ui_username or settings.ui_username
-    )
+    environment["CONTROL_UI_PASSWORD"] = settings.ui_password
+    environment["CONTROL_UI_USERNAME"] = settings.ui_username
     module.build_app(environment).deploy(name=management.name)
     return httpx.Response(200, json={"status": "deployed"})
 

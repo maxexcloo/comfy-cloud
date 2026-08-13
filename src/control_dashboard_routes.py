@@ -94,8 +94,6 @@ def settings_group(name: str) -> tuple[str, str]:
         return "Providers", "Vast"
     if name in {
         "civitai_token",
-        "comfy_ui_password",
-        "comfy_ui_username",
         "hf_token",
         "worker_api_key",
     }:

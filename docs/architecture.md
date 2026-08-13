@@ -31,6 +31,9 @@ The control plane has a deliberately small bootstrap environment:
 - `CONTROL_SECRET_KEY` encrypts saved credentials;
 - `CONTROL_UI_PASSWORD` and `CONTROL_UI_USERNAME` authenticate administrators.
 
+Managed Pod workers receive those same credentials for their ComfyUI frontend;
+there is no separate ComfyUI credential setting.
+
 Provider credentials, deployment preferences, routing, limits and worker settings
 are versioned in SQLite. Secrets use authenticated encryption and are never returned
 by the settings API. The administrator dashboard applies a validated configuration

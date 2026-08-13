@@ -21,8 +21,8 @@ def test_registry_contains_all_supported_providers_and_routes():
         item["id"] for item in PROVIDER_CATALOGUE
     ]
     assert routes() == {
-        model.id: [target.provider for target in model.targets]
-        for model in configured.models
+        "images": [target.provider for target in configured.models[0].targets],
+        "videos": [target.provider for target in configured.models[2].targets],
     }
 
 

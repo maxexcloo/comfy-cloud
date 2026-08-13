@@ -49,9 +49,9 @@ class Settings:
             roots.append(Path(custom))
         api_key = required_secret("API_KEY")
         ui_password = (
-            required_secret("COMFY_UI_PASSWORD")
+            required_secret("CONTROL_UI_PASSWORD")
             if deployment_type == "pod"
-            else os.getenv("COMFY_UI_PASSWORD", "")
+            else os.getenv("CONTROL_UI_PASSWORD", "")
         )
         maximum_pending_generations = int(os.getenv("MAXIMUM_PENDING_GENERATIONS", "8"))
         maximum_request_bytes = int(
@@ -69,7 +69,7 @@ class Settings:
             models_dir=Path(os.getenv("MODELS_DIR", "/opt/ComfyUI/models")),
             request_timeout=float(os.getenv("REQUEST_TIMEOUT", "60")),
             ui_password=ui_password,
-            ui_username=os.getenv("COMFY_UI_USERNAME", "comfy"),
+            ui_username=os.getenv("CONTROL_UI_USERNAME", "comfy"),
             workflow_timeout=float(os.getenv("WORKFLOW_TIMEOUT", "900")),
             maximum_pending_generations=maximum_pending_generations,
             maximum_request_bytes=maximum_request_bytes,

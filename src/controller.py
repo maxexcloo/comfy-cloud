@@ -235,7 +235,11 @@ class Controller:
         )
         models = []
         for model in config.models:
-            route = preferences.routes.get(model.id)
+            family = control_registry.ROUTE_FAMILIES.get(
+                model.id,
+                "videos" if model.operation == "video_generation" else "images",
+            )
+            route = preferences.routes.get(family)
             if route is None:
                 models.append(model)
                 continue
@@ -251,15 +255,19 @@ class Controller:
 
         raw = yaml.safe_load(path.read_text())
         models = raw.get("models", []) if isinstance(raw, dict) else []
-        return {
-            str(model["id"]): [
+        routes: dict[str, list[str]] = {}
+        for model in models:
+            if not isinstance(model, dict) or not model.get("id"):
+                continue
+            operation = str(model.get("operation", ""))
+            family = "videos" if operation == "video_generation" else "images"
+            providers = [
                 str(target["provider"])
                 for target in model.get("targets", [])
                 if isinstance(target, dict) and target.get("provider")
             ]
-            for model in models
-            if isinstance(model, dict) and model.get("id")
-        }
+            routes.setdefault(family, providers)
+        return routes
 
     def describe_configuration(self) -> dict[str, object]:
         description = self.configuration.describe()

@@ -26,8 +26,8 @@ def build_app(configuration: Mapping[str, str]) -> modal.App:
         for name in (
             "API_KEY",
             "CIVITAI_TOKEN",
-            "COMFY_UI_PASSWORD",
-            "COMFY_UI_USERNAME",
+            "CONTROL_UI_PASSWORD",
+            "CONTROL_UI_USERNAME",
             "HF_TOKEN",
         )
         if (value := configuration.get(name))

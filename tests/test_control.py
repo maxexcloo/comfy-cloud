@@ -261,6 +261,10 @@ async def sign_in(client: httpx.AsyncClient) -> httpx.Response:
 @pytest.mark.asyncio
 async def test_controller_lists_and_routes_models(tmp_path):
     app = create_app(settings(tmp_path))
+    assert app.state.controller.preferences.routes == {
+        "images": ["worker"],
+        "videos": ["worker"],
+    }
     await attach_worker(app)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://control"
@@ -522,6 +526,9 @@ async def test_server_rendered_settings_require_csrf(monkeypatch, tmp_path):
     assert 'action="/settings"' in page.text
     assert 'name="csrf_token"' in page.text
     assert "data-route-editor" in page.text
+    assert 'data-route-key="images"' in page.text
+    assert 'data-route-key="videos"' in page.text
+    assert page.text.count("data-route-key=") == 2
     assert "data-route-provider" in page.text
     assert "data-route-template" in page.text
     assert "Provider Routes" in page.text
@@ -1815,7 +1822,7 @@ def test_media_metadata_and_schema_migrations_are_persisted(tmp_path: Path):
     ).fetchall()
 
     assert (item["width"], item["height"]) == (640, 480)
-    assert [row["version"] for row in versions] == [1, 2, 3, 4]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5]
     store.close()
 
 
@@ -1852,6 +1859,8 @@ def test_provider_identifiers_are_migrated_to_current_names(tmp_path: Path):
             (
                 json.dumps(
                     {
+                        "comfy_ui_password": "old-password",
+                        "comfy_ui_username": "old-user",
                         "local_pod_url": "http://local",
                         "routes": {
                             "image-generation": [
@@ -1889,7 +1898,10 @@ def test_provider_identifiers_are_migrated_to_current_names(tmp_path: Path):
     assert attempt["provider"] == "modal"
     assert [row["provider"] for row in resources] == ["runpod"]
     assert parameter["text_value"] == "modal"
-    assert document["routes"]["image-generation"] == ["runpod"]
+    assert document["routes"]["images"] == ["runpod"]
+    assert document["routes"]["videos"] == []
+    assert "comfy_ui_password" not in document
+    assert "comfy_ui_username" not in document
     assert "local_pod_url" not in document
     migrated.close()
 

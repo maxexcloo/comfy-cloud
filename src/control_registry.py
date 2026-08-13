@@ -77,6 +77,12 @@ MODEL_ROUTES = {
         ("cliproxyapi", "grok-imagine-video-1.5"),
     ),
 }
+ROUTE_FAMILIES = {
+    "image-edit": "images",
+    "image-generation": "images",
+    "image-to-video": "videos",
+    "text-to-video": "videos",
+}
 
 
 def bearer(name: str, environment: Mapping[str, str]) -> dict[str, str]:
@@ -332,10 +338,11 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
 
 
 def routes() -> dict[str, list[str]]:
-    return {
-        identifier: [*provider_ids, fallback[0]]
-        for identifier, (_, _, provider_ids, fallback) in MODEL_ROUTES.items()
-    }
+    configured: dict[str, list[str]] = {}
+    for identifier, (_, _, provider_ids, fallback) in MODEL_ROUTES.items():
+        family = ROUTE_FAMILIES[identifier]
+        configured.setdefault(family, [*provider_ids, fallback[0]])
+    return configured
 
 
 def control_file(environment: Mapping[str, str]) -> ControlFile:

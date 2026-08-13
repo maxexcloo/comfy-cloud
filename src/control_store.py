@@ -418,6 +418,38 @@ class ControlStore:
                     "INSERT INTO schema_migrations (version, applied_at) VALUES (4, ?)",
                     (int(time.time()),),
                 )
+            migrated = self.connection.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = 5"
+            ).fetchone()
+            if migrated is None:
+                row = self.connection.execute(
+                    "SELECT document_json FROM control_configuration WHERE id = 1"
+                ).fetchone()
+                if row is not None:
+                    document = json.loads(str(row["document_json"]))
+                    document.pop("comfy_ui_password", None)
+                    document.pop("comfy_ui_username", None)
+                    routes = document.get("routes")
+                    if isinstance(routes, dict) and routes:
+                        document["routes"] = {
+                            "images": routes.get("images")
+                            or routes.get("image-generation")
+                            or routes.get("image-edit")
+                            or [],
+                            "videos": routes.get("videos")
+                            or routes.get("text-to-video")
+                            or routes.get("image-to-video")
+                            or [],
+                        }
+                    self.connection.execute(
+                        "UPDATE control_configuration SET document_json = ? "
+                        "WHERE id = 1",
+                        (json.dumps(document),),
+                    )
+                self.connection.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (5, ?)",
+                    (int(time.time()),),
+                )
             rows = self.connection.execute(
                 "SELECT id, content_type, path FROM media_assets "
                 "WHERE width IS NULL AND height IS NULL AND duration IS NULL"
