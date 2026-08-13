@@ -59,12 +59,16 @@ def normalise_usage(kind: str, value: object) -> list[dict[str, object]]:
             metrics.append({"label": "Credit balance", "unit": "USD", "value": credit})
         used = first_number(value, "container_groups_quotas.container_replicas_used")
         quota = first_number(value, "container_groups_quotas.container_replicas_quota")
-        if used is not None:
-            metrics.append({"label": "Replicas used", "value": used})
-        if quota is not None:
-            metrics.append({"label": "Replica quota", "value": quota})
-        if used is not None and quota is not None:
-            metrics.append({"label": "Replicas available", "value": quota - used})
+        if used is not None and quota is not None and quota > 0:
+            available = max(0, quota - used)
+            metrics.append(
+                {
+                    "detail": f"{available:g} Of {quota:g} Available",
+                    "label": "Replica capacity remaining",
+                    "unit": "%",
+                    "value": round(available / quota * 100, 2),
+                }
+            )
         return metrics
     if kind == "cliproxyapi":
         for label, paths in (

@@ -1711,9 +1711,12 @@ def test_usage_normalisers():
             }
         },
     ) == [
-        {"label": "Replicas used", "value": 2},
-        {"label": "Replica quota", "value": 10},
-        {"label": "Replicas available", "value": 8},
+        {
+            "detail": "8 Of 10 Available",
+            "label": "Replica capacity remaining",
+            "unit": "%",
+            "value": 80.0,
+        }
     ]
     assert normalise_xai_quota(
         {

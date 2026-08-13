@@ -406,13 +406,26 @@ class Controller:
             return runtime.usage
 
     async def usage(self) -> dict[str, dict[str, object]]:
-        values = await asyncio.gather(
-            *(
-                self.bounded_provider_usage(runtime)
-                for runtime in self.providers.values()
+        groups: dict[tuple[str, str | None], list[ProviderRuntime]] = {}
+        for runtime in self.providers.values():
+            probe = runtime.config.usage
+            key = (
+                (probe.kind, probe.url)
+                if probe is not None
+                else (runtime.config.id, None)
             )
+            groups.setdefault(key, []).append(runtime)
+        values = await asyncio.gather(
+            *(self.bounded_provider_usage(runtimes[0]) for runtimes in groups.values())
         )
-        return dict(zip(self.providers, values, strict=True))
+        result: dict[str, dict[str, object]] = {}
+        checked_at = time.monotonic()
+        for runtimes, value in zip(groups.values(), values, strict=True):
+            for runtime in runtimes:
+                runtime.usage = value
+                runtime.usage_checked_at = checked_at
+                result[runtime.config.id] = value
+        return result
 
     async def bounded_provider_usage(
         self, runtime: ProviderRuntime
