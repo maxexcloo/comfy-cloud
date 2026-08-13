@@ -457,7 +457,16 @@ if (mediaDialog) {
       heading.append(element("h3", "", "Generation Details"));
       const historyLink = element("a", "", "View History");
       historyLink.href = `/history?q=${encodeURIComponent(generation.history_id)}`;
-      heading.append(historyLink);
+      const links = element("div", "d-flex gap-2");
+      if (generation.source_url) {
+        const sourceLink = element("a", "", "View Source");
+        sourceLink.href = generation.source_url;
+        sourceLink.rel = "noopener noreferrer";
+        sourceLink.target = "_blank";
+        links.append(sourceLink);
+      }
+      links.append(historyLink);
+      heading.append(links);
       section.append(heading);
       if (generation.prompt) {
         section.append(

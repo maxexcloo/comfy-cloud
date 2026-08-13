@@ -1228,6 +1228,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert 'event.key === "Escape"' in javascript.text
     assert "closeDialogOnBackdrop(mediaDialog)" in javascript.text
     assert "closeDialogOnBackdrop(logDialog)" in javascript.text
+    assert 'element("a", "", "View Source")' in javascript.text
     assert "form.requestSubmit()" in javascript.text
     assert "closeDialogOnBackdrop(deployDialog)" in javascript.text
     assert "logBody.scrollTop = logBody.scrollHeight" in javascript.text
