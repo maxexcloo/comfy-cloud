@@ -120,7 +120,7 @@ def test_worker_ui_credentials_match_control_ui_credentials(tmp_path):
     assert environment["CONTROL_UI_USERNAME"] == "comfy"
 
 
-def test_modal_function_uses_worker_image_python(monkeypatch):
+def test_modal_function_uses_controller_python(monkeypatch):
     function_options: dict[str, object] = {}
     image_options: dict[str, object] = {}
     models = object()
@@ -149,7 +149,9 @@ def test_modal_function_uses_worker_image_python(monkeypatch):
 
     runpy.run_path(ROOT / "deploy/modal/app.py")
 
-    assert image_options["add_python"] == "3.12"
+    assert image_options["add_python"] == (
+        f"{sys.version_info.major}.{sys.version_info.minor}"
+    )
     assert "force_build" not in image_options
     assert image_options["setup_dockerfile_commands"] == [
         "ENV PATH=/usr/local/bin:/usr/bin:/bin"

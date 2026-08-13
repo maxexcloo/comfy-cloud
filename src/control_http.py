@@ -9,9 +9,28 @@ class RequestBodyTooLarge(ValueError):
     pass
 
 
+def provider_error_detail(response: httpx.Response) -> str | None:
+    try:
+        value = response.json()
+    except ValueError:
+        return None
+    if not isinstance(value, dict):
+        return None
+    for name in ("message", "detail", "error"):
+        candidate = value.get(name)
+        if isinstance(candidate, dict):
+            candidate = candidate.get("message")
+        if isinstance(candidate, str) and candidate.strip():
+            return " ".join(candidate.split())[:300]
+    return None
+
+
 def exception_message(exc: Exception) -> str:
     if isinstance(exc, httpx.HTTPStatusError):
-        return f"provider API returned HTTP {exc.response.status_code}"
+        message = f"provider API returned HTTP {exc.response.status_code}"
+        if detail := provider_error_detail(exc.response):
+            message = f"{message}: {detail}"
+        return message
     if isinstance(exc, httpx.RequestError):
         return f"provider connection failed ({type(exc).__name__})"
     return str(exc)

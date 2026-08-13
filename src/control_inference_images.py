@@ -100,7 +100,7 @@ async def generate_image(request: Request, operation: str, path: str) -> Respons
                     headers,
                     request_id,
                 )
-        except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
+        except Exception as exc:  # noqa: BLE001 - provider boundary must record failures
             message = exception_message(exc)
             controller.store.finish_attempt(attempt_id, "failed", message)
             failures.append(f"{target.provider}: {message}")

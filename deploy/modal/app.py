@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 from collections.abc import Mapping
 
 import modal
@@ -11,9 +12,10 @@ def serve() -> None:
 
 def build_app(configuration: Mapping[str, str]) -> modal.App:
     app = modal.App("comfy-control")
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     image = modal.Image.from_registry(
         configuration.get("WORKER_IMAGE", "ghcr.io/maxexcloo/comfy-control:worker"),
-        add_python="3.12",
+        add_python=python_version,
         setup_dockerfile_commands=["ENV PATH=/usr/local/bin:/usr/bin:/bin"],
     ).entrypoint([])
     models = modal.Volume.from_name(

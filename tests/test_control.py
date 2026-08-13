@@ -20,6 +20,7 @@ from comfy_control.control_dashboard_routes import (
 from comfy_control.control_dashboard_routes import (
     provider_logs as dashboard_provider_logs,
 )
+from comfy_control.control_http import exception_message
 from comfy_control.control_inference import normalise_grok_image_options
 from comfy_control.control_preferences import ControlPreferences
 from comfy_control.control_registry import control_file as registry_control_file
@@ -69,6 +70,22 @@ def test_grok_image_options_preserve_structured_values_and_default_to_1k() -> No
     assert defaulted["resolution"] == "1k"
     assert "aspect_ratio" not in defaulted
     assert normalise_grok_image_options(unrelated) is unrelated
+
+
+def test_provider_error_message_includes_safe_structured_detail() -> None:
+    request = httpx.Request("POST", "https://provider.example.test/resources")
+    response = httpx.Response(
+        400,
+        json={"message": "GPU class is unavailable", "token": "secret"},
+        request=request,
+    )
+
+    assert (
+        exception_message(
+            httpx.HTTPStatusError("bad request", request=request, response=response)
+        )
+        == "provider API returned HTTP 400: GPU class is unavailable"
+    )
 
 
 def write_config(path: Path) -> None:
@@ -243,6 +260,29 @@ async def test_controller_prefers_internal_execution_contract(tmp_path: Path):
         app.state.controller.store.histories()[0]["attempts"][0]["status"]
         == "completed"
     )
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_image_history_records_unexpected_provider_failure(tmp_path: Path):
+    app = create_app(settings(tmp_path))
+    app.state.controller.execute_internal = AsyncMock(
+        side_effect=ValueError("provider deployment is incompatible")
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        response = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer control-key"},
+            json={"model": "public/image", "prompt": "test"},
+        )
+
+    history = app.state.controller.store.histories()[0]
+    assert response.status_code == 502
+    assert history["error"] == "worker: provider deployment is incompatible"
+    assert history["status"] == "failed"
+    assert history["attempts"][0]["status"] == "failed"
     await app.state.controller.close()
 
 
