@@ -180,6 +180,13 @@ tr:last-child td {
   padding: 0.18rem 0.5rem;
   text-transform: capitalize;
 }
+.state-log-link {
+  cursor: pointer;
+  text-decoration: none;
+}
+.state-log-link:hover {
+  background: #19242c;
+}
 .badge.completed,
 .badge.ready,
 .badge.running {

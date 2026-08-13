@@ -39,7 +39,13 @@
         </td>
         <td>{{ provider.type.replace("-", " ") | title }}</td>
         <td>
-          {{ ui.badge(provider.state) }}{% if not provider.configured %}<br /><small
+          {% if provider.configured %}<a
+            class="badge {{ provider.state }} state-log-link"
+            href="/providers/{{ provider.id }}/logs"
+            data-log-provider="{{ provider.id }}"
+            data-log-url="/providers/{{ provider.id }}/logs"
+            >{{ provider.state.replace("_", " ").replace("-", " ") | title }}</a
+          >{% else %}{{ ui.badge(provider.state) }}{% endif %}{% if not provider.configured %}<br /><small
             >Configure In Settings</small
           >{% endif %}
         </td>
@@ -68,13 +74,7 @@
                 {{ action.name.replace("-", " ") | title }}
               </button>
             </form>
-            {% endfor %} {% if provider.configured %}<button
-              type="button"
-              data-log-provider="{{ provider.id }}"
-              data-log-url="/providers/{{ provider.id }}/logs"
-            >
-              Logs</button
-            >{% endif %}
+            {% endfor %}
           </div>
         </td>
       </tr>

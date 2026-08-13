@@ -981,6 +981,8 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert 'href="/assets/dashboard.css?current"' in providers.text
     assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text
+    assert "state-log-link" in providers.text
+    assert ">Logs</button" not in providers.text
     assert 'href="http://worker"' in providers.text
     assert "Open Panel" not in providers.text
     assert events.text.count("Wombat Needle Event") == 1
@@ -1013,6 +1015,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert "logBody.scrollTop = logBody.scrollHeight" in javascript.text
     assert 'following ? "Following" : "Paused"' in javascript.text
     assert "[...data.entries]" in javascript.text
+    assert "event.preventDefault()" in javascript.text
     assert log_stream.media_type == "text/event-stream"
     assert str(first_log_update).startswith("data:")
     await app.state.controller.close()

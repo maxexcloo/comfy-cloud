@@ -44,7 +44,8 @@ if (logDialog) {
     updateLogFollowState();
   });
   for (const button of document.querySelectorAll("[data-log-url]")) {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
       if (logSource) logSource.close();
       document.getElementById("log-title").textContent =
         `${button.dataset.logProvider} Logs`;
