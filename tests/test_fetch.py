@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from comfy_control.fetch import fetch_profile
+from comfy_control.fetch import fetch_profile, prune_profiles
 
 
 def test_huggingface_destination_places_root_file_in_model_subdirectory(
@@ -78,6 +78,33 @@ sources:
 
     assert first == second
     assert calls == 1
+
+
+def test_unselected_profiles_remove_only_unshared_managed_files(tmp_path):
+    models = tmp_path / "models"
+    state = models / ".comfy-control"
+    state.mkdir(parents=True)
+    shared = models / "checkpoints/shared.safetensors"
+    removed = models / "loras/removed.safetensors"
+    shared.parent.mkdir()
+    removed.parent.mkdir()
+    shared.write_bytes(b"shared")
+    removed.write_bytes(b"removed")
+    (state / "keep.json").write_text(
+        '{"files":[{"path":"checkpoints/shared.safetensors","size":6}]}'
+    )
+    (state / "remove.json").write_text(
+        '{"files":['
+        '{"path":"checkpoints/shared.safetensors","size":6},'
+        '{"path":"loras/removed.safetensors","size":7}]}'
+    )
+
+    result = prune_profiles({"keep"}, models)
+
+    assert result == [removed]
+    assert shared.is_file()
+    assert not removed.exists()
+    assert not (state / "remove.json").exists()
 
 
 def test_civitai_destination_cannot_escape_models_directory(tmp_path):

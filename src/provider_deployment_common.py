@@ -53,8 +53,8 @@ def worker_environment(
         "MAXIMUM_REQUEST_MIB",
         "MODEL_PROFILES",
     ):
-        if value := configured.get(name):
-            environment[name] = value
+        if (value := configured.get(name)) or name == "MODEL_PROFILES":
+            environment[name] = str(value or "")
     return environment
 
 

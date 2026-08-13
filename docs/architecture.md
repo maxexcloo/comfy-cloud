@@ -44,10 +44,12 @@ and dashboard and cannot be changed there. Removing an environment variable reve
 the previously stored value.
 
 The packaged Python registry defines provider capabilities, public models and safe
-control-plane requests. SQLite stores enabled routes and operator preferences,
-while the UI exposes only known typed values. Arbitrary provider URLs, headers and
-request bodies are not editable through the dashboard. `CONTROL_CONFIG` remains an
-advanced explicit override for development and private provider catalogues.
+control-plane requests. SQLite stores ordered provider-and-model route targets and
+operator preferences, while the UI exposes only known typed values. Route children
+inherit the Images or Videos order and skip a selected package when it does not
+implement that operation. Arbitrary provider URLs, headers and request bodies are
+not editable through the dashboard. `CONTROL_CONFIG` remains an advanced explicit
+override for development and private provider catalogues.
 
 ## Request Flow
 

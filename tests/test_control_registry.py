@@ -16,13 +16,28 @@ def environment() -> dict[str, str]:
 
 def test_registry_contains_all_supported_providers_and_routes():
     configured = control_file(environment())
+    provider_order = [
+        "modal",
+        "runpod-pod",
+        "runpod",
+        "salad",
+        "vast-pod",
+        "vast",
+    ]
 
     assert [provider.id for provider in configured.providers] == [
         item["id"] for item in PROVIDER_CATALOGUE
     ]
     assert routes() == {
-        "images": [target.provider for target in configured.models[0].targets],
-        "videos": [target.provider for target in configured.models[2].targets],
+        "images": [
+            {"model": "flux-2-klein-9b", "provider": provider}
+            for provider in provider_order
+        ]
+        + [{"model": "grok-imagine", "provider": "cliproxyapi"}],
+        "videos": [
+            {"model": "minimax-h3", "provider": provider} for provider in provider_order
+        ]
+        + [{"model": "grok-imagine", "provider": "cliproxyapi"}],
     }
 
 

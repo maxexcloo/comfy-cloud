@@ -100,6 +100,8 @@ def settings_group(name: str) -> tuple[str, str]:
         return "Worker", "Credentials"
     if name == "routes":
         return "Routing", "Provider Routes"
+    if name == "model_profiles":
+        return "Models", "Installation"
     return "Worker", "Runtime"
 
 
@@ -344,7 +346,7 @@ async def settings_page(request: Request) -> Response:
             continue
         prepared = prepare_field(field)
         unordered.setdefault(category, {}).setdefault(group, []).append(prepared)
-    category_order = {"Routing": 0, "Worker": 1}
+    category_order = {"Models": 1, "Routing": 0, "Worker": 2}
     categories = {
         category: {
             group: sorted(fields, key=lambda item: str(item["label"]).casefold())
@@ -382,6 +384,8 @@ async def save_settings(request: Request) -> Response:
             continue
         if field.get("type") == "number":
             values[name] = float(raw) if "." in raw else int(raw)
+        elif field.get("type") == "models":
+            values[name] = [str(item) for item in form.getlist(name)]
         elif field.get("type") == "list":
             values[name] = [item.strip() for item in raw.split(",") if item.strip()]
         elif field.get("type") == "routes":

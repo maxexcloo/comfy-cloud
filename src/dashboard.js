@@ -39,14 +39,30 @@ for (const form of document.querySelectorAll("[data-live-filter]")) {
 
 for (const editor of document.querySelectorAll("[data-route-editor]")) {
   const value = editor.querySelector("[data-route-value]");
+  const syncModel = (target) => {
+    const provider = target.querySelector("[data-route-provider]").value;
+    const model = target.querySelector("[data-route-model]");
+    for (const option of model.options) {
+      const available = option.dataset.providers.trim().split(/\s+/);
+      option.disabled = !available.includes(provider);
+      option.hidden = option.disabled;
+    }
+    if (model.selectedOptions[0]?.disabled)
+      model.value = [...model.options].find(
+        (option) => !option.disabled,
+      )?.value;
+  };
   const serialise = () => {
+    for (const target of editor.querySelectorAll("[data-route-target]"))
+      syncModel(target);
     value.value = JSON.stringify(
       Object.fromEntries(
         [...editor.querySelectorAll("[data-route-key]")].map((route) => [
           route.dataset.routeKey,
-          [...route.querySelectorAll("[data-route-provider]")].map(
-            (select) => select.value,
-          ),
+          [...route.querySelectorAll("[data-route-target]")].map((target) => ({
+            model: target.querySelector("[data-route-model]").value,
+            provider: target.querySelector("[data-route-provider]").value,
+          })),
         ]),
       ),
     );
@@ -89,7 +105,7 @@ for (const editor of document.querySelectorAll("[data-route-editor]")) {
     const target = event.target.closest("[data-route-target]");
     if (event.target.closest("[data-route-add]")) {
       const row = editor
-        .querySelector("[data-route-template]")
+        .querySelector(`[data-route-template="${route.dataset.routeKey}"]`)
         .content.firstElementChild.cloneNode(true);
       const used = new Set(
         [...route.querySelectorAll("[data-route-provider]")].map(

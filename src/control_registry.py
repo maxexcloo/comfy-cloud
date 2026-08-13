@@ -26,7 +26,6 @@ PROVIDER_CATALOGUE = (
 MODEL_ROUTES = {
     "image-edit": (
         "image_edit",
-        "flux-2-klein-9b/image-edit",
         (
             "modal",
             "runpod-pod",
@@ -35,11 +34,9 @@ MODEL_ROUTES = {
             "vast-pod",
             "vast",
         ),
-        ("cliproxyapi", "grok-imagine-image-quality"),
     ),
     "image-generation": (
         "image_generation",
-        "flux-2-klein-9b/text-to-image",
         (
             "modal",
             "runpod-pod",
@@ -48,11 +45,9 @@ MODEL_ROUTES = {
             "vast-pod",
             "vast",
         ),
-        ("cliproxyapi", "grok-imagine-image-quality"),
     ),
     "image-to-video": (
         "video_generation",
-        "minimax-h3/image-to-video",
         (
             "modal",
             "runpod-pod",
@@ -61,11 +56,9 @@ MODEL_ROUTES = {
             "vast-pod",
             "vast",
         ),
-        ("cliproxyapi", "grok-imagine-video-1.5"),
     ),
     "text-to-video": (
         "video_generation",
-        "minimax-h3/text-to-video",
         (
             "modal",
             "runpod-pod",
@@ -74,8 +67,33 @@ MODEL_ROUTES = {
             "vast-pod",
             "vast",
         ),
-        ("cliproxyapi", "grok-imagine-video-1.5"),
     ),
+}
+MODEL_PACKAGES = {
+    "flux-2-klein-9b": {
+        "image-edit": "flux-2-klein-9b/image-edit",
+        "image-generation": "flux-2-klein-9b/text-to-image",
+    },
+    "grok-imagine": {
+        "image-edit": "grok-imagine-image-quality",
+        "image-generation": "grok-imagine-image-quality",
+        "image-to-video": "grok-imagine-video-1.5",
+        "text-to-video": "grok-imagine-video-1.5",
+    },
+    "krea-2-turbo": {"image-generation": "krea-2-turbo/text-to-image"},
+    "minimax-h3": {
+        "image-to-video": "minimax-h3/image-to-video",
+        "text-to-video": "minimax-h3/text-to-video",
+    },
+}
+PROVIDER_MODEL_PACKAGES = {
+    "cliproxyapi": ("grok-imagine",),
+    "modal": ("flux-2-klein-9b", "krea-2-turbo", "minimax-h3"),
+    "runpod": ("flux-2-klein-9b", "krea-2-turbo", "minimax-h3"),
+    "runpod-pod": ("flux-2-klein-9b", "krea-2-turbo", "minimax-h3"),
+    "salad": ("flux-2-klein-9b", "krea-2-turbo", "minimax-h3"),
+    "vast": ("flux-2-klein-9b", "krea-2-turbo", "minimax-h3"),
+    "vast-pod": ("flux-2-klein-9b", "krea-2-turbo", "minimax-h3"),
 }
 ROUTE_FAMILIES = {
     "image-edit": "images",
@@ -210,7 +228,7 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                     usage=UsageProbe(
                         headers=headers,
                         kind="runpod",
-                        url="https://rest.runpod.io/v1/billing/pods",
+                        url="https://api.runpod.io/graphql",
                     ),
                 ),
                 managed_provider(
@@ -245,7 +263,7 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
                     usage=UsageProbe(
                         headers=headers,
                         kind="runpod",
-                        url="https://rest.runpod.io/v1/billing/endpoints",
+                        url="https://api.runpod.io/graphql",
                     ),
                 ),
             ]
@@ -337,31 +355,69 @@ def providers(environment: Mapping[str, str]) -> list[Provider]:
     return sorted(configured, key=lambda provider: provider.id)
 
 
-def routes() -> dict[str, list[str]]:
-    configured: dict[str, list[str]] = {}
-    for identifier, (_, _, provider_ids, fallback) in MODEL_ROUTES.items():
-        family = ROUTE_FAMILIES[identifier]
-        configured.setdefault(family, [*provider_ids, fallback[0]])
-    return configured
+def routes() -> dict[str, list[dict[str, str]]]:
+    return {
+        "images": [
+            {"model": "flux-2-klein-9b", "provider": provider}
+            for provider in MODEL_ROUTES["image-generation"][1]
+        ]
+        + [{"model": "grok-imagine", "provider": "cliproxyapi"}],
+        "videos": [
+            {"model": "minimax-h3", "provider": provider}
+            for provider in MODEL_ROUTES["text-to-video"][1]
+        ]
+        + [{"model": "grok-imagine", "provider": "cliproxyapi"}],
+    }
 
 
-def control_file(environment: Mapping[str, str]) -> ControlFile:
+def control_file(
+    environment: Mapping[str, str],
+    configured_routes: Mapping[str, list[object]] | None = None,
+) -> ControlFile:
     configured_providers = providers(environment)
     enabled = {provider.id for provider in configured_providers}
+    installed = {
+        item.strip()
+        for item in environment.get("MODEL_PROFILES", "flux-2-klein-9b").split(",")
+        if item.strip()
+    }
+    selected_routes = routes() if configured_routes is None else configured_routes
+    available_packages = set(MODEL_PACKAGES) - {"grok-imagine"}
+    unknown_packages = sorted(installed - available_packages)
+    if unknown_packages:
+        raise ValueError(f"unknown model packages: {', '.join(unknown_packages)}")
     models = []
-    for identifier, (
-        operation,
-        worker_model,
-        provider_ids,
-        fallback,
-    ) in MODEL_ROUTES.items():
-        targets = [
-            Target(model=worker_model, provider=provider)
-            for provider in provider_ids
-            if provider in enabled
-        ]
-        if fallback[0] in enabled:
-            targets.append(Target(model=fallback[1], provider=fallback[0]))
+    for identifier, (operation, _) in MODEL_ROUTES.items():
+        targets = []
+        for choice in selected_routes.get(ROUTE_FAMILIES[identifier], []):
+            if hasattr(choice, "provider") and hasattr(choice, "model"):
+                provider = str(choice.provider)
+                package = str(choice.model)
+            elif isinstance(choice, dict):
+                provider = str(choice.get("provider", ""))
+                package = str(choice.get("model", ""))
+            else:
+                continue
+            if package not in PROVIDER_MODEL_PACKAGES.get(provider, ()):
+                raise ValueError(
+                    f"model package {package} is not available on provider {provider}"
+                )
+            if not any(
+                ROUTE_FAMILIES[operation] == ROUTE_FAMILIES[identifier]
+                for operation in MODEL_PACKAGES[package]
+            ):
+                raise ValueError(
+                    f"model package {package} does not support "
+                    f"{ROUTE_FAMILIES[identifier]}"
+                )
+            target_model = MODEL_PACKAGES.get(package, {}).get(identifier)
+            if (
+                provider not in enabled
+                or target_model is None
+                or (provider != "cliproxyapi" and package not in installed)
+            ):
+                continue
+            targets.append(Target(model=target_model, provider=provider))
         if targets:
             models.append(
                 RoutedModel(id=identifier, operation=operation, targets=targets)

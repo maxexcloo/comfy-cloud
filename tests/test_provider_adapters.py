@@ -1,7 +1,10 @@
+import httpx
 import pytest
 
 from comfy_control.control_config import Provider
+from comfy_control.control_preferences import ControlPreferences
 from comfy_control.provider_adapters import provider_adapter, provider_panel_url
+from comfy_control.provider_runpod import RunPodServerlessAdapter
 
 
 @pytest.mark.parametrize(
@@ -45,6 +48,38 @@ def test_proxy_panel_url_is_derived_without_an_adapter():
     assert provider_panel_url(provider, {}, provider.base_url) == (
         "https://proxy.example/management.html"
     )
+
+
+@pytest.mark.asyncio
+async def test_runpod_usage_reports_account_credit():
+    request = None
+
+    def respond(received: httpx.Request) -> httpx.Response:
+        nonlocal request
+        request = received
+        return httpx.Response(200, json={"data": {"myself": {"credit": 12.5}}})
+
+    provider = Provider.model_validate(
+        {
+            "api_key": "worker-key",
+            "id": "runpod",
+            "management": {
+                "kind": "runpod",
+                "name": "comfy-control",
+            },
+        }
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        metrics = await RunPodServerlessAdapter("runpod").usage(
+            client,
+            provider,
+            ControlPreferences(runpod_api_key="runpod-key"),
+            lambda _: {},
+        )
+
+    assert metrics == [{"label": "Credit balance", "unit": "USD", "value": 12.5}]
+    assert request is not None
+    assert request.headers["authorization"] == "Bearer runpod-key"
 
 
 @pytest.mark.parametrize(

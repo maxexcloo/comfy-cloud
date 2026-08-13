@@ -112,10 +112,15 @@ class Controller:
         self.settings = settings
         self.store = ControlStore(settings.database_path)
         initial_preferences = ControlPreferences()
-        initial_preferences.routes = (
-            self.file_routes(settings.config_file)
-            if settings.config_file is not None
-            else control_registry.routes()
+        initial_preferences = ControlPreferences.model_validate(
+            initial_preferences.model_dump()
+            | {
+                "routes": (
+                    self.file_routes(settings.config_file)
+                    if settings.config_file is not None
+                    else control_registry.routes()
+                )
+            }
         )
         self.configuration = ConfigurationManager(
             self.store,
@@ -227,7 +232,9 @@ class Controller:
         config = (
             ControlFile.load(self.settings.config_file, preferences.environment())
             if self.settings.config_file is not None
-            else control_registry.control_file(preferences.environment())
+            else control_registry.control_file(
+                preferences.environment(), preferences.routes
+            )
         )
         models = []
         for model in config.models:
@@ -240,13 +247,17 @@ class Controller:
                 models.append(model)
                 continue
             targets = {target.provider: target for target in model.targets}
-            selected = [targets[provider] for provider in route if provider in targets]
+            selected = [
+                targets[choice.provider]
+                for choice in route
+                if choice.provider in targets
+            ]
             if selected:
                 models.append(model.model_copy(update={"targets": selected}))
         return config.model_copy(update={"models": models})
 
     @staticmethod
-    def file_routes(path: Path) -> dict[str, list[str]]:
+    def file_routes(path: Path) -> dict[str, list[dict[str, str]]]:
         import yaml
 
         raw = yaml.safe_load(path.read_text())
@@ -258,7 +269,10 @@ class Controller:
             operation = str(model.get("operation", ""))
             family = "videos" if operation == "video_generation" else "images"
             providers = [
-                str(target["provider"])
+                {
+                    "model": str(target.get("model", "")),
+                    "provider": str(target["provider"]),
+                }
                 for target in model.get("targets", [])
                 if isinstance(target, dict) and target.get("provider")
             ]
@@ -275,13 +289,39 @@ class Controller:
                 continue
             if item["name"] == "routes":
                 if not item["value"]:
-                    item["value"] = {
-                        model.id: [target.provider for target in model.targets]
-                        for model in self.config.models
-                    }
+                    item["value"] = control_registry.routes()
                 item["providers"] = [
                     provider["id"] for provider in self.available_providers
                 ]
+                route_models = {
+                    family: {
+                        provider: [
+                            package
+                            for package in packages
+                            if any(
+                                control_registry.ROUTE_FAMILIES[operation] == family
+                                for operation in control_registry.MODEL_PACKAGES[
+                                    package
+                                ]
+                            )
+                        ]
+                        for provider, packages in control_registry.PROVIDER_MODEL_PACKAGES.items()
+                    }
+                    for family in ("images", "videos")
+                }
+                for family, targets in self.preferences.routes.items():
+                    for target in targets:
+                        available = route_models[family].setdefault(target.provider, [])
+                        if target.model not in available:
+                            available.append(target.model)
+                item["models"] = route_models
+                item["installed_models"] = self.preferences.model_profiles
+            if item["name"] == "model_profiles":
+                item["options"] = sorted(
+                    package
+                    for package in control_registry.MODEL_PACKAGES
+                    if package != "grok-imagine"
+                )
         return description
 
     @staticmethod

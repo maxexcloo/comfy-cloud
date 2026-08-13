@@ -107,9 +107,11 @@ collector queue and must not be polled by a dashboard. Keep
 
 ## Model Preparation
 
-Managed workers default to the `flux-2-klein-9b` profile. Change the selected profiles
-in Settings. The supervisor prepares those profiles before starting ComfyUI and the
-gateway. Hugging Face and Civitai credentials are also configured there.
+Managed workers default to the `flux-2-klein-9b` package. Install or remove pinned
+packages in Settings, then redeploy a provider. Before starting ComfyUI, the
+supervisor prepares the selected package's models and LoRAs and removes files
+tracked only by deselected packages. It never removes unmanaged files. Hugging Face
+and Civitai credentials are also configured there.
 
 Profiles can also be baked into an image by passing `MODEL_PROFILE` as a build
 argument with the corresponding build secret.

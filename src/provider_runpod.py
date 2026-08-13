@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import httpx
 
 from .control_config import Provider, ProviderAction
@@ -72,6 +74,29 @@ class RunPodAdapter(BaseAdapter):
             else f"https://{identifier}-{management.port}.proxy.runpod.net"
         )
         return Discovery(base_url, resource, identifier)
+
+    async def usage(
+        self,
+        client: httpx.AsyncClient,
+        provider: Provider,
+        preferences: ControlPreferences,
+        history_usage: Callable[[str], dict[str, int]],
+    ) -> list[dict[str, object]]:
+        del provider, history_usage
+        response = await client.post(
+            "https://api.runpod.io/graphql",
+            headers={
+                "Authorization": (
+                    f"Bearer {required_preference('RUNPOD_API_KEY', preferences)}"
+                )
+            },
+            json={"query": "query { myself { credit } }"},
+        )
+        response.raise_for_status()
+        credit = first_number(response.json(), "data.myself.credit")
+        if credit is None:
+            raise RuntimeError("RunPod credit response did not include a balance")
+        return [{"label": "Credit balance", "unit": "USD", "value": credit}]
 
 
 class RunPodPodAdapter(RunPodAdapter):

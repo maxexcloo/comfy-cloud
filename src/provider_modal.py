@@ -81,7 +81,7 @@ def usage() -> list[dict[str, object]]:
         if "credit" in key.lower()
     )
     if credit:
-        metrics.append({"label": "Credits used", "unit": "USD", "value": credit})
+        metrics.append({"label": "Credits applied", "unit": "USD", "value": credit})
     return metrics
 
 

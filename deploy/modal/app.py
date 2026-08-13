@@ -40,8 +40,8 @@ def build_app(configuration: Mapping[str, str]) -> modal.App:
         "MAXIMUM_REQUEST_MIB",
         "MODEL_PROFILES",
     ):
-        if value := configuration.get(name):
-            environment[name] = value
+        if (value := configuration.get(name)) or name == "MODEL_PROFILES":
+            environment[name] = str(value or "")
 
     registered_serve = app.function(
         env=environment,

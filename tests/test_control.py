@@ -259,9 +259,9 @@ async def sign_in(client: httpx.AsyncClient) -> httpx.Response:
 @pytest.mark.asyncio
 async def test_controller_lists_and_routes_models(tmp_path):
     app = create_app(settings(tmp_path))
-    assert app.state.controller.preferences.routes == {
-        "images": ["worker"],
-        "videos": ["worker"],
+    assert app.state.controller.preferences.model_dump()["routes"] == {
+        "images": [{"model": "worker/image", "provider": "worker"}],
+        "videos": [{"model": "worker/video", "provider": "worker"}],
     }
     await attach_worker(app)
     async with httpx.AsyncClient(
@@ -526,10 +526,12 @@ async def test_server_rendered_settings_require_csrf(monkeypatch, tmp_path):
     assert 'data-route-key="videos"' in page.text
     assert page.text.count("data-route-key=") == 2
     assert "data-route-provider" in page.text
+    assert "data-route-model" in page.text
     assert "data-route-template" in page.text
     assert "Generation Queue Limit" in page.text
     assert "Maximum Request Size (MiB)" in page.text
     assert "Provider Routes" in page.text
+    assert "Worker Model Packages" in page.text
     assert "Public Base URL" not in page.text
     assert "Request Limits" not in page.text
     assert "Modal Token ID" not in page.text
@@ -1686,6 +1688,9 @@ def test_usage_normalisers():
         "unit": "USD",
         "value": 3.25,
     }
+    assert normalise_usage("runpod", {"data": {"myself": {"credit": 42}}}) == [
+        {"label": "Credit balance", "unit": "USD", "value": 42}
+    ]
     assert normalise_usage("vast", {"credit": 25}) == [
         {"label": "Credit balance", "unit": "USD", "value": 25}
     ]
@@ -1723,21 +1728,17 @@ def test_usage_normalisers():
         },
         1,
     ) == [
-        {"label": "Grok account 1 weekly remaining", "unit": "%", "value": 75},
         {
-            "label": "Grok account 1 Grok Imagine remaining",
+            "detail": "Account 1",
+            "label": "Weekly remaining",
+            "unit": "%",
+            "value": 75,
+        },
+        {
+            "detail": "Account 1",
+            "label": "Grok Imagine remaining",
             "unit": "%",
             "value": 60,
-        },
-        {
-            "label": "Grok account 1 monthly included remaining",
-            "unit": "USD",
-            "value": 37.5,
-        },
-        {
-            "label": "Grok account 1 on-demand remaining",
-            "unit": "USD",
-            "value": 15.0,
         },
     ]
 
@@ -1819,7 +1820,7 @@ def test_media_metadata_and_schema_migrations_are_persisted(tmp_path: Path):
     ).fetchall()
 
     assert (item["width"], item["height"]) == (640, 480)
-    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6, 7]
     store.close()
 
 
@@ -1901,7 +1902,9 @@ def test_provider_identifiers_are_migrated_to_current_names(tmp_path: Path):
     assert attempt["provider"] == "modal"
     assert [row["provider"] for row in resources] == ["runpod"]
     assert parameter["text_value"] == "modal"
-    assert document["routes"]["images"] == ["runpod"]
+    assert document["routes"]["images"] == [
+        {"model": "flux-2-klein-9b", "provider": "runpod"}
+    ]
     assert document["routes"]["videos"] == []
     assert document["comfyui_request_timeout"] == 12
     assert document["generation_queue_limit"] == 7

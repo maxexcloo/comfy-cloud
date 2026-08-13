@@ -14,7 +14,7 @@
       value="{{ filters.q }}"
       placeholder="Prompt, Model, Provider, Or Request ID"
   /></label>
-  {% for name, values in [("model", models), ("operation", operations), ("provider", providers),
+  {% for name, values in [("operation", operations), ("provider", providers), ("model", models),
   ("status", statuses)] %}<label class="form-label"
     >{{ name | title }}<select class="form-select form-select-sm" name="{{ name }}">
       <option value="">All {{ name | title }}</option>

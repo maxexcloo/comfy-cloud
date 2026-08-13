@@ -197,3 +197,33 @@ def fetch_profile(profile_path: Path, models_dir: Path) -> list[Path]:
                 raise ValueError(f"unsupported source type: {source.get('type')}")
         _write_state(state_path, profile_digest, downloaded, models_dir)
         return downloaded
+
+
+def prune_profiles(selected: set[str], models_dir: Path) -> list[Path]:
+    removed: list[Path] = []
+    with _fetch_lock(models_dir) as state_dir:
+        states: dict[Path, list[Path]] = {}
+        for state_path in state_dir.glob("*.json"):
+            try:
+                state = json.loads(state_path.read_text())
+                states[state_path] = [
+                    models_dir / _relative_path(item["path"], "Prepared model path")
+                    for item in state["files"]
+                ]
+            except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+        retained = {
+            path
+            for state_path, paths in states.items()
+            if state_path.stem in selected
+            for path in paths
+        }
+        for state_path, paths in states.items():
+            if state_path.stem in selected:
+                continue
+            for path in paths:
+                if path not in retained and path.is_file():
+                    path.unlink()
+                    removed.append(path)
+            state_path.unlink()
+    return sorted(removed)

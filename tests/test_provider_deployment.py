@@ -155,7 +155,10 @@ def test_modal_function_uses_worker_image_python(monkeypatch):
         "ENV PATH=/usr/local/bin:/usr/bin:/bin"
     ]
     assert "serialized" not in function_options
-    assert function_options["env"] == {"MODELS_DIR": "/models"}
+    assert function_options["env"] == {
+        "MODELS_DIR": "/models",
+        "MODEL_PROFILES": "",
+    }
     assert function_options["volumes"] == {"/models": models}
 
 

@@ -13,10 +13,16 @@ from pathlib import Path
 import yaml
 
 from .config import DeploymentType
-from .fetch import fetch_profile
+from .fetch import fetch_profile, prune_profiles
 from .worker_logs import capture_process_logs
 
-MODEL_DIRECTORY_KEYS = ("checkpoints", "diffusion_models", "text_encoders", "vae")
+MODEL_DIRECTORY_KEYS = (
+    "checkpoints",
+    "diffusion_models",
+    "loras",
+    "text_encoders",
+    "vae",
+)
 SHUTDOWN_TIMEOUT = 10
 
 
@@ -42,6 +48,9 @@ def _prepare_models() -> None:
         print(f"Preparing model profile {profile}", flush=True)
         files = fetch_profile(profile_path, models_dir)
         print(f"Prepared model profile {profile} ({len(files)} files)", flush=True)
+    removed = prune_profiles(set(profiles), models_dir)
+    if removed:
+        print(f"Removed {len(removed)} unselected managed model files", flush=True)
 
 
 def _comfy_arguments(comfy_dir: Path) -> list[str]:

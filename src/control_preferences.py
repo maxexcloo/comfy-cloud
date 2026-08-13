@@ -28,6 +28,11 @@ class ConfigurationConflict(RuntimeError):
     pass
 
 
+class RoutePreference(BaseModel):
+    provider: str
+    model: str
+
+
 class ControlPreferences(BaseModel):
     model_config = ConfigDict(hide_input_in_errors=True)
 
@@ -199,9 +204,9 @@ class ControlPreferences(BaseModel):
             "type": "number",
         },
         "model_profiles": {
-            "label": "Model profiles",
+            "label": "Worker model packages",
             "section": "Worker",
-            "type": "list",
+            "type": "models",
         },
         "routes": {"label": "Provider routes", "section": "Routing", "type": "routes"},
     }
@@ -238,7 +243,7 @@ class ControlPreferences(BaseModel):
     generation_queue_limit: int = 8
     maximum_request_mib: int = 100
     model_profiles: list[str] = Field(default_factory=lambda: ["flux-2-klein-9b"])
-    routes: dict[str, list[str]] = Field(default_factory=dict)
+    routes: dict[str, list[RoutePreference]] = Field(default_factory=dict)
 
     @property
     def maximum_request_bytes(self) -> int:
@@ -260,6 +265,21 @@ class ControlPreferences(BaseModel):
         value = value.strip().rstrip("/")
         if value and not value.startswith(("http://", "https://")):
             raise ValueError("URL must use HTTP or HTTPS")
+        return value
+
+    @field_validator("routes")
+    @classmethod
+    def validate_routes(
+        cls, value: dict[str, list[RoutePreference]]
+    ) -> dict[str, list[RoutePreference]]:
+        if set(value) - {"images", "videos"}:
+            raise ValueError("provider routes only support images and videos")
+        for family, targets in value.items():
+            providers = [target.provider for target in targets]
+            if len(providers) != len(set(providers)):
+                raise ValueError(f"{family} provider routes must be unique")
+            if any(not target.provider or not target.model for target in targets):
+                raise ValueError(f"{family} provider routes require provider and model")
         return value
 
     @model_validator(mode="after")
@@ -316,7 +336,11 @@ class ControlPreferences(BaseModel):
             modal_scaledown_window=int(os.getenv("MODAL_SCALEDOWN_WINDOW", "60")),
             modal_token_id=os.getenv("MODAL_TOKEN_ID", ""),
             modal_token_secret=os.getenv("MODAL_TOKEN_SECRET", ""),
-            model_profiles=values("MODEL_PROFILES") or ["flux-2-klein-9b"],
+            model_profiles=(
+                values("MODEL_PROFILES")
+                if "MODEL_PROFILES" in os.environ
+                else ["flux-2-klein-9b"]
+            ),
             runpod_api_key=os.getenv("RUNPOD_API_KEY", ""),
             runpod_data_centres=values("RUNPOD_DATA_CENTRES"),
             runpod_gpu_types=values("RUNPOD_GPU_TYPES"),
@@ -378,7 +402,11 @@ class ControlPreferences(BaseModel):
             "WORKER_API_KEY": self.worker_api_key,
             "WORKER_IMAGE": self.worker_image,
         }
-        return {name: value for name, value in values.items() if value != ""}
+        return {
+            name: value
+            for name, value in values.items()
+            if value != "" or name == "MODEL_PROFILES"
+        }
 
 
 class ConfigurationManager:

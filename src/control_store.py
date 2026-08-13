@@ -490,6 +490,48 @@ class ControlStore:
                     "INSERT INTO schema_migrations (version, applied_at) VALUES (6, ?)",
                     (int(time.time()),),
                 )
+            migrated = self.connection.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = 7"
+            ).fetchone()
+            if migrated is None:
+                row = self.connection.execute(
+                    "SELECT document_json FROM control_configuration WHERE id = 1"
+                ).fetchone()
+                if row is not None:
+                    document = json.loads(str(row["document_json"]))
+                    routes = document.get("routes")
+                    if isinstance(routes, dict):
+                        for family, targets in routes.items():
+                            if not isinstance(targets, list):
+                                continue
+                            package = (
+                                "minimax-h3"
+                                if family == "videos"
+                                else "flux-2-klein-9b"
+                            )
+                            routes[family] = [
+                                {
+                                    "model": (
+                                        "grok-imagine"
+                                        if target == "cliproxyapi"
+                                        else package
+                                    ),
+                                    "provider": target,
+                                }
+                                if isinstance(target, str)
+                                else target
+                                for target in targets
+                            ]
+                        document["routes"] = routes
+                        self.connection.execute(
+                            "UPDATE control_configuration SET document_json = ? "
+                            "WHERE id = 1",
+                            (json.dumps(document),),
+                        )
+                self.connection.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (7, ?)",
+                    (int(time.time()),),
+                )
             rows = self.connection.execute(
                 "SELECT id, content_type, path FROM media_assets "
                 "WHERE width IS NULL AND height IS NULL AND duration IS NULL"

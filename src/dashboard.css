@@ -76,6 +76,10 @@
   white-space: pre-wrap;
 }
 
+body:has(dialog[open]) {
+  overflow: hidden;
+}
+
 dialog {
   background: transparent;
   border: 0;
@@ -85,12 +89,19 @@ dialog {
 }
 
 dialog .modal-content {
+  border: 1px solid var(--tblr-border-color);
+  box-shadow: var(--tblr-box-shadow-card);
   max-height: calc(100vh - 3.5rem);
+  overflow: hidden;
 }
 
 dialog .modal-dialog {
   margin: 1.75rem auto;
   width: min(94vw, 1000px);
+}
+
+dialog .modal-body {
+  overflow-y: auto;
 }
 
 dialog::backdrop {

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 
 def first_number(value: object, *paths: str) -> float | int | None:
     for path in paths:
@@ -17,6 +19,15 @@ def first_number(value: object, *paths: str) -> float | int | None:
 def normalise_usage(kind: str, value: object) -> list[dict[str, object]]:
     metrics: list[dict[str, object]] = []
     if kind == "runpod":
+        credit = first_number(
+            value,
+            "credit",
+            "balance",
+            "data.myself.credit",
+            "data.myself.balance",
+        )
+        if credit is not None:
+            return [{"label": "Credit balance", "unit": "USD", "value": credit}]
         records = value if isinstance(value, list) else []
         amount = sum(
             float(record.get("amount", 0))
@@ -25,11 +36,27 @@ def normalise_usage(kind: str, value: object) -> list[dict[str, object]]:
         )
         return [{"label": "Spend", "unit": "USD", "value": round(amount, 4)}]
     if kind == "vast":
-        credit = first_number(value, "credit")
+        credit = first_number(value, "credit", "balance")
         if credit is not None:
             metrics.append({"label": "Credit balance", "unit": "USD", "value": credit})
+        for label, paths in (
+            ("Current spend", ("current_spend", "currentSpend")),
+            ("Total spent", ("total_spent", "totalSpent", "spent")),
+        ):
+            found = first_number(value, *paths)
+            if found is not None:
+                metrics.append({"label": label, "unit": "USD", "value": found})
         return metrics
     if kind == "salad":
+        credit = first_number(
+            value,
+            "credit",
+            "credit_balance",
+            "credits",
+            "current_credit",
+        )
+        if credit is not None:
+            metrics.append({"label": "Credit balance", "unit": "USD", "value": credit})
         used = first_number(value, "container_groups_quotas.container_replicas_used")
         quota = first_number(value, "container_groups_quotas.container_replicas_quota")
         if used is not None:
@@ -67,32 +94,20 @@ def xai_user_id(account: dict[str, object]) -> str | None:
     return None
 
 
-def cent_value(value: object) -> float | None:
-    if isinstance(value, dict):
-        value = value.get("val")
-    if isinstance(value, (float, int)) and not isinstance(value, bool):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value.strip())
-        except ValueError:
-            return None
-    return None
-
-
 def normalise_xai_quota(value: object, account: int) -> list[dict[str, object]]:
     if not isinstance(value, dict):
         return []
     config = value.get("config")
     if not isinstance(config, dict):
         return []
-    prefix = f"Grok account {account}"
+    detail = f"Account {account}"
     metrics: list[dict[str, object]] = []
     usage_percent = first_number(config, "creditUsagePercent", "credit_usage_percent")
     if usage_percent is not None:
         metrics.append(
             {
-                "label": f"{prefix} weekly remaining",
+                "detail": detail,
+                "label": "Weekly remaining",
                 "unit": "%",
                 "value": max(0, round(100 - usage_percent, 2)),
             }
@@ -102,45 +117,35 @@ def normalise_xai_quota(value: object, account: int) -> list[dict[str, object]]:
         for product in products:
             if not isinstance(product, dict):
                 continue
-            name = str(product.get("product") or "product").strip()
+            name = str(product.get("product") or "").strip()
+            words = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name).replace("-", " ")
+            words = " ".join(words.split())
+            if not any(
+                word in words.casefold() for word in ("build", "chat", "imagine")
+            ):
+                continue
             used = first_number(product, "usagePercent", "usage_percent")
             if used is not None:
                 metrics.append(
                     {
-                        "label": f"{prefix} {name} remaining",
+                        "detail": detail,
+                        "label": f"{words} remaining",
                         "unit": "%",
                         "value": max(0, round(100 - used, 2)),
                     }
                 )
-    monthly_limit = cent_value(config.get("monthlyLimit", config.get("monthly_limit")))
-    used = cent_value(config.get("used"))
-    if monthly_limit is not None and used is not None:
-        metrics.append(
-            {
-                "label": f"{prefix} monthly included remaining",
-                "unit": "USD",
-                "value": max(0, round((monthly_limit - used) / 100, 2)),
-            }
-        )
-    on_demand_cap = cent_value(config.get("onDemandCap", config.get("on_demand_cap")))
-    on_demand_used = cent_value(
-        config.get("onDemandUsed", config.get("on_demand_used"))
-    )
-    if on_demand_cap is not None and on_demand_used is not None:
-        metrics.append(
-            {
-                "label": f"{prefix} on-demand remaining",
-                "unit": "USD",
-                "value": max(0, round((on_demand_cap - on_demand_used) / 100, 2)),
-            }
-        )
     return metrics
 
 
 def deduplicate_metrics(
     metrics: list[dict[str, object]],
 ) -> list[dict[str, object]]:
-    return list({str(metric.get("label")): metric for metric in metrics}.values())
+    return list(
+        {
+            (str(metric.get("label")), str(metric.get("detail", ""))): metric
+            for metric in metrics
+        }.values()
+    )
 
 
 def selected_fields(value: object, *names: str) -> dict[str, object]:

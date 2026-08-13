@@ -29,7 +29,7 @@
 <div class="small usage-list">
   {% for metric in data.metrics %}
   {% if metric.unit == "%" %}
-  <div class="usage-meter"><div class="align-items-baseline d-flex gap-2 justify-content-between"><span>{{ metric.label | title }}</span><strong>{{ metric.value }}%</strong></div><progress class="progress progress-sm" max="100" value="{{ metric.value }}">{{ metric.value }}%</progress></div>
+  <div class="usage-meter"><div class="align-items-baseline d-flex gap-2 justify-content-between"><span>{{ metric.label | title }}{% if metric.detail %} <small class="text-secondary">{{ metric.detail }}</small>{% endif %}</span><strong>{{ metric.value }}%</strong></div><progress class="progress progress-sm" max="100" value="{{ metric.value }}">{{ metric.value }}%</progress></div>
   {% elif metric.unit == "USD" %}
   <span class="align-items-baseline d-flex gap-2 justify-content-between"><small>{{ metric.label | title }}</small><strong>${{ "%.2f" | format(metric.value) }}</strong></span>
   {% else %}

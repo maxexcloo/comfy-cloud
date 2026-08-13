@@ -1,8 +1,11 @@
-{% macro route_target(provider, providers) -%}
-<div class="align-items-center d-flex gap-2" data-route-target>
+{% macro route_target(target, providers, models, installed_models) -%}
+<div class="align-items-center d-flex flex-wrap gap-2" data-route-target>
   <button class="btn btn-ghost-secondary btn-icon btn-sm route-handle" aria-label="Drag To Reorder" data-route-drag draggable="true" title="Drag To Reorder" type="button">↕</button>
-  <select class="form-select form-select-sm" aria-label="Provider" data-route-provider>
-    {% for option in providers %}<option value="{{ option }}"{% if provider == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
+  <select class="flex-grow-1 form-select form-select-sm w-auto" aria-label="Provider" data-route-provider>
+    {% for option in providers %}<option value="{{ option }}"{% if target.provider == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
+  </select>
+  <select class="flex-grow-1 form-select form-select-sm w-auto" aria-label="Model Package" data-route-model>
+    {% for package in models.values() | sum(start=[]) | unique | sort %}<option data-providers="{% for provider, packages in models.items() if package in packages %}{{ provider }} {% endfor %}" value="{{ package }}"{% if target.model == package %} selected{% endif %}>{{ package }}{% if package != "grok-imagine" and package not in installed_models %} (Not Installed){% endif %}</option>{% endfor %}
   </select>
   <button class="btn btn-ghost-secondary btn-icon btn-sm" aria-label="Move Up" data-route-up title="Move Up" type="button">↑</button>
   <button class="btn btn-ghost-secondary btn-icon btn-sm" aria-label="Move Down" data-route-down title="Move Down" type="button">↓</button>
@@ -18,12 +21,15 @@
     <div class="d-grid gap-3">
       {% for route, targets in field.value.items() %}<fieldset class="card card-body" data-route-key="{{ route }}">
         <legend class="h3 mb-2">{{ route.replace('-', ' ') | title }}</legend>
-        <div class="d-grid gap-1" data-route-list>{% for provider in targets %}{{ route_target(provider, field.providers) }}{% endfor %}</div>
+        <div class="d-grid gap-1" data-route-list>{% for target in targets %}{{ route_target(target, field.providers, field.models[route], field.installed_models) }}{% endfor %}</div>
         <button class="align-self-start btn btn-outline-secondary btn-sm mt-2" data-route-add type="button">Add Provider</button>
       </fieldset>{% endfor %}
     </div>
-    <template data-route-template>{{ route_target('', field.providers) }}</template>
+    {% for route in field.value %}<template data-route-template="{{ route }}">{{ route_target({}, field.providers, field.models[route], field.installed_models) }}</template>{% endfor %}
   </div>
+</div>{% elif field.type == "models" %}<div class="col-12">
+  <div class="form-label">{{ field.label }}</div>
+  <div class="card card-body"><div class="g-2 row">{% for option in field.options %}<label class="col-12 col-md-4 form-check"><input class="form-check-input" name="{{ field.name }}" type="checkbox" value="{{ option }}"{% if option in field.value %} checked{% endif %}{% if field.locked %} disabled{% endif %} /><span class="form-check-label">{{ option }}</span></label>{% endfor %}</div><small class="mt-2 text-secondary">Selected packages and all associated models or LoRAs are installed when a provider is next deployed. Cleared packages are removed from its managed model volume.</small></div>
 </div>{% else %}<label class="col-12 col-lg-6 form-label"
   >{{ field.label }}{% if field.options %}<select class="form-select form-select-sm" name="{{ field.name }}"{% if field.locked %} disabled{% endif %}>
     {% if field.locked %}<option selected>Environment Controlled</option>{% endif %}
