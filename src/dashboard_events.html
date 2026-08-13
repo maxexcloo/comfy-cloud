@@ -1,21 +1,21 @@
 {% extends "dashboard_base.html" %} {% import "dashboard_components.html" as ui
 %} {% block content %}
-<div class="page-head">
+<div class="mb-3 page-header">
   <div>
-    <h2>Events</h2>
-    <small>Controller and provider activity.</small>
+    <h2 class="page-title">Events</h2>
+    <div class="text-secondary">Controller and provider activity.</div>
   </div>
 </div>
-<form class="filters" method="get" data-live-filter>
-  <input type="hidden" name="sort" value="{{ sort }}" /><input type="hidden" name="direction" value="{{ sort_direction }}" />
-  <label class="search"
-    >Search<input
+<form class="card card-body filters" data-live-filter method="get">
+  <input name="sort" type="hidden" value="{{ sort }}" /><input name="direction" type="hidden" value="{{ sort_direction }}" />
+  <label class="form-label search"
+    >Search<input class="form-control form-control-sm"
       name="q"
       value="{{ filters.q }}"
       placeholder="Message, Provider, Or Request ID"
   /></label>
-  <label
-    >Level<select name="level">
+  <label class="form-label"
+    >Level<select class="form-select form-select-sm" name="level">
       <option value="">All Levels</option>
       {% for value in levels %}
       <option value="{{ value }}"{% if filters.level == value %} selected{% endif %}>
@@ -24,8 +24,8 @@
       {% endfor %}
     </select></label
   >
-  <label
-    >Provider<select name="provider">
+  <label class="form-label"
+    >Provider<select class="form-select form-select-sm" name="provider">
       <option value="">All Providers</option>
       {% for value in providers %}
       <option value="{{ value }}"{% if filters.provider == value %} selected{% endif %}>
@@ -34,10 +34,10 @@
       {% endfor %}
     </select></label
   >
-  <a class="secondary outline" href="/events" role="button">Clear</a>
+  <a class="btn btn-outline-secondary btn-sm" href="/events" role="button">Clear</a>
 </form>
-<section class="overflow-auto" aria-label="Events">
-  <table>
+<section class="card" aria-label="Events">
+  <div class="table-responsive"><table class="card-table table table-hover table-striped table-vcenter">
     <thead>
       <tr>
         {{ ui.sortable_header("Date", "created_at", sort_links, sort, sort_direction) }}
@@ -75,7 +75,7 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {{ ui.pagination(events) }}
 </section>
 {% endblock %}

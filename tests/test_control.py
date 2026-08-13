@@ -306,7 +306,10 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert home.status_code == 303
     assert home.headers["location"] == "/media"
     assert dashboard.status_code == 200
-    assert "<table>" in dashboard.text
+    assert (
+        '<table class="card-table table table-hover table-striped table-vcenter">'
+        in dashboard.text
+    )
     assert 'href="/history"' in dashboard.text
     assert 'href="/settings"' in dashboard.text
     assert 'href="/media"' in dashboard.text
@@ -979,11 +982,11 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
         < providers.text.index('href="/history"')
         < providers.text.index('href="/settings"')
     )
-    assert 'aria-current="page">Providers' in providers.text
+    assert 'aria-current="page" href="/providers">Providers' in providers.text
     assert 'class="skip-link"' in providers.text
-    assert "@picocss/pico@2.1.1/css/pico.min.css" in providers.text
+    assert "@tabler/core@1.4.0/dist/css/tabler.min.css" in providers.text
     assert (
-        "sha384-L1dWfspMTHU/ApYnFiMz2QID/PlP1xCW9visvBdbEkOLkSSWsP6ZJWhPw6apiXxU"
+        "sha384-kz+I4+mczbNiZfLAJMxOlJaZmnbRYhARHNkR2k6tal4gz7OL33/0puDD3SvkiNX9"
         in providers.text
     )
     assert 'href="/assets/dashboard.css?current"' in providers.text
@@ -1027,8 +1030,8 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert "path" not in detail.json()
     assert stylesheet.headers["content-type"].startswith("text/css")
     assert stylesheet.headers["cache-control"] == "no-store"
-    assert "@media (max-width: 760px)" in stylesheet.text
-    assert "body > nav" in stylesheet.text
+    assert "@media (max-width: 767.98px)" in stylesheet.text
+    assert ".media-grid" in stylesheet.text
     assert javascript.headers["content-type"].startswith("text/javascript")
     assert javascript.headers["cache-control"] == "no-store"
     assert "if (!mediaDialog.open) mediaDialog.showModal()" in javascript.text

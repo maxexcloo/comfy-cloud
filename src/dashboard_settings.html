@@ -1,22 +1,22 @@
 {% extends "dashboard_base.html" %} {% block content %}
-<div class="page-head">
+<div class="mb-3 page-header">
   <div>
-    <h2>Settings</h2>
-    <small>Environment-controlled values are locked.</small>
+    <h2 class="page-title">Settings</h2>
+    <div class="text-secondary">Environment-controlled values are locked.</div>
   </div>
 </div>
-<form method="post" action="/settings">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-  <input type="hidden" name="revision" value="{{ settings.revision }}" />
+<form action="/settings" method="post">
+  <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
+  <input name="revision" type="hidden" value="{{ settings.revision }}" />
   {% for category, groups in settings.categories.items() %}
-  <article class="settings-category">
-    <header><h2>{{ category }}</h2></header>
-    <div class="settings-groups">
+  <article class="card mb-3 settings-category">
+    <header class="card-header"><h2 class="card-title">{{ category }}</h2></header>
+    <div class="card-body settings-groups">
       {% for group, fields in groups.items() %}
       <fieldset{% if group in provider_settings_anchors %} id="{{ provider_settings_anchors[group] }}"{% endif %}>
         <legend>{{ group }}</legend>
-        {% for field in fields %}<label
-          >{{ field.label }}{% if field.options %}<select
+        {% for field in fields %}<label class="form-label"
+          >{{ field.label }}{% if field.options %}<select class="form-select form-select-sm"
             name="{{ field.name }}"
             {%
             if
@@ -31,7 +31,7 @@
             </option>
             {% endfor %}
           </select>
-          {% elif field.type == "routes" %}<textarea
+          {% elif field.type == "routes" %}<textarea class="font-monospace form-control form-control-sm"
             name="{{ field.name }}"
             {%
             if
@@ -41,7 +41,7 @@
             %}
           >
 {{ field.value | tojson(indent=2) }}</textarea>
-          {% elif field.type == "list" %}<input
+          {% elif field.type == "list" %}<input class="form-control form-control-sm"
             name="{{ field.name }}"
             value="{{ field.value | join(', ') }}"
             {%
@@ -51,7 +51,7 @@
             endif
             %}
           />
-          {% else %}<input
+          {% else %}<input class="form-control form-control-sm"
             name="{{ field.name }}"
             type="{% if field.secret %}password{% elif field.type == 'number' %}number{% elif field.type == 'url' %}url{% else %}text{% endif %}"
             value="{% if not field.secret %}{{ field.value }}{% endif %}"
@@ -76,13 +76,13 @@
             if field.locked %}disabled title="Environment Controlled"{%
             endif
             %}
-          />{% endif %}{% if field.locked %}<small class="environment-controlled">Environment Controlled</small>{% endif %} </label
+          />{% endif %}{% if field.locked %}<small class="environment-controlled text-secondary">Environment Controlled</small>{% endif %} </label
         >{% endfor %}
       </fieldset>
       {% endfor %}
     </div>
   </article>
   {% endfor %}
-  <button>Save Settings</button>
+  <button class="btn btn-primary">Save Settings</button>
 </form>
 {% endblock %}

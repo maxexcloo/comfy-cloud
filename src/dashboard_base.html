@@ -1,50 +1,53 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html data-bs-theme="dark" lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width" />
+    <meta content="width=device-width" name="viewport" />
     <title>
       {% block title %}{{ page | title }}{% endblock %} · Comfy Control
     </title>
     <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.min.css"
-      integrity="sha384-L1dWfspMTHU/ApYnFiMz2QID/PlP1xCW9visvBdbEkOLkSSWsP6ZJWhPw6apiXxU"
       crossorigin="anonymous"
+      href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css"
+      integrity="sha384-kz+I4+mczbNiZfLAJMxOlJaZmnbRYhARHNkR2k6tal4gz7OL33/0puDD3SvkiNX9"
+      rel="stylesheet"
     />
-    <link rel="stylesheet" href="/assets/dashboard.css?current" />
+    <link href="/assets/dashboard.css?current" rel="stylesheet" />
   </head>
   <body>
     <a class="skip-link" href="#content">Skip To Content</a>
-    <header class="container">
-      <a href="/media"
-        ><small>GPU Orchestration</small>
-        <h1>Comfy Control</h1></a
-      >
-    </header>
-    {% include "dashboard_navigation.html" %}
-    <main class="container" id="content">
-      {% if message %}
-      <p class="notice" role="status">{{ message }}</p>
-      {% endif %} {% block content %}{% endblock %}
-    </main>
+    <div class="page">
+      {% include "dashboard_navigation.html" %}
+      <div class="page-wrapper">
+        <main class="page-body" id="content">
+          <div class="container-xl">
+            {% if message %}
+            <div class="alert alert-success" role="status">{{ message }}</div>
+            {% endif %} {% block content %}{% endblock %}
+          </div>
+        </main>
+      </div>
+    </div>
     {% block dialogs %}{% endblock %}
     <dialog id="media-dialog" aria-labelledby="media-title">
-      <article>
-        <header class="dialog-head">
-          <div>
-            <small id="media-kind">Media</small>
-            <h2 id="media-title">Media Details</h2>
-          </div>
-          <div class="dialog-actions">
-            <button class="secondary outline" type="button" data-previous-media title="Previous Media (Left Arrow)">Previous</button>
-            <button class="secondary outline" type="button" data-next-media title="Next Media (Right Arrow)">Next</button>
-            <button class="secondary" type="button" data-close>Close</button>
-          </div>
-        </header>
-        <div class="dialog-body" id="media-detail"><p>Loading…</p></div>
-      </article>
+      <div class="modal-dialog modal-dialog-scrollable modal-xl">
+        <div class="modal-content">
+          <header class="dialog-head gap-3 modal-header">
+            <div>
+              <small id="media-kind">Media</small>
+              <h2 id="media-title">Media Details</h2>
+            </div>
+            <div class="align-items-center d-flex gap-2">
+              <button class="btn btn-outline-secondary btn-sm" data-previous-media title="Previous Media (Left Arrow)" type="button">Previous</button>
+              <button class="btn btn-outline-secondary btn-sm" data-next-media title="Next Media (Right Arrow)" type="button">Next</button>
+              <button class="btn btn-secondary btn-sm" data-close type="button">Close</button>
+            </div>
+          </header>
+          <div class="dialog-body modal-body" id="media-detail"><p>Loading…</p></div>
+        </div>
+      </div>
     </dialog>
+    <script crossorigin="anonymous" integrity="sha384-pku3birjgGovaJ9ngF7SaxKkF/eYUvBjiMJ+jTtWbNesIj2Rud2K63+4JD7EF4gk" src="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/js/tabler.min.js"></script>
     <script src="/assets/dashboard.js?current"></script>
   </body>
 </html>

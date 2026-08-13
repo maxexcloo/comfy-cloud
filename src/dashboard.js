@@ -182,6 +182,7 @@ if (addFilter) {
     input.value = `${path}|${operator}|${value}`;
     chip.append(input, `${path} ${operator.replaceAll("_", " ")} ${value} `);
     const remove = document.createElement("button");
+    remove.className = "btn btn-ghost-secondary btn-sm";
     remove.type = "button";
     remove.dataset.removeFilter = "";
     remove.textContent = "×";
@@ -207,8 +208,11 @@ const element = (tag, className, text) => {
 };
 
 const labelledValue = (label, value) => {
-  const item = element("div", "detail-value");
-  item.append(element("small", "", label), element("strong", "", value || "—"));
+  const item = element("div", "card card-body");
+  item.append(
+    element("small", "d-block text-secondary", label),
+    element("strong", "d-block", value || "—"),
+  );
   return item;
 };
 
@@ -292,8 +296,11 @@ if (mediaDialog) {
     const body = document.createDocumentFragment();
     body.append(preview, facts);
     for (const generation of item.uses) {
-      const section = element("section", "detail-section");
-      const heading = element("div", "section-head");
+      const section = element("section", "card card-body detail-section");
+      const heading = element(
+        "div",
+        "align-items-center d-flex justify-content-between",
+      );
       heading.append(element("h3", "", "Generation Details"));
       const historyLink = element("a", "", "View History");
       historyLink.href = `/history?q=${encodeURIComponent(generation.history_id)}`;
@@ -319,13 +326,13 @@ if (mediaDialog) {
       ...item.lineage.derivatives.map((entry) => ["Derivative", entry]),
     ];
     if (related.length) {
-      const section = element("section", "detail-section");
+      const section = element("section", "card card-body detail-section");
       section.append(element("h3", "", "Related Media"));
-      const list = element("div", "related-media");
+      const list = element("div", "d-flex flex-wrap gap-2");
       for (const [relationship, entry] of related) {
         const button = element(
           "button",
-          "related-item",
+          "btn btn-outline-secondary btn-sm related-item",
           `${relationship}: ${entry.filename || `Media ${entry.id}`}`,
         );
         button.type = "button";

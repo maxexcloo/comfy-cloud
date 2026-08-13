@@ -1,13 +1,13 @@
 {% extends "dashboard_base.html" %} {% import "dashboard_components.html" as ui
 %} {% block content %}
-<div class="page-head">
+<div class="mb-3 page-header">
   <div>
-    <h2>Providers</h2>
-    <small>Compute availability and lifecycle controls.</small>
+    <h2 class="page-title">Providers</h2>
+    <div class="text-secondary">Compute availability and lifecycle controls.</div>
   </div>
 </div>
-<section class="overflow-auto" aria-label="Providers">
-  <table>
+<section class="card" aria-label="Providers">
+  <div class="table-responsive"><table class="card-table table table-hover table-striped table-vcenter">
     <thead>
       <tr>
         <th>Provider</th>
@@ -38,29 +38,29 @@
         <td>{{ provider.type.replace("-", " ") | title }}</td>
         <td>
           {% if provider.configured %}<a
-            class="badge {{ provider.state }} state-log-link"
+            class="badge bg-primary-lt state-log-link"
             href="/providers/{{ provider.id }}/logs"
             data-log-provider="{{ provider.id }}"
             data-log-url="/providers/{{ provider.id }}/logs"
             >{{ provider.state.replace("_", " ").replace("-", " ") | title }}</a
           >{% else %}{{ ui.badge(provider.state) }}{% endif %}
-          {% if provider.settings_url %}<a class="badge settings-pill" href="{{ provider.settings_url }}">Settings</a>{% endif %}
+          {% if provider.settings_url %}<a class="badge bg-secondary-lt ms-1" href="{{ provider.settings_url }}">Settings</a>{% endif %}
         </td>
         <td>{{ ui.usage(provider.usage) }}</td>
         <td><code>{{ provider.resource_id or "—" }}</code></td>
         <td>
-          <div class="actions">
+          <div class="d-flex flex-wrap gap-1">
             {% for action in provider.actions %}
             <form
-              method="post"
               action="/providers/{{ provider.id }}/actions/{{ action.name }}"
+              method="post"
             >
               <input
-                type="hidden"
                 name="csrf_token"
+                type="hidden"
                 value="{{ csrf_token }}"
               /><button
-                class="{% if action.name in ['delete', 'destroy', 'terminate'] %}danger{% endif %}"
+                class="btn {% if action.name in ['delete', 'destroy', 'terminate'] %}btn-outline-danger{% else %}btn-outline-primary{% endif %} btn-sm"
                 {% if action.name == "deploy" %}type="button" data-deploy-provider="{{ provider.id }}" data-deploy-action="/providers/{{ provider.id }}/actions/deploy" data-deploy-options="/providers/{{ provider.id }}/deployment-options"{% endif %}
                 {%
                 if
@@ -79,20 +79,22 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </section>
 {% endblock %} {% block dialogs %}{% include "dashboard_log_dialog.html" %}
 <dialog id="deploy-dialog" aria-labelledby="deploy-title">
-  <article>
-    <header class="dialog-head"><div><small>Provider Deployment</small><h2 id="deploy-title">Deploy Provider</h2></div><button class="secondary" type="button" data-close>Close</button></header>
-    <form class="dialog-body" id="deploy-form" method="post">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <input type="hidden" name="memory_gb" id="deploy-memory" />
-      <label>GPU<select name="gpu" id="deploy-gpu"><option value="">Loading Availability…</option></select></label>
-      <p id="deploy-option-detail" class="notice">Checking current availability and pricing…</p>
-      <div class="dialog-actions"><button type="submit">Deploy</button><button class="secondary outline" type="button" data-close>Cancel</button></div>
-    </form>
-  </article>
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <header class="dialog-head gap-3 modal-header"><div><small>Provider Deployment</small><h2 class="modal-title" id="deploy-title">Deploy Provider</h2></div><button class="btn btn-secondary btn-sm" data-close type="button">Close</button></header>
+      <form class="dialog-body modal-body" id="deploy-form" method="post">
+        <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
+        <input id="deploy-memory" name="memory_gb" type="hidden" />
+        <label class="form-label">GPU<select class="form-select" id="deploy-gpu" name="gpu"><option value="">Loading Availability…</option></select></label>
+        <div class="alert alert-info" id="deploy-option-detail">Checking current availability and pricing…</div>
+        <div class="align-items-center d-flex gap-2"><button class="btn btn-primary" type="submit">Deploy</button><button class="btn btn-outline-secondary" data-close type="button">Cancel</button></div>
+      </form>
+    </div>
+  </div>
 </dialog>
 {%
 endblock %}

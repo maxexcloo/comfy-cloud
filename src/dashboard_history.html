@@ -1,22 +1,22 @@
 {% extends "dashboard_base.html" %} {% import "dashboard_components.html" as ui
 %} {% block content %}
-<div class="page-head">
+<div class="mb-3 page-header">
   <div>
-    <h2>History</h2>
-    <small>Generation requests, attempts, and outputs.</small>
+    <h2 class="page-title">History</h2>
+    <div class="text-secondary">Generation requests, attempts, and outputs.</div>
   </div>
 </div>
-<form class="filters" method="get" data-live-filter>
-  <input type="hidden" name="sort" value="{{ sort }}" /><input type="hidden" name="direction" value="{{ sort_direction }}" />
-  <label class="search"
-    >Search<input
+<form class="card card-body filters" data-live-filter method="get">
+  <input name="sort" type="hidden" value="{{ sort }}" /><input name="direction" type="hidden" value="{{ sort_direction }}" />
+  <label class="form-label search"
+    >Search<input class="form-control form-control-sm"
       name="q"
       value="{{ filters.q }}"
       placeholder="Prompt, Model, Provider, Or Request ID"
   /></label>
   {% for name, values in [("operation", operations), ("provider", providers),
-  ("status", statuses)] %}<label
-    >{{ name | title }}<select name="{{ name }}">
+  ("status", statuses)] %}<label class="form-label"
+    >{{ name | title }}<select class="form-select form-select-sm" name="{{ name }}">
       <option value="">All {{ name | title }}</option>
       {% for value in values %}
       <option value="{{ value }}"{% if filters[name] == value %} selected{% endif %}>
@@ -24,10 +24,10 @@
       </option>
       {% endfor %}
     </select></label
-  >{% endfor %} <a class="secondary outline" href="/history" role="button">Clear</a>
+  >{% endfor %} <a class="btn btn-outline-secondary btn-sm" href="/history" role="button">Clear</a>
 </form>
-<section class="overflow-auto" aria-label="History">
-  <table>
+<section class="card" aria-label="History">
+  <div class="table-responsive"><table class="card-table table table-hover table-striped table-vcenter">
     <thead>
       <tr>
         {{ ui.sortable_header("Date", "created_at", sort_links, sort, sort_direction) }}
@@ -55,8 +55,8 @@
         <td>{{ item.provider_model or item.model }}</td>
         <td>{{ ui.badge(item.status) }}</td>
         <td>
-          {% if item.media %}<button type="button" data-media-id="{{
-          item.media[0].asset_id }}">Open Media</button>{% else %}—{% endif %}
+          {% if item.media %}<button class="btn btn-outline-primary btn-sm" data-media-id="{{
+          item.media[0].asset_id }}" type="button">Open Media</button>{% else %}—{% endif %}
         </td>
       </tr>
       {% else %}
@@ -65,7 +65,7 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {{ ui.pagination(history) }}
 </section>
 {% endblock %}
