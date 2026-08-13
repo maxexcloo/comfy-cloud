@@ -521,8 +521,16 @@ async def test_server_rendered_settings_require_csrf(monkeypatch, tmp_path):
     assert page.status_code == 200
     assert 'action="/settings"' in page.text
     assert 'name="csrf_token"' in page.text
+    assert "data-route-editor" in page.text
+    assert "data-route-provider" in page.text
+    assert "data-route-template" in page.text
+    assert "Provider Routes" in page.text
     assert "Modal Token ID" not in page.text
     description = app.state.controller.describe_configuration()
+    route_field = next(
+        field for field in description["fields"] if field["name"] == "routes"
+    )
+    assert route_field["providers"]
     modal_fields = provider_fields(description, "modal")
     assert [field["name"] for field in modal_fields] == [
         "modal_gpu",

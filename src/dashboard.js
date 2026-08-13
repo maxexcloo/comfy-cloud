@@ -37,6 +37,88 @@ for (const form of document.querySelectorAll("[data-live-filter]")) {
   form.addEventListener("change", submit);
 }
 
+for (const editor of document.querySelectorAll("[data-route-editor]")) {
+  const value = editor.querySelector("[data-route-value]");
+  const serialise = () => {
+    value.value = JSON.stringify(
+      Object.fromEntries(
+        [...editor.querySelectorAll("[data-route-key]")].map((route) => [
+          route.dataset.routeKey,
+          [...route.querySelectorAll("[data-route-provider]")].map(
+            (select) => select.value,
+          ),
+        ]),
+      ),
+    );
+    for (const route of editor.querySelectorAll("[data-route-key]")) {
+      const selected = [
+        ...route.querySelectorAll("[data-route-provider]"),
+      ].map((select) => select.value);
+      for (const select of route.querySelectorAll("[data-route-provider]")) {
+        for (const option of select.options)
+          option.disabled =
+            option.value !== select.value && selected.includes(option.value);
+      }
+    }
+  };
+  let dragged;
+  editor.addEventListener("dragstart", (event) => {
+    dragged = event.target.closest("[data-route-target]");
+    if (dragged) event.dataTransfer.effectAllowed = "move";
+  });
+  editor.addEventListener("dragover", (event) => {
+    const target = event.target.closest("[data-route-target]");
+    if (!dragged || !target || target === dragged) return;
+    event.preventDefault();
+    const bounds = target.getBoundingClientRect();
+    target.parentElement.insertBefore(
+      dragged,
+      event.clientY < bounds.top + bounds.height / 2
+        ? target
+        : target.nextSibling,
+    );
+  });
+  editor.addEventListener("dragend", () => {
+    dragged = undefined;
+    serialise();
+  });
+  editor.addEventListener("change", serialise);
+  editor.addEventListener("click", (event) => {
+    const route = event.target.closest("[data-route-key]");
+    if (!route) return;
+    const target = event.target.closest("[data-route-target]");
+    if (event.target.closest("[data-route-add]")) {
+      const row = editor
+        .querySelector("[data-route-template]")
+        .content.firstElementChild.cloneNode(true);
+      const used = new Set(
+        [...route.querySelectorAll("[data-route-provider]")].map(
+          (select) => select.value,
+        ),
+      );
+      const select = row.querySelector("[data-route-provider]");
+      const available = [...select.options].find(
+        (option) => !used.has(option.value),
+      );
+      if (!available) return;
+      select.value = available.value;
+      route.querySelector("[data-route-list]").append(row);
+    } else if (event.target.closest("[data-route-remove]")) {
+      target.remove();
+    } else if (event.target.closest("[data-route-up]")) {
+      if (target.previousElementSibling)
+        target.parentElement.insertBefore(target, target.previousElementSibling);
+    } else if (event.target.closest("[data-route-down]")) {
+      if (target.nextElementSibling)
+        target.parentElement.insertBefore(target.nextElementSibling, target);
+    } else {
+      return;
+    }
+    serialise();
+  });
+  serialise();
+}
+
 const providerRefresh = document.querySelector("[data-provider-refresh]");
 if (providerRefresh) {
   providerRefresh.setAttribute("aria-busy", "true");

@@ -1,11 +1,34 @@
+{% macro route_target(provider, providers) -%}
+<div class="align-items-center d-flex gap-2" data-route-target>
+  <button class="btn btn-ghost-secondary btn-icon btn-sm route-handle" aria-label="Drag To Reorder" data-route-drag draggable="true" title="Drag To Reorder" type="button">↕</button>
+  <select class="form-select form-select-sm" aria-label="Provider" data-route-provider>
+    {% for option in providers %}<option value="{{ option }}"{% if provider == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-ghost-secondary btn-icon btn-sm" aria-label="Move Up" data-route-up title="Move Up" type="button">↑</button>
+  <button class="btn btn-ghost-secondary btn-icon btn-sm" aria-label="Move Down" data-route-down title="Move Down" type="button">↓</button>
+  <button class="btn btn-ghost-danger btn-icon btn-sm" aria-label="Remove Provider" data-route-remove title="Remove Provider" type="button">×</button>
+</div>
+{%- endmacro %}
+
 {% macro fields(items) -%}
-<div class="g-3 row">{% for field in items %}<label class="col-12 {% if field.type != 'routes' %}col-lg-6 {% endif %}form-label"
+<div class="g-3 row">{% for field in items %}{% if field.type == "routes" %}<div class="col-12">
+  <div class="form-label">{{ field.label }}</div>
+  <div data-route-editor>
+    <input data-route-value name="{{ field.name }}" type="hidden" value="{{ field.value | tojson }}" />
+    <div class="d-grid gap-3">
+      {% for route, targets in field.value.items() %}<fieldset class="card card-body" data-route-key="{{ route }}">
+        <legend class="h3 mb-2">{{ route.replace('-', ' ') | title }}</legend>
+        <div class="d-grid gap-1" data-route-list>{% for provider in targets %}{{ route_target(provider, field.providers) }}{% endfor %}</div>
+        <button class="align-self-start btn btn-outline-secondary btn-sm mt-2" data-route-add type="button">Add Provider</button>
+      </fieldset>{% endfor %}
+    </div>
+    <template data-route-template>{{ route_target('', field.providers) }}</template>
+  </div>
+</div>{% else %}<label class="col-12 col-lg-6 form-label"
   >{{ field.label }}{% if field.options %}<select class="form-select form-select-sm" name="{{ field.name }}"{% if field.locked %} disabled{% endif %}>
     {% if field.locked %}<option selected>Environment Controlled</option>{% endif %}
     {% for option in field.options %}<option value="{{ option }}"{% if not field.locked and field.value == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
   </select>
-  {% elif field.type == "routes" %}<textarea class="font-monospace form-control form-control-sm" name="{{ field.name }}"{% if field.locked %} disabled{% endif %}>{% if field.locked %}Environment Controlled{% else %}{{ field.value | tojson(indent=2) }}{% endif %}</textarea>
   {% elif field.type == "list" %}<input class="form-control form-control-sm" name="{{ field.name }}" value="{% if field.locked %}Environment Controlled{% else %}{{ field.value | join(', ') }}{% endif %}"{% if field.locked %} disabled{% endif %} />
-  {% else %}<input class="form-control form-control-sm" name="{{ field.name }}" type="{% if field.locked %}text{% elif field.secret %}password{% elif field.type == 'number' %}number{% elif field.type == 'url' %}url{% else %}text{% endif %}" value="{% if field.locked %}Environment Controlled{% elif not field.secret %}{{ field.value }}{% endif %}"{% if field.secret and not field.locked %} autocomplete="new-password" placeholder="{% if field.configured %}Configured{% endif %}"{% endif %}{% if field.minimum is defined and not field.locked %} min="{{ field.minimum }}"{% endif %}{% if field.locked %} disabled title="Environment Controlled"{% endif %} />{% endif %}</label
->{% endfor %}</div>
+  {% else %}<input class="form-control form-control-sm" name="{{ field.name }}" type="{% if field.locked %}text{% elif field.secret %}password{% elif field.type == 'number' %}number{% elif field.type == 'url' %}url{% else %}text{% endif %}" value="{% if field.locked %}Environment Controlled{% elif not field.secret %}{{ field.value }}{% endif %}"{% if field.secret and not field.locked %} autocomplete="new-password" placeholder="{% if field.configured %}Configured{% endif %}"{% endif %}{% if field.minimum is defined and not field.locked %} min="{{ field.minimum }}"{% endif %}{% if field.locked %} disabled title="Environment Controlled"{% endif %} />{% endif %}</label>{% endif %}{% endfor %}</div>
 {%- endmacro %}

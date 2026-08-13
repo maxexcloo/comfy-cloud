@@ -61,6 +61,10 @@
   min-width: 145px;
 }
 
+.route-handle {
+  cursor: grab;
+}
+
 /* Usage */
 .usage-list {
   min-width: 180px;

@@ -269,11 +269,12 @@ class Controller:
         for item in fields:
             if not isinstance(item, dict):
                 continue
-            if item["name"] == "routes" and not item["value"]:
-                item["value"] = {
-                    model.id: [target.provider for target in model.targets]
-                    for model in self.config.models
-                }
+            if item["name"] == "routes":
+                if not item["value"]:
+                    item["value"] = {
+                        model.id: [target.provider for target in model.targets]
+                        for model in self.config.models
+                    }
                 item["providers"] = [
                     provider["id"] for provider in self.available_providers
                 ]
