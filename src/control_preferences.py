@@ -81,7 +81,7 @@ class ControlPreferences(BaseModel):
             "secret": True,
         },
         "cliproxy_management_key": {
-            "label": "CLI Proxy management key",
+            "label": "CLI Proxy API management key",
             "section": "Credentials",
             "secret": True,
         },
@@ -126,7 +126,7 @@ class ControlPreferences(BaseModel):
             "secret": True,
         },
         "cliproxy_url": {
-            "label": "CLI Proxy URL",
+            "label": "CLI Proxy API URL",
             "section": "Providers",
             "type": "url",
         },
@@ -299,7 +299,7 @@ class ControlPreferences(BaseModel):
         if any(value <= 0 for value in positive) or self.modal_minimum_containers < 0:
             raise ValueError("numeric configuration values must be positive")
         if bool(self.cliproxy_api_key) != bool(self.cliproxy_url):
-            raise ValueError("CLI Proxy URL and API key must both be configured")
+            raise ValueError("CLI Proxy API URL and API key must both be configured")
         if bool(self.modal_token_id) != bool(self.modal_token_secret):
             raise ValueError("Modal token ID and secret must both be configured")
         if self.salad_api_key and not (self.salad_organisation and self.salad_project):

@@ -1,11 +1,11 @@
 {% macro fields(items) -%}
-{% for field in items %}<label class="form-label"
+<div class="g-3 row">{% for field in items %}<label class="col-12 col-lg-6 form-label"
   >{{ field.label }}{% if field.options %}<select class="form-select form-select-sm" name="{{ field.name }}"{% if field.locked %} disabled{% endif %}>
-    {% for option in field.options %}<option value="{{ option }}"{% if field.value == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
+    {% if field.locked %}<option selected>Environment Controlled</option>{% endif %}
+    {% for option in field.options %}<option value="{{ option }}"{% if not field.locked and field.value == option %} selected{% endif %}>{{ option }}</option>{% endfor %}
   </select>
-  {% elif field.type == "routes" %}<textarea class="font-monospace form-control form-control-sm" name="{{ field.name }}"{% if field.locked %} disabled{% endif %}>{{ field.value | tojson(indent=2) }}</textarea>
-  {% elif field.type == "list" %}<input class="form-control form-control-sm" name="{{ field.name }}" value="{{ field.value | join(', ') }}"{% if field.locked %} disabled{% endif %} />
-  {% else %}<input class="form-control form-control-sm" name="{{ field.name }}" type="{% if field.secret %}password{% elif field.type == 'number' %}number{% elif field.type == 'url' %}url{% else %}text{% endif %}" value="{% if not field.secret %}{{ field.value }}{% endif %}"{% if field.secret %} autocomplete="new-password" placeholder="{% if field.locked %}Environment Controlled{% elif field.configured %}Configured{% endif %}"{% endif %}{% if field.minimum is defined %} min="{{ field.minimum }}"{% endif %}{% if field.locked %} disabled title="Environment Controlled"{% endif %} />{% endif %}
-  {% if field.locked %}<small class="text-secondary">Environment Controlled</small>{% endif %}</label
->{% endfor %}
+  {% elif field.type == "routes" %}<textarea class="font-monospace form-control form-control-sm" name="{{ field.name }}"{% if field.locked %} disabled{% endif %}>{% if field.locked %}Environment Controlled{% else %}{{ field.value | tojson(indent=2) }}{% endif %}</textarea>
+  {% elif field.type == "list" %}<input class="form-control form-control-sm" name="{{ field.name }}" value="{% if field.locked %}Environment Controlled{% else %}{{ field.value | join(', ') }}{% endif %}"{% if field.locked %} disabled{% endif %} />
+  {% else %}<input class="form-control form-control-sm" name="{{ field.name }}" type="{% if field.locked %}text{% elif field.secret %}password{% elif field.type == 'number' %}number{% elif field.type == 'url' %}url{% else %}text{% endif %}" value="{% if field.locked %}Environment Controlled{% elif not field.secret %}{{ field.value }}{% endif %}"{% if field.secret and not field.locked %} autocomplete="new-password" placeholder="{% if field.configured %}Configured{% endif %}"{% endif %}{% if field.minimum is defined and not field.locked %} min="{{ field.minimum }}"{% endif %}{% if field.locked %} disabled title="Environment Controlled"{% endif %} />{% endif %}</label
+>{% endfor %}</div>
 {%- endmacro %}

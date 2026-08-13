@@ -766,6 +766,7 @@ class ControlStore:
         self,
         *,
         limit: int,
+        model: str = "",
         offset: int,
         operation: str = "",
         provider: str = "",
@@ -781,12 +782,16 @@ class ControlStore:
         clauses = ["1 = 1"]
         values: list[object] = []
         for column, value in (
+            ("model", model),
             ("operation", operation),
             ("provider", provider),
             ("status", status),
         ):
             if value:
-                clauses.append(f"{column} = ?")
+                if column == "model":
+                    clauses.append("COALESCE(NULLIF(provider_model, ''), model) = ?")
+                else:
+                    clauses.append(f"{column} = ?")
                 values.append(value)
         searchable = "LOWER(id || ' ' || operation || ' ' || model || ' ' || provider || ' ' || provider_model || ' ' || status || ' ' || parameters_json || ' ' || COALESCE(error, ''))"
         for term in query.casefold().split():
@@ -813,7 +818,7 @@ class ControlStore:
 
     def history_facets(self) -> dict[str, list[str]]:
         with self.lock:
-            return {
+            facets = {
                 column: [
                     str(row["value"])
                     for row in self.connection.execute(
@@ -823,6 +828,16 @@ class ControlStore:
                 ]
                 for column in ("operation", "provider", "status")
             }
+            facets["model"] = [
+                str(row["value"])
+                for row in self.connection.execute(
+                    "SELECT DISTINCT COALESCE(NULLIF(provider_model, ''), model) "
+                    "AS value FROM history "
+                    "WHERE COALESCE(NULLIF(provider_model, ''), model) != '' "
+                    "ORDER BY value"
+                ).fetchall()
+            ]
+            return facets
 
     def history_count(self) -> int:
         with self.lock:

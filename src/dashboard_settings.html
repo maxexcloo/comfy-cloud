@@ -2,7 +2,7 @@
 <div class="mb-3 page-header">
   <div>
     <h2 class="page-title">Settings</h2>
-    <div class="text-secondary">Environment-Controlled Values Are Locked.</div>
+    <div class="text-secondary">Control And Worker Configuration.</div>
   </div>
 </div>
 <form action="/settings" method="post">
@@ -11,9 +11,9 @@
   {% for category, groups in settings.categories.items() %}
   <article class="card mb-3 settings-category shadow-sm">
     <header class="card-header"><h2 class="card-title">{{ category }}</h2></header>
-    <div class="card-body settings-groups">
+    <div class="card-body g-3 row">
       {% for group, fields in groups.items() %}
-      <fieldset>
+      <fieldset class="col-12 col-xl-6">
         <legend>{{ group }}</legend>
         {{ ui.fields(fields) }}
       </fieldset>

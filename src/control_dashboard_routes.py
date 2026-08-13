@@ -83,7 +83,7 @@ async def dashboard_js() -> Response:
 
 def settings_group(name: str) -> tuple[str, str]:
     if name.startswith("cliproxy_"):
-        return "Providers", "CLI Proxy"
+        return "Providers", "CLI Proxy API"
     if name.startswith("modal_"):
         return "Providers", "Modal"
     if name.startswith("runpod_"):
@@ -136,12 +136,32 @@ def provider_fields(
     description: dict[str, object], provider_id: str
 ) -> list[dict[str, object]]:
     prefix = PROVIDER_SETTINGS_PREFIXES.get(provider_id, "")
+    label_prefixes = {
+        "modal": "Modal ",
+        "runpod": "RunPod ",
+        "runpod-pod": "RunPod ",
+        "salad": "SaladCloud ",
+        "vast": "Vast.Ai ",
+        "vast-pod": "Vast.Ai ",
+    }
+    cliproxy_labels = {
+        "cliproxy_api_key": "API Key",
+        "cliproxy_management_key": "Management Key",
+        "cliproxy_url": "URL",
+    }
+    fields = []
+    for field in description["fields"]:
+        name = str(field["name"])
+        if not prefix or not name.startswith(prefix):
+            continue
+        prepared = prepare_field(field)
+        if name in cliproxy_labels:
+            prepared["label"] = cliproxy_labels[name]
+        elif label_prefix := label_prefixes.get(provider_id):
+            prepared["label"] = str(prepared["label"]).removeprefix(label_prefix)
+        fields.append(prepared)
     return sorted(
-        (
-            prepare_field(field)
-            for field in description["fields"]
-            if prefix and str(field["name"]).startswith(prefix)
-        ),
+        fields,
         key=lambda item: str(item["label"]).casefold(),
     )
 
@@ -273,6 +293,7 @@ async def history(request: Request) -> Response:
         return error("page must be a number", 400, "invalid_request")
     query = request.query_params.get("q", "").strip()
     operation = request.query_params.get("operation", "")
+    model = request.query_params.get("model", "")
     provider = request.query_params.get("provider", "")
     status = request.query_params.get("status", "")
     sort = request.query_params.get("sort", "created_at")
@@ -282,6 +303,7 @@ async def history(request: Request) -> Response:
     result = controller.store.history_page(
         direction=direction,
         limit=PAGE_SIZE,
+        model=model,
         offset=(page - 1) * PAGE_SIZE,
         operation=operation,
         provider=provider,
@@ -295,12 +317,14 @@ async def history(request: Request) -> Response:
         "dashboard_history.html",
         "history",
         filters={
+            "model": model,
             "operation": operation,
             "provider": provider,
             "q": query,
             "status": status,
         },
         history=pagination_context(request, result, page, PAGE_SIZE),
+        models=facets["model"],
         operations=facets["operation"],
         providers=facets["provider"],
         sort=sort,

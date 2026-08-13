@@ -522,12 +522,9 @@ async def test_server_rendered_settings_require_csrf(monkeypatch, tmp_path):
     assert 'action="/settings"' in page.text
     assert 'name="csrf_token"' in page.text
     assert "Modal Token ID" not in page.text
-    assert [
-        field["name"]
-        for field in provider_fields(
-            app.state.controller.describe_configuration(), "modal"
-        )
-    ] == [
+    description = app.state.controller.describe_configuration()
+    modal_fields = provider_fields(description, "modal")
+    assert [field["name"] for field in modal_fields] == [
         "modal_gpu",
         "modal_minimum_containers",
         "modal_model_volume",
@@ -535,6 +532,17 @@ async def test_server_rendered_settings_require_csrf(monkeypatch, tmp_path):
         "modal_token_id",
         "modal_token_secret",
     ]
+    assert [field["label"] for field in modal_fields] == [
+        "GPU",
+        "Minimum Containers",
+        "Model Volume",
+        "Scaledown Window (Seconds)",
+        "Token ID",
+        "Token Secret",
+    ]
+    assert [
+        field["label"] for field in provider_fields(description, "cliproxyapi")
+    ] == ["API Key", "Management Key", "URL"]
     assert rejected.status_code == 403
     assert provider_rejected.status_code == 403
     await app.state.controller.close()
@@ -933,7 +941,12 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
         "public/image",
         '{"prompt":"Wombat Needle Portrait","seed":42}',
     )
-    store.update_history(history_id, "completed", provider="worker")
+    store.update_history(
+        history_id,
+        "completed",
+        provider="worker",
+        provider_model="flux-2-klein-9b/text-to-image",
+    )
     output = tmp_path / "wombat.png"
     output.write_bytes(b"image")
     store.save_media(
@@ -966,6 +979,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
             "/history",
             params={
                 "operation": "image_generation",
+                "model": "flux-2-klein-9b/text-to-image",
                 "provider": "worker",
                 "q": "wombat needle",
                 "status": "completed",
@@ -1043,6 +1057,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert "Apply Filters" not in history.text
     assert "data-live-filter" in history.text
     assert "Provider Model:" not in history.text
+    assert '<option value="flux-2-klein-9b/text-to-image" selected>' in history.text
     assert "Unrelated Prompt" not in history.text
     assert 'data-media-id="1"' in history.text
     assert 'id="media-dialog"' in media.text

@@ -43,21 +43,7 @@
   min-width: 145px;
 }
 
-/* Settings and usage */
-.settings-groups {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
-.settings-groups fieldset {
-  min-width: 0;
-}
-
-.settings-groups fieldset:target {
-  outline: 1px solid var(--tblr-primary);
-}
-
+/* Usage */
 .usage-list {
   min-width: 180px;
 }

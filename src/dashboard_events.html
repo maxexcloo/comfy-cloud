@@ -34,7 +34,7 @@
       {% endfor %}
     </select></label
   >
-  <a class="btn btn-outline-secondary btn-sm" href="/events" role="button">Clear</a>
+  <div class="align-self-end"><a class="btn btn-outline-secondary btn-sm" href="/events" role="button">Clear</a></div>
 </form>
 <section class="card shadow-sm" aria-label="Events">
   <div class="table-responsive"><table class="card-table table table-bordered table-hover table-striped table-vcenter">
@@ -50,7 +50,7 @@
     <tbody>
       {% for item in events["items"] %}
       <tr>
-        <td>
+        <td class="text-nowrap">
           <time data-timestamp="{{ item.created_at }}"
             >{{ item.created_at }}</time
           >
@@ -61,7 +61,7 @@
             >{{ item.provider }}</a
           >{% else %}—{% endif %}
         </td>
-        <td>
+        <td class="text-nowrap">
           {% if item.request_id %}<a
             href="/history?q={{ item.request_id | urlencode }}"
             ><code>{{ item.request_id }}</code></a

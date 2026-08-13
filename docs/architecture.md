@@ -19,7 +19,7 @@ state, so provider-assigned addresses can change across starts without changing
 deployment configuration.
 
 Provider integrations are isolated by platform. Modal, RunPod, SaladCloud, Vast.ai
-and CLI Proxy each own their discovery, status, lifecycle additions and telemetry in
+and CLI Proxy API each own their discovery, status, lifecycle additions and telemetry in
 separate modules behind a small common adapter contract. The controller coordinates
 adapters without containing provider API URLs or response-shape branching.
 

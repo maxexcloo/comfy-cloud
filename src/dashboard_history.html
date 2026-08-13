@@ -14,17 +14,17 @@
       value="{{ filters.q }}"
       placeholder="Prompt, Model, Provider, Or Request ID"
   /></label>
-  {% for name, values in [("operation", operations), ("provider", providers),
+  {% for name, values in [("model", models), ("operation", operations), ("provider", providers),
   ("status", statuses)] %}<label class="form-label"
     >{{ name | title }}<select class="form-select form-select-sm" name="{{ name }}">
       <option value="">All {{ name | title }}</option>
       {% for value in values %}
       <option value="{{ value }}"{% if filters[name] == value %} selected{% endif %}>
-        {% if name == "provider" %}{{ value }}{% else %}{{ value.replace("_", " ") | title }}{% endif %}
+        {% if name in ["model", "provider"] %}{{ value }}{% else %}{{ value.replace("_", " ") | title }}{% endif %}
       </option>
       {% endfor %}
     </select></label
-  >{% endfor %} <a class="btn btn-outline-secondary btn-sm" href="/history" role="button">Clear</a>
+  >{% endfor %} <div class="align-self-end"><a class="btn btn-outline-secondary btn-sm" href="/history" role="button">Clear</a></div>
 </form>
 <section class="card shadow-sm" aria-label="History">
   <div class="table-responsive"><table class="card-table table table-bordered table-hover table-striped table-vcenter">
