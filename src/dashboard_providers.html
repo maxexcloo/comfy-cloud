@@ -2,7 +2,7 @@
 <div class="mb-3 page-header">
   <div>
     <h2 class="page-title">Providers</h2>
-    <div class="text-secondary">Compute Availability And Lifecycle Controls.</div>
+    <div class="text-secondary">Compute availability and lifecycle controls.</div>
   </div>
 </div>
 <section class="card shadow-sm" aria-label="Providers"{% if not refresh %} data-provider-refresh{% endif %}>
@@ -29,20 +29,20 @@
                 rel="noopener noreferrer"
                 ><strong>{{ provider.platform }}</strong></a
               >{% else %}<strong>{{ provider.platform }}</strong>{% endif %}
-              <div class="small text-secondary">
-                {{ provider.id }}{% if provider.configured %} · <a data-log-provider="{{ provider.id }}" data-log-url="/providers/{{ provider.id }}/logs" href="/providers/{{ provider.id }}/logs">Logs</a>{% endif %}{% if provider.settings %} · <button class="btn btn-link btn-sm p-0" data-provider-settings="{{ provider.id }}" type="button">Settings</button>{% endif %}
-              </div>
+              <div class="small text-secondary">{{ provider.id }}</div>
             </div>
           </div>
         </td>
         <td>{{ provider.type.replace("-", " ") | title }}</td>
         <td data-provider-status>
           {{ ui.badge(provider.state) }}
+          {% if provider.configured %}<div class="small"><a data-log-provider="{{ provider.id }}" data-log-url="/providers/{{ provider.id }}/logs" href="/providers/{{ provider.id }}/logs">Logs</a></div>{% endif %}
         </td>
         <td data-provider-usage>{{ ui.usage(provider.usage) }}</td>
-        <td><code>{{ provider.resource_id or "—" }}</code></td>
+        <td><span class="font-monospace text-secondary">{{ provider.resource_id or "—" }}</span></td>
         <td>
           <div class="d-flex flex-wrap gap-1">
+            {% if provider.settings %}<button class="btn btn-outline-secondary btn-sm" data-provider-settings="{{ provider.id }}" type="button">Settings</button>{% endif %}
             {% for action in provider.actions %}
             <form
               action="/providers/{{ provider.id }}/actions/{{ action.name }}"

@@ -1022,6 +1022,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
         < providers.text.index('href="/settings"')
     )
     assert 'aria-current="page" href="/providers">Providers' in providers.text
+    assert "Compute availability and lifecycle controls." in providers.text
     assert 'class="skip-link"' in providers.text
     assert "@tabler/core@1.4.0/dist/css/tabler.min.css" in providers.text
     assert (
@@ -1034,6 +1035,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert "table-bordered" in providers.text
     assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text
+    assert '<span class="font-monospace text-secondary">—</span>' in providers.text
     assert 'id="log-dialog"' in providers.text
     assert 'id="deploy-dialog"' in providers.text
     assert ">Logs</button" not in providers.text

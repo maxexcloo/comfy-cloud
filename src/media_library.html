@@ -4,7 +4,7 @@
 {% block title %}Media{% endblock %}
 
 {% block content %}
-<div class="mb-3 page-header"><div><h2 class="page-title">Media</h2><div class="text-secondary">Generated Images, Videos, Prompts, And Lineage.</div></div></div>
+<div class="mb-3 page-header"><div><h2 class="page-title">Media</h2><div class="text-secondary">Generated images, videos, prompts, and lineage.</div></div></div>
 <form class="card card-body filters media-filters shadow-sm" id="media-search" action="/media/search" data-live-filter method="post">
   <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
   <label class="form-label search">Search<input class="form-control form-control-sm" autofocus name="q" placeholder="Fuzzy Search Prompts And Parameters" value="{{ query }}" /></label>
