@@ -970,7 +970,11 @@ class Controller:
         actions = self.available_actions(runtime.config.id)
         deploy_action = actions.get("deploy")
         start_action = actions.get("start")
-        if deploy_action is None and start_action is None:
+        if (
+            deploy_action is None
+            and start_action is None
+            and runtime.config.management is None
+        ):
             runtime.state = "starting"
             return
         async with runtime.lock:

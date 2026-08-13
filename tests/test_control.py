@@ -1804,6 +1804,36 @@ providers:
     await controller.close()
 
 
+@pytest.mark.asyncio
+async def test_existing_managed_provider_waits_for_readiness(tmp_path):
+    configured = settings(tmp_path)
+    configured.config_file.write_text(
+        """
+models: []
+providers:
+  - id: modal
+    api_key: worker-key
+    management:
+      function: serve
+      kind: modal
+      name: comfy-control
+    startup_timeout: 10
+""".lstrip()
+    )
+    app = create_app(configured)
+    controller = app.state.controller
+    runtime = controller.providers["modal"]
+    controller.store.save_provider_resource("modal", "comfy-control")
+    controller.check_ready = AsyncMock(side_effect=[False, False, True])
+    controller.action = AsyncMock()
+
+    await controller.ensure_ready(runtime, "request-1")
+
+    controller.action.assert_not_awaited()
+    assert controller.check_ready.await_count == 3
+    await controller.close()
+
+
 def test_usage_normalisers():
     assert usage_with_resource_cost(
         {

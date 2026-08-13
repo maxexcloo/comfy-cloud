@@ -21,7 +21,7 @@ from comfy_control.provider_deployment import (
     terminate_provider,
 )
 from comfy_control.provider_deployment_common import configured_environment
-from comfy_control.provider_modal import ModalAdapter
+from comfy_control.provider_modal import ModalAdapter, provider_action
 
 ROOT = Path(__file__).parents[1]
 
@@ -118,6 +118,31 @@ def test_worker_ui_credentials_match_control_ui_credentials(tmp_path):
 
     assert environment["CONTROL_UI_PASSWORD"] == "ui-password"
     assert environment["CONTROL_UI_USERNAME"] == "comfy"
+
+
+def test_modal_termination_uses_supported_cli(tmp_path, monkeypatch):
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    monkeypatch.setattr(
+        "comfy_control.provider_modal.subprocess.run",
+        lambda command, **kwargs: calls.append((command, kwargs)),
+    )
+
+    response = provider_action(
+        "modal-terminate", provider("modal"), preferences(), settings(tmp_path)
+    )
+
+    assert response.status_code == 200
+    response.raise_for_status()
+    assert calls == [
+        (
+            ["modal", "app", "stop", "comfy-control", "--yes"],
+            {
+                "capture_output": True,
+                "check": True,
+                "text": True,
+            },
+        )
+    ]
 
 
 def test_modal_function_uses_controller_python(monkeypatch):

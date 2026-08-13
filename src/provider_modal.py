@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import os
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -13,20 +14,32 @@ from .control_preferences import ControlPreferences
 from .provider_adapter import BaseAdapter, Discovery, ProviderNotDeployed
 
 
+def action_response(status: str) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={"status": status},
+        request=httpx.Request("POST", "https://modal.invalid/internal"),
+    )
+
+
 def provider_action(
     action: str,
     provider: Provider,
     preferences: ControlPreferences,
     settings: ControlSettings,
 ) -> httpx.Response:
-    import modal
-
     management = provider.management
     if management is None or management.kind != "modal":
         raise RuntimeError("Modal action requires Modal provider management")
     if action == "modal-terminate":
-        modal.App.lookup(management.name).stop()
-        return httpx.Response(200, json={"status": "terminated"})
+        subprocess.run(
+            ["modal", "app", "stop", management.name, "--yes"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        return action_response("terminated")
+
     path = Path(
         os.getenv("CONTROL_MODAL_APP", "/opt/comfy-control/deploy/modal/app.py")
     )
@@ -42,7 +55,7 @@ def provider_action(
     environment["CONTROL_UI_PASSWORD"] = settings.ui_password
     environment["CONTROL_UI_USERNAME"] = settings.ui_username
     module.build_app(environment).deploy(name=management.name)
-    return httpx.Response(200, json={"status": "deployed"})
+    return action_response("deployed")
 
 
 def status(app_name: str, function_name: str) -> dict[str, object]:
