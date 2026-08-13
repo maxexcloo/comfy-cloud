@@ -22,6 +22,28 @@ def provider_error_detail(response: httpx.Response) -> str | None:
             candidate = candidate.get("message")
         if isinstance(candidate, str) and candidate.strip():
             return " ".join(candidate.split())[:300]
+    errors = value.get("errors")
+    if isinstance(errors, dict):
+        for field, candidates in sorted(errors.items()):
+            if isinstance(candidates, str):
+                candidates = [candidates]
+            if isinstance(candidates, list):
+                candidate = next(
+                    (item for item in candidates if isinstance(item, str)), None
+                )
+                if candidate and candidate.strip():
+                    return f"{field}: {' '.join(candidate.split())}"[:300]
+    if isinstance(errors, list):
+        for candidate in errors:
+            if not isinstance(candidate, dict):
+                continue
+            for name in ("message", "detail"):
+                message = candidate.get(name)
+                if isinstance(message, str) and message.strip():
+                    return " ".join(message.split())[:300]
+    title = value.get("title")
+    if isinstance(title, str) and title.strip():
+        return " ".join(title.split())[:300]
     return None
 
 

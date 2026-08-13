@@ -87,6 +87,18 @@ def test_provider_error_message_includes_safe_structured_detail() -> None:
         == "provider API returned HTTP 400: GPU class is unavailable"
     )
 
+    response = httpx.Response(
+        400,
+        json={"errors": {"readiness_probe.http.scheme": ["Field is required"]}},
+        request=request,
+    )
+    assert (
+        exception_message(
+            httpx.HTTPStatusError("bad request", request=request, response=response)
+        )
+        == "provider API returned HTTP 400: readiness_probe.http.scheme: Field is required"
+    )
+
 
 def write_config(path: Path) -> None:
     path.write_text(
