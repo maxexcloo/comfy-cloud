@@ -24,7 +24,13 @@ def jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def parameters(kind: str, exported_at: int, record: dict[str, Any]) -> str:
+def parameters(
+    kind: str,
+    exported_at: int,
+    record: dict[str, Any],
+    *,
+    asset: dict[str, Any] | None = None,
+) -> str:
     value: dict[str, Any] = {
         "import": {
             "exported_at": exported_at,
@@ -35,6 +41,8 @@ def parameters(kind: str, exported_at: int, record: dict[str, Any]) -> str:
     }
     if prompt := record.get("original_prompt"):
         value["prompt"] = prompt
+    if asset is not None:
+        value["asset"] = asset
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
 
@@ -80,11 +88,12 @@ def import_grok_catalogue(source: Path, database: Path) -> dict[str, int]:
             operation = (
                 "image_generation" if media_type == "image" else "video_generation"
             )
+            asset = assets_by_id.get(media_id)
             if store.save_imported_history(
                 history_id,
                 operation,
                 "grok-imagine",
-                parameters("generated_media", exported_at, item),
+                parameters("generated_media", exported_at, item, asset=asset),
                 created_at=exported_at,
                 provider="grok",
                 provider_model="grok-imagine",
@@ -92,7 +101,6 @@ def import_grok_catalogue(source: Path, database: Path) -> dict[str, int]:
                 counts["histories_created"] += 1
             else:
                 counts["histories_skipped"] += 1
-            asset = assets_by_id.get(media_id)
             if asset is None:
                 counts[f"{media_type}_metadata_only"] += 1
                 continue

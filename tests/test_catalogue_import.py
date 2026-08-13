@@ -96,6 +96,10 @@ def test_grok_catalogue_import_is_complete_and_idempotent(tmp_path: Path) -> Non
     assert len(histories) == 4
     assert media["count"] == 2
     assert store.media_library(query="wombat")["count"] == 1
+    linked_history = next(
+        item for item in histories if item["id"] == "grok_media_image-1"
+    )
+    assert linked_history["parameters"]["asset"]["content_hash"] == linked_hash
     assert any(
         use["source_url"] == "https://grok.example/image-1"
         for item in media["data"]
