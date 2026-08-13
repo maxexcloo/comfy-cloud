@@ -6,7 +6,7 @@
     <div class="text-secondary">Controller and provider activity.</div>
   </div>
 </div>
-<form class="card card-body filters" data-live-filter method="get">
+<form class="card card-body filters shadow-sm" data-live-filter method="get">
   <input name="sort" type="hidden" value="{{ sort }}" /><input name="direction" type="hidden" value="{{ sort_direction }}" />
   <label class="form-label search"
     >Search<input class="form-control form-control-sm"
@@ -36,8 +36,8 @@
   >
   <a class="btn btn-outline-secondary btn-sm" href="/events" role="button">Clear</a>
 </form>
-<section class="card" aria-label="Events">
-  <div class="table-responsive"><table class="card-table table table-hover table-striped table-vcenter">
+<section class="card shadow-sm" aria-label="Events">
+  <div class="table-responsive"><table class="card-table table table-bordered table-hover table-striped table-vcenter">
     <thead>
       <tr>
         {{ ui.sortable_header("Date", "created_at", sort_links, sort, sort_direction) }}

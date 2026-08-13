@@ -37,6 +37,34 @@ for (const form of document.querySelectorAll("[data-live-filter]")) {
   form.addEventListener("change", submit);
 }
 
+const providerRefresh = document.querySelector("[data-provider-refresh]");
+if (providerRefresh) {
+  providerRefresh.setAttribute("aria-busy", "true");
+  const url = new URL(window.location);
+  url.searchParams.set("telemetry", "true");
+  fetch(url)
+    .then((response) => {
+      if (!response.ok) throw new Error("Provider telemetry could not be loaded");
+      return response.text();
+    })
+    .then((html) => {
+      const refreshed = new DOMParser().parseFromString(html, "text/html");
+      for (const source of refreshed.querySelectorAll("#provider-rows > tr")) {
+        const target = document.getElementById(source.id);
+        for (const selector of [
+          "[data-provider-status]",
+          "[data-provider-usage]",
+        ]) {
+          const current = target?.querySelector(selector);
+          const replacement = source.querySelector(selector);
+          if (current && replacement) current.replaceWith(replacement);
+        }
+      }
+    })
+    .catch(() => {})
+    .finally(() => providerRefresh.removeAttribute("aria-busy"));
+}
+
 const closeDialogOnBackdrop = (dialog) => {
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) dialog.close();
@@ -64,36 +92,36 @@ if (logDialog) {
       logBody.scrollHeight - logBody.scrollTop - logBody.clientHeight <= 24;
     updateLogFollowState();
   });
-  for (const button of document.querySelectorAll("[data-log-url]")) {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      if (logSource) logSource.close();
-      document.getElementById("log-title").textContent =
-        `${button.dataset.logProvider} Logs`;
-      following = true;
-      updateLogFollowState();
-      logOutput.textContent = "Connecting…";
-      logDialog.showModal();
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-log-url]");
+    if (!button) return;
+    event.preventDefault();
+    if (logSource) logSource.close();
+    document.getElementById("log-title").textContent =
+      `${button.dataset.logProvider} Logs`;
+    following = true;
+    updateLogFollowState();
+    logOutput.textContent = "Connecting…";
+    logDialog.showModal();
+    scrollLogsToBottom();
+    logSource = new EventSource(button.dataset.logUrl);
+    logSource.onmessage = (message) => {
+      const data = JSON.parse(message.data);
+      const lines = [...data.entries]
+        .reverse()
+        .map(
+          (item) =>
+            `${formatDate(item.created_at)} ${item.source || "Provider"} ${item.level.toUpperCase()} ${item.message}${item.request_id ? ` [${item.request_id}]` : ""}`,
+        );
+      if (data.worker_error)
+        lines.push(`Worker Logs Unavailable: ${data.worker_error}`);
+      logOutput.textContent = lines.join("\n");
       scrollLogsToBottom();
-      logSource = new EventSource(button.dataset.logUrl);
-      logSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        const lines = [...data.entries]
-          .reverse()
-          .map(
-            (item) =>
-              `${formatDate(item.created_at)} ${item.source || "Provider"} ${item.level.toUpperCase()} ${item.message}${item.request_id ? ` [${item.request_id}]` : ""}`,
-          );
-        if (data.worker_error)
-          lines.push(`Worker Logs Unavailable: ${data.worker_error}`);
-        logOutput.textContent = lines.join("\n");
-        scrollLogsToBottom();
-      };
-      logSource.onerror = () => {
-        if (!logOutput.textContent) logOutput.textContent = "Waiting For Logs…";
-      };
-    });
-  }
+    };
+    logSource.onerror = () => {
+      if (!logOutput.textContent) logOutput.textContent = "Waiting For Logs…";
+    };
+  });
   logDialog
     .querySelector("[data-close]")
     .addEventListener("click", () => logDialog.close());

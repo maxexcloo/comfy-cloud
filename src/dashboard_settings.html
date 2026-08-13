@@ -9,7 +9,7 @@
   <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
   <input name="revision" type="hidden" value="{{ settings.revision }}" />
   {% for category, groups in settings.categories.items() %}
-  <article class="card mb-3 settings-category">
+  <article class="card mb-3 settings-category shadow-sm">
     <header class="card-header"><h2 class="card-title">{{ category }}</h2></header>
     <div class="card-body settings-groups">
       {% for group, fields in groups.items() %}

@@ -18,6 +18,7 @@ from .control_dashboard import ui_authorised, valid_csrf
 from .control_dashboard_templates import pagination_context, render_dashboard
 from .control_http import error
 from .control_preferences import ConfigurationConflict
+from .provider_adapters import provider_panel_url
 
 DASHBOARD_CSS = resources.files("comfy_control").joinpath("dashboard.css").read_text()
 DASHBOARD_JS = resources.files("comfy_control").joinpath("dashboard.js").read_text()
@@ -142,10 +143,20 @@ async def providers(request: Request) -> Response:
     controller = request.app.state.controller
     if not ui_authorised(request, request.app.state.settings):
         return RedirectResponse("/login", status_code=303)
-    async with controller.configuration_lock:
-        usage, statuses = await asyncio.gather(
-            controller.usage(), controller.provider_statuses()
-        )
+    refresh = request.query_params.get("telemetry") == "true"
+    if refresh:
+        async with controller.configuration_lock:
+            usage, statuses = await asyncio.gather(
+                controller.usage(), controller.provider_statuses()
+            )
+    else:
+        usage = {name: runtime.usage for name, runtime in controller.providers.items()}
+        statuses = {
+            name: {
+                "panel_url": provider_panel_url(runtime.config, {}, runtime.base_url)
+            }
+            for name, runtime in controller.providers.items()
+        }
     items = [
         {
             "actions": [
@@ -182,7 +193,11 @@ async def providers(request: Request) -> Response:
         if provider["id"] not in controller.providers
     ]
     return render_dashboard(
-        request, "dashboard_providers.html", "providers", providers=items
+        request,
+        "dashboard_providers.html",
+        "providers",
+        providers=items,
+        refresh=refresh,
     )
 
 

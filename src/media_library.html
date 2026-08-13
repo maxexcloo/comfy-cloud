@@ -5,7 +5,7 @@
 
 {% block content %}
 <div class="mb-3 page-header"><div><h2 class="page-title">Media</h2><div class="text-secondary">Generated images, videos, prompts, and lineage.</div></div></div>
-<form class="card card-body filters media-filters" id="media-search" action="/media/search" data-live-filter method="post">
+<form class="card card-body filters media-filters shadow-sm" id="media-search" action="/media/search" data-live-filter method="post">
   <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
   <label class="form-label search">Search<input class="form-control form-control-sm" autofocus name="q" placeholder="Fuzzy Search Prompts And Parameters" value="{{ query }}" /></label>
   <label class="form-label">Sort<select class="form-select form-select-sm" data-current="{{ sort }}" name="sort">{% for value, label in [("relevance", "Relevance"), ("newest", "Newest"), ("oldest", "Oldest"), ("model", "Model"), ("provider", "Provider"), ("content_type", "Media Type")] %}<option value="{{ value }}">{{ label }}</option>{% endfor %}<optgroup label="Parameter">{% for value in facets.parameters %}<option value="parameter:{{ value }}">{{ value }}</option>{% endfor %}</optgroup></select></label>
@@ -16,7 +16,7 @@
   <div class="ms-auto"><a class="btn btn-outline-secondary btn-sm" href="/media" role="button">Clear</a></div>
 </form>
 <div class="media-grid">
-  {% for item in media["items"] %}<button class="card media-card" aria-label="Open {{ item.model }} Media Details" data-media-id="{{ item.asset_id }}" type="button"><span class="media-thumb">{% if item.content_type.startswith("video/") %}<video muted preload="metadata" src="/media/{{ item.asset_id }}/content"></video>{% else %}<img alt="" loading="lazy" src="/media/{{ item.asset_id }}/content" />{% endif %}<span class="badge bg-secondary-lt media-role">{{ item.role | title }}</span></span><span class="card-body media-summary"><strong>{{ item.model }}</strong><small>{{ item.operation.replace("_", " ") | title }} · {{ item.provider or "No Provider" }}{% if item.provider_model and item.provider_model != item.model %} · {{ item.provider_model }}{% endif %}</small><span class="prompt-clamp">{{ item.prompt or "No Prompt" }}</span><small><time data-timestamp="{{ item.created_at }}">{{ item.created_at }}</time> · {{ item.filename }}</small></span></button>
+  {% for item in media["items"] %}<button class="card media-card shadow-sm" aria-label="Open {{ item.model }} Media Details" data-media-id="{{ item.asset_id }}" type="button"><span class="media-thumb">{% if item.content_type.startswith("video/") %}<video muted preload="metadata" src="/media/{{ item.asset_id }}/content"></video>{% else %}<img alt="" loading="lazy" src="/media/{{ item.asset_id }}/content" />{% endif %}<span class="badge bg-secondary-lt media-role">{{ item.role | title }}</span></span><span class="card-body media-summary"><strong>{{ item.model }}</strong><small>{{ item.operation.replace("_", " ") | title }} · {{ item.provider or "No Provider" }}{% if item.provider_model and item.provider_model != item.model %} · {{ item.provider_model }}{% endif %}</small><span class="prompt-clamp">{{ item.prompt or "No Prompt" }}</span><small><time data-timestamp="{{ item.created_at }}">{{ item.created_at }}</time> · {{ item.filename }}</small></span></button>
   {% else %}<section class="card card-body empty-state"><h3>No Media Found</h3><p>Adjust the filters or search words and try again.</p></section>{% endfor %}
 </div>
 {{ ui.pagination(media) }}

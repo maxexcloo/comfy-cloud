@@ -6,8 +6,8 @@
     <div class="text-secondary">Compute availability and lifecycle controls.</div>
   </div>
 </div>
-<section class="card" aria-label="Providers">
-  <div class="table-responsive"><table class="card-table table table-hover table-striped table-vcenter">
+<section class="card shadow-sm" aria-label="Providers"{% if not refresh %} data-provider-refresh{% endif %}>
+  <div class="table-responsive"><table class="card-table table table-bordered table-hover table-striped table-vcenter">
     <thead>
       <tr>
         <th>Provider</th>
@@ -18,7 +18,7 @@
         <th>Actions</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="provider-rows">
       {% for provider in providers %}
       <tr id="{{ provider.id }}">
         <td>
@@ -36,7 +36,7 @@
           </div>
         </td>
         <td>{{ provider.type.replace("-", " ") | title }}</td>
-        <td>
+        <td data-provider-status>
           {% if provider.configured %}<a
             class="badge bg-primary-lt state-log-link"
             href="/providers/{{ provider.id }}/logs"
@@ -46,7 +46,7 @@
           >{% else %}{{ ui.badge(provider.state) }}{% endif %}
           {% if provider.settings_url %}<a class="badge bg-secondary-lt ms-1" href="{{ provider.settings_url }}">Settings</a>{% endif %}
         </td>
-        <td>{{ ui.usage(provider.usage) }}</td>
+        <td data-provider-usage>{{ ui.usage(provider.usage) }}</td>
         <td><code>{{ provider.resource_id or "—" }}</code></td>
         <td>
           <div class="d-flex flex-wrap gap-1">

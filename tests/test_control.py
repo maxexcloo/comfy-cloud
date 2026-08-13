@@ -307,7 +307,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert home.headers["location"] == "/media"
     assert dashboard.status_code == 200
     assert (
-        '<table class="card-table table table-hover table-striped table-vcenter">'
+        '<table class="card-table table table-bordered table-hover table-striped table-vcenter">'
         in dashboard.text
     )
     assert 'href="/history"' in dashboard.text
@@ -935,6 +935,9 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     ) as client:
         await sign_in(client)
         providers = await client.get("/providers")
+        provider_telemetry = await client.get(
+            "/providers", params={"telemetry": "true"}
+        )
         events = await client.get(
             "/events",
             params={"level": "warning", "provider": "worker", "q": "wombat needle"},
@@ -975,6 +978,8 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
         await log_stream.body_iterator.aclose()
 
     assert providers.status_code == 200
+    assert provider_telemetry.status_code == 200
+    assert "data-provider-refresh" not in provider_telemetry.text
     assert (
         providers.text.index('href="/media"')
         < providers.text.index('href="/providers"')
@@ -990,6 +995,9 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
         in providers.text
     )
     assert 'href="/assets/dashboard.css?current"' in providers.text
+    assert 'data-bs-theme="light"' in providers.text
+    assert "data-provider-refresh" in providers.text
+    assert "table-bordered" in providers.text
     assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text
     assert "state-log-link" in providers.text
