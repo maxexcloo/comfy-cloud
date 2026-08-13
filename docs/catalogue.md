@@ -66,6 +66,10 @@ comfy-control models-fetch profiles/flux-2-klein-9b.yaml \
   --models-dir /opt/ComfyUI/models
 ```
 
+Automation can read or replace the desired set through the typed current API at
+`GET` or `PUT /ops/model-packages`; its schema is published in `/openapi.json`.
+Changing the desired set takes effect when managed providers are next deployed.
+
 Hugging Face sources require a pinned `revision` and may use `HF_TOKEN`. Civitai
 sources use an immutable `version_id`, a ComfyUI-relative `destination`, and may
 include `filename` and `sha256`.

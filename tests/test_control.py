@@ -417,6 +417,44 @@ async def test_settings_are_admin_only_versioned_and_encrypted(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_model_packages_have_a_typed_current_api(tmp_path):
+    app = create_app(settings(tmp_path))
+    headers = {"Authorization": "Bearer control-key"}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        denied = await client.get("/ops/model-packages")
+        initial = await client.get("/ops/model-packages", headers=headers)
+        updated = await client.put(
+            "/ops/model-packages",
+            headers=headers,
+            json={
+                "installed": ["krea-2-turbo"],
+                "revision": initial.json()["revision"],
+            },
+        )
+        invalid = await client.put(
+            "/ops/model-packages",
+            headers=headers,
+            json={
+                "installed": ["unknown"],
+                "revision": updated.json()["revision"],
+            },
+        )
+
+    assert denied.status_code == 401
+    assert [package["id"] for package in initial.json()["data"]] == [
+        "flux-2-klein-9b",
+        "krea-2-turbo",
+        "minimax-h3",
+    ]
+    assert updated.status_code == 200
+    assert app.state.controller.preferences.model_profiles == ["krea-2-turbo"]
+    assert invalid.status_code == 400
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
 async def test_environment_overrides_database_and_locks_settings(tmp_path, monkeypatch):
     monkeypatch.setenv("HF_TOKEN", "environment-secret")
     monkeypatch.setenv("WORKER_IMAGE", "registry.example/environment:worker")

@@ -63,6 +63,22 @@ class PreferenceUpdate(BaseModel):
     values: dict[str, Any]
 
 
+class ModelPackage(BaseModel):
+    id: str
+    installed: bool
+    operations: list[str]
+
+
+class ModelPackageList(BaseModel):
+    data: list[ModelPackage]
+    revision: int
+
+
+class ModelPackageUpdate(BaseModel):
+    installed: list[str]
+    revision: int
+
+
 class HistoryPage(BaseModel):
     data: list[dict[str, Any]]
     pagination: Pagination
