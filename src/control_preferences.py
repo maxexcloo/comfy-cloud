@@ -12,16 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .control_store import ControlStore
 
 DEFAULT_WORKER_IMAGE = "ghcr.io/maxexcloo/comfy-control:worker"
-WORKER_IMAGE_REPOSITORY = "ghcr.io/maxexcloo/comfy-control"
-
-
-def revision_worker_image() -> str | None:
-    revision = os.getenv("COMFY_CONTROL_REVISION", "").strip().lower()
-    if len(revision) < 7 or any(
-        character not in "0123456789abcdef" for character in revision
-    ):
-        return None
-    return f"{WORKER_IMAGE_REPOSITORY}:sha-{revision[:7]}-worker"
 
 
 class ConfigurationConflict(RuntimeError):
@@ -353,9 +343,7 @@ class ControlPreferences(BaseModel):
             vast_maximum_workers=int(os.getenv("VAST_MAXIMUM_WORKERS", "1")),
             vast_minimum_gpu_memory_gb=int(minimum_gpu_memory or "24"),
             worker_api_key=os.getenv("WORKER_API_KEY", ""),
-            worker_image=os.getenv("WORKER_IMAGE")
-            or revision_worker_image()
-            or DEFAULT_WORKER_IMAGE,
+            worker_image=os.getenv("WORKER_IMAGE") or DEFAULT_WORKER_IMAGE,
         )
 
     @classmethod
@@ -366,8 +354,6 @@ class ControlPreferences(BaseModel):
             for field, names in cls.ENVIRONMENT_FIELDS.items()
             if any(name in os.environ for name in names)
         }
-        if "WORKER_IMAGE" not in os.environ and revision_worker_image() is not None:
-            overrides["worker_image"] = configured["worker_image"]
         return overrides
 
     def environment(self) -> dict[str, str]:

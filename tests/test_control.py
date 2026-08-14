@@ -666,7 +666,7 @@ async def test_environment_overrides_database_and_locks_settings(tmp_path, monke
     await restored.state.controller.close()
 
 
-def test_packaged_revision_locks_matching_worker_image(monkeypatch):
+def test_packaged_revision_uses_live_worker_image(monkeypatch):
     monkeypatch.delenv("WORKER_IMAGE", raising=False)
     monkeypatch.setenv(
         "COMFY_CONTROL_REVISION", "cd208c90d415720d783711fa6cbc7b14d1d71c05"
@@ -675,10 +675,8 @@ def test_packaged_revision_locks_matching_worker_image(monkeypatch):
     configured = ControlPreferences.from_environment()
     overrides = ControlPreferences.environment_overrides()
 
-    assert configured.worker_image == (
-        "ghcr.io/maxexcloo/comfy-control:sha-cd208c9-worker"
-    )
-    assert overrides["worker_image"] == configured.worker_image
+    assert configured.worker_image == "ghcr.io/maxexcloo/comfy-control:worker"
+    assert "worker_image" not in overrides
 
 
 @pytest.mark.asyncio
