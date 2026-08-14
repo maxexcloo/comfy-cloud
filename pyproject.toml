@@ -50,3 +50,6 @@ testpaths = ["tests"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["comfy_control"]
+
+[tool.uv]
+override-dependencies = ["cryptography>=50,<51", "pillow>=12.3,<13"]
