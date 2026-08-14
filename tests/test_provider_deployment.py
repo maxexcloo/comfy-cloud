@@ -203,7 +203,7 @@ def test_modal_termination_uses_supported_cli(tmp_path, monkeypatch):
     ]
 
 
-def test_modal_function_uses_controller_python(monkeypatch):
+def test_modal_function_preserves_worker_python(monkeypatch):
     function_options: dict[str, object] = {}
     image_options: dict[str, object] = {}
     models = object()
@@ -232,13 +232,7 @@ def test_modal_function_uses_controller_python(monkeypatch):
 
     runpy.run_path(ROOT / "deploy/modal/app.py")
 
-    assert image_options["add_python"] == (
-        f"{sys.version_info.major}.{sys.version_info.minor}"
-    )
-    assert image_options["force_build"] is True
-    assert image_options["setup_dockerfile_commands"] == [
-        "ENV PATH=/usr/local/bin:/usr/bin:/bin"
-    ]
+    assert image_options == {"force_build": True}
     assert "serialized" not in function_options
     assert function_options["env"] == {
         "MODELS_DIR": "/models",
