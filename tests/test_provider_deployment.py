@@ -225,6 +225,22 @@ def test_worker_receives_only_models_routed_to_its_provider(tmp_path):
     assert environment["MODEL_PROFILES"] == "flux-2-klein-9b,image-upscale"
 
 
+@pytest.mark.asyncio
+async def test_vast_pod_options_include_storage_and_port_requirements(monkeypatch):
+    monkeypatch.setenv("VAST_API_KEY", "vast-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["allocated_storage"] == 100
+        assert payload["direct_port_count"] == {"gte": 1}
+        return httpx.Response(200, json={"offers": []})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        options = await deployment_options(client, provider("vast-pod"), preferences())
+
+    assert options == []
+
+
 def test_runpod_serverless_uses_initialising_health_check():
     specification = json.loads((ROOT / "deploy/runpod/serverless.json").read_text())
 

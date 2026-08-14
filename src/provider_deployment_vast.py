@@ -52,16 +52,25 @@ async def deployment_options(
         preferences.vast_minimum_gpu_memory_gb,
         required_vram_gb(worker_model_profiles(provider, preferences)),
     )
+    filters: dict[str, object] = {
+        **offer_filters(minimum_vram),
+        "limit": 20,
+        "order": [["dph_total", "asc"]],
+    }
+    if provider.management is not None and provider.management.kind == "vast-pod":
+        specification = deployment_asset("vast", "pod.json")
+        filters.update(
+            {
+                "allocated_storage": specification.get("disk_space", 100),
+                "direct_port_count": {"gte": 1},
+            }
+        )
     response = await checked_request(
         client,
         "POST",
         "https://console.vast.ai/api/v0/bundles/",
         headers=headers(preferences),
-        json={
-            **offer_filters(minimum_vram),
-            "limit": 20,
-            "order": [["dph_total", "asc"]],
-        },
+        json=filters,
     )
     payload = response.json()
     values = payload.get("offers", []) if isinstance(payload, dict) else []
