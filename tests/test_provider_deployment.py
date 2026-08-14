@@ -387,6 +387,32 @@ async def test_deploys_salad_group_with_discovered_gpu(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_vast_pod_requires_worker_compatible_gpu(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAST_API_KEY", "vast-key")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        if request.url.path == "/api/v0/bundles/":
+            assert payload["compute_cap"] == {"gte": 750}
+            assert payload["cuda_max_good"] == {"gte": 13.0}
+            assert payload["gpu_ram"] == {"gte": 24000}
+            return httpx.Response(
+                200,
+                json={"offers": [{"dph_total": 0.4, "id": 123}]},
+            )
+        assert request.url.path == "/api/v0/asks/123/"
+        assert payload["target_state"] == "running"
+        return httpx.Response(200, json={"new_contract": 456, "success": True})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await deploy_provider(
+            client, provider("vast-pod"), preferences(), settings(tmp_path)
+        )
+
+    assert response.json()["new_contract"] == 456
+
+
+@pytest.mark.asyncio
 async def test_deploys_and_terminates_vast_serverless(tmp_path, monkeypatch):
     monkeypatch.setenv("VAST_API_KEY", "vast-key")
     methods: list[tuple[str, str]] = []
@@ -403,6 +429,7 @@ async def test_deploys_and_terminates_vast_serverless(tmp_path, monkeypatch):
             return httpx.Response(200, json={"result": 7})
         if request.method == "POST" and request.url.path == "/api/v0/workergroups/":
             payload = json.loads(request.content)
+            assert "compute_cap>=750" in payload["search_params"]
             assert "cuda_max_good>=13.0" in payload["search_params"]
             assert "gpu_ram>=24000" in payload["search_params"]
             assert payload["gpu_ram"] == 24

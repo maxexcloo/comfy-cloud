@@ -16,6 +16,22 @@ from .provider_deployment_common import (
     response_json,
 )
 
+MINIMUM_COMPUTE_CAPABILITY = 750
+MINIMUM_CUDA_VERSION = 13.0
+
+
+def offer_filters(minimum_vram: int) -> dict[str, object]:
+    return {
+        "compute_cap": {"gte": MINIMUM_COMPUTE_CAPABILITY},
+        "cuda_max_good": {"gte": MINIMUM_CUDA_VERSION},
+        "gpu_ram": {"gte": minimum_vram * 1000},
+        "num_gpus": {"eq": 1},
+        "rentable": {"eq": True},
+        "rented": {"eq": False},
+        "type": "ondemand",
+        "verified": {"eq": True},
+    }
+
 
 def headers(preferences: ControlPreferences) -> dict[str, str]:
     return {
@@ -36,14 +52,9 @@ async def deployment_options(
         "https://console.vast.ai/api/v0/bundles/",
         headers=headers(preferences),
         json={
-            "gpu_ram": {"gte": minimum_vram * 1000},
+            **offer_filters(minimum_vram),
             "limit": 20,
-            "num_gpus": {"eq": 1},
             "order": [["dph_total", "asc"]],
-            "rentable": {"eq": True},
-            "rented": {"eq": False},
-            "type": "ondemand",
-            "verified": {"eq": True},
         },
     )
     payload = response.json()
@@ -53,8 +64,10 @@ async def deployment_options(
     return [
         {
             "available": True,
+            "compute_capability": item.get("compute_cap"),
             "cpu_cores": item.get("cpu_cores_effective") or item.get("cpu_cores"),
             "cost_per_hour": item.get("dph_total"),
+            "cuda_maximum": item.get("cuda_max_good"),
             "id": str(item.get("id") or item.get("ask_contract_id")),
             "label": str(item.get("gpu_name") or "Vast GPU"),
             "location": item.get("geolocation") or item.get("country"),
@@ -91,16 +104,11 @@ async def deploy_pod(
         "https://console.vast.ai/api/v0/bundles/",
         headers=headers(preferences),
         json={
+            **offer_filters(minimum_vram),
             "allocated_storage": specification.get("disk_space", 100),
             "direct_port_count": {"gte": 1},
-            "gpu_ram": {"gte": minimum_vram * 1000},
             "limit": 20,
-            "num_gpus": {"eq": 1},
             "order": [["dph_total", "asc"]],
-            "rentable": {"eq": True},
-            "rented": {"eq": False},
-            "type": "ondemand",
-            "verified": {"eq": True},
         },
     )
     payload = search.json()
@@ -208,7 +216,8 @@ async def deploy_serverless(
             "search_params": (
                 "verified=true rentable=true rented=false num_gpus=1 "
                 f"gpu_ram>={minimum_vram * 1000} "
-                "cuda_max_good>=13.0"
+                f"compute_cap>={MINIMUM_COMPUTE_CAPABILITY} "
+                f"cuda_max_good>={MINIMUM_CUDA_VERSION}"
             ),
             "template_hash": str(template["hash_id"]),
             "test_workers": 1,

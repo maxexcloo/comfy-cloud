@@ -282,6 +282,12 @@ if (deployDialog) {
       option.available ? "Available" : "Currently Unavailable",
       option.compatible ? "Model Compatible" : "Insufficient GPU Memory",
       option.memory_gb ? `${option.memory_gb} GB GPU Memory` : null,
+      Number.isFinite(option.compute_capability)
+        ? `Compute ${Number(option.compute_capability) / 100}`
+        : null,
+      Number.isFinite(option.cuda_maximum)
+        ? `CUDA ${option.cuda_maximum}`
+        : null,
       option.cpu_cores ? `${option.cpu_cores} vCPU` : null,
       option.system_memory_gb
         ? `${option.system_memory_gb} GB System Memory`
