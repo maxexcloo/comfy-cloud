@@ -561,7 +561,7 @@ if (mediaDialog) {
     }
     const item = await response.json();
     activeItem = item;
-    const use = item.uses[0] || {};
+    const use = item.primary_use || {};
     const actualModel = use.provider_model || use.model;
     document.getElementById("media-kind").textContent = mediaKind(
       item.content_type,
@@ -638,8 +638,15 @@ if (mediaDialog) {
         "div",
         "align-items-center d-flex justify-content-between",
       );
+      const operation = titleText(generation.operation);
       heading.append(
-        element("h3", "", `${titleText(generation.operation)} Details`),
+        element(
+          "h3",
+          "",
+          generation.role === "input"
+            ? `Used For ${operation}`
+            : `${operation} Details`,
+        ),
       );
       const historyLink = element("a", "", "View History");
       historyLink.href = `/history?q=${encodeURIComponent(generation.history_id)}`;

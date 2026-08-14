@@ -1524,6 +1524,10 @@ class ControlStore:
             use = dict(row)
             use["parameters"] = json.loads(str(use.pop("parameters_json")))
             detail["uses"].append(use)
+        detail["primary_use"] = next(
+            (use for use in reversed(detail["uses"]) if use["role"] == "output"),
+            detail["uses"][-1] if detail["uses"] else None,
+        )
         detail["lineage"] = self.media_lineage(asset_id)
         return detail
 

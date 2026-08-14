@@ -318,6 +318,11 @@ async def test_media_ui_edits_and_upscales_images(tmp_path: Path):
     assert upscaled.status_code == 200
     assert edited.json()["asset_id"] != source["asset_id"]
     assert upscaled.json()["asset_id"] != source["asset_id"]
+    source_detail = app.state.controller.store.media_detail(source["asset_id"])
+    assert source_detail is not None
+    assert source_detail["primary_use"]["history_id"] == history_id
+    assert source_detail["primary_use"]["operation"] == "image_generation"
+    assert source_detail["primary_use"]["role"] == "output"
     assert (
         app.state.controller.store.media_lineage(edited.json()["asset_id"])["sources"][
             0
@@ -1413,6 +1418,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert "closeDialogOnBackdrop(mediaDialog)" in javascript.text
     assert "closeDialogOnBackdrop(logDialog)" in javascript.text
     assert 'element("a", "", "View Source")' in javascript.text
+    assert "`Used For ${operation}`" in javascript.text
     assert "form.requestSubmit()" in javascript.text
     assert "closeDialogOnBackdrop(deployDialog)" in javascript.text
     assert "logBody.scrollTop = logBody.scrollHeight" in javascript.text
