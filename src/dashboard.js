@@ -284,6 +284,7 @@ if (deployDialog) {
             .replace(/\b\w/g, (letter) => letter.toUpperCase())
         : null,
       option.available ? "Available" : "Currently Unavailable",
+      option.availability ? `${option.availability} Stock` : null,
       option.compatible ? "Model Compatible" : "Insufficient GPU Memory",
       option.memory_gb ? `${option.memory_gb} GB GPU Memory` : null,
       Number.isFinite(option.compute_capability)

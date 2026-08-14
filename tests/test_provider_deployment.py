@@ -102,8 +102,10 @@ async def test_runpod_deployment_options_include_live_cost_and_availability(
         return runpod_gpu_response(
             [
                 {
-                    "communityCloud": True,
-                    "communityPrice": 0.42,
+                    "community": {
+                        "stockStatus": "High",
+                        "uninterruptablePrice": 0.42,
+                    },
                     "displayName": "NVIDIA L40S",
                     "id": "L40S",
                     "memoryInGb": 48,
@@ -116,6 +118,7 @@ async def test_runpod_deployment_options_include_live_cost_and_availability(
 
     assert options == [
         {
+            "availability": "High",
             "available": True,
             "compatible": True,
             "cost_per_hour": 0.42,
@@ -130,20 +133,24 @@ async def test_runpod_deployment_options_include_live_cost_and_availability(
 
 
 @pytest.mark.asyncio
-async def test_runpod_pod_options_separate_cloud_prices(monkeypatch):
+async def test_runpod_pod_options_use_live_cloud_stock(monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
 
     def handler(_: httpx.Request) -> httpx.Response:
         return runpod_gpu_response(
             [
                 {
-                    "communityCloud": True,
-                    "communityPrice": 0.3,
+                    "community": {
+                        "stockStatus": None,
+                        "uninterruptablePrice": None,
+                    },
                     "displayName": "NVIDIA L40S",
                     "id": "L40S",
                     "memoryInGb": 48,
-                    "secureCloud": True,
-                    "securePrice": 0.5,
+                    "secure": {
+                        "stockStatus": "Medium",
+                        "uninterruptablePrice": 0.5,
+                    },
                 }
             ]
         )
@@ -154,9 +161,10 @@ async def test_runpod_pod_options_separate_cloud_prices(monkeypatch):
         )
 
     assert [(option["id"], option["cost_per_hour"]) for option in options] == [
-        ("community:L40S", 0.3),
         ("secure:L40S", 0.5),
+        ("community:L40S", None),
     ]
+    assert [option["available"] for option in options] == [True, False]
 
 
 def test_worker_ui_credentials_match_control_ui_credentials(tmp_path):
@@ -274,7 +282,10 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
             return runpod_gpu_response(
                 [
                     {
-                        "communityCloud": True,
+                        "community": {
+                            "stockStatus": "High",
+                            "uninterruptablePrice": 0.79,
+                        },
                         "displayName": "NVIDIA L40S",
                         "id": "NVIDIA L40S",
                         "memoryInGb": 48,
@@ -324,7 +335,10 @@ async def test_updates_existing_runpod_serverless_template(tmp_path, monkeypatch
             return runpod_gpu_response(
                 [
                     {
-                        "communityCloud": True,
+                        "community": {
+                            "stockStatus": "High",
+                            "uninterruptablePrice": 0.79,
+                        },
                         "displayName": "NVIDIA L40S",
                         "id": "NVIDIA L40S",
                         "memoryInGb": 48,
@@ -377,13 +391,19 @@ async def test_runpod_filters_gpus_by_installed_model_vram(tmp_path, monkeypatch
             return runpod_gpu_response(
                 [
                     {
-                        "communityCloud": True,
+                        "community": {
+                            "stockStatus": "High",
+                            "uninterruptablePrice": 0.34,
+                        },
                         "displayName": "NVIDIA GeForce RTX 4090",
                         "id": "NVIDIA GeForce RTX 4090",
                         "memoryInGb": 24,
                     },
                     {
-                        "communityCloud": True,
+                        "community": {
+                            "stockStatus": "High",
+                            "uninterruptablePrice": 0.79,
+                        },
                         "displayName": "NVIDIA L40S",
                         "id": "NVIDIA L40S",
                         "memoryInGb": 48,

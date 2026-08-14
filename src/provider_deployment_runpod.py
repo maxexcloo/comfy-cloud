@@ -43,8 +43,11 @@ async def deployment_options(
         headers=headers(preferences),
         json={
             "query": (
-                "query { gpuTypes { id displayName memoryInGb secureCloud "
-                "communityCloud securePrice communityPrice } }"
+                "query { gpuTypes { id displayName memoryInGb "
+                "community: lowestPrice(input: { gpuCount: 1, secureCloud: false }) "
+                "{ stockStatus uninterruptablePrice } "
+                "secure: lowestPrice(input: { gpuCount: 1, secureCloud: true }) "
+                "{ stockStatus uninterruptablePrice } } }"
             )
         },
     )
@@ -63,32 +66,49 @@ async def deployment_options(
             "memory_gb": item.get("memoryInGb"),
             "provider_option_id": identifier,
         }
+        variants = []
+        for cloud in ("Community", "Secure"):
+            price = item.get(cloud.casefold())
+            price = price if isinstance(price, dict) else {}
+            cost = price.get("uninterruptablePrice")
+            stock = price.get("stockStatus")
+            available = (
+                isinstance(cost, (float, int))
+                and isinstance(stock, str)
+                and stock.casefold() != "none"
+            )
+            variants.append(
+                {
+                    **common,
+                    "availability": stock,
+                    "available": available,
+                    "cloud": cloud,
+                    "cost_per_hour": cost,
+                    "id": f"{cloud.casefold()}:{identifier}",
+                    "variant": cloud.casefold(),
+                }
+            )
         if cloud_variants:
-            for cloud, available_key, price_key in (
-                ("Community", "communityCloud", "communityPrice"),
-                ("Secure", "secureCloud", "securePrice"),
-            ):
-                if not item.get(available_key):
-                    continue
-                options.append(
-                    {
-                        **common,
-                        "available": True,
-                        "cloud": cloud,
-                        "cost_per_hour": item.get(price_key),
-                        "id": f"{cloud.casefold()}:{identifier}",
-                        "variant": cloud.casefold(),
-                    }
-                )
+            options.extend(variants)
         else:
+            available_variants = [
+                variant for variant in variants if variant["available"]
+            ]
+            selected = min(
+                available_variants or variants,
+                key=lambda variant: (
+                    not bool(variant["available"]),
+                    variant["cost_per_hour"]
+                    if isinstance(variant["cost_per_hour"], (float, int))
+                    else float("inf"),
+                ),
+            )
             options.append(
                 {
                     **common,
-                    "available": bool(
-                        item.get("secureCloud") or item.get("communityCloud")
-                    ),
-                    "cost_per_hour": item.get("securePrice")
-                    or item.get("communityPrice"),
+                    "availability": selected["availability"],
+                    "available": selected["available"],
+                    "cost_per_hour": selected["cost_per_hour"],
                     "id": identifier,
                 }
             )
