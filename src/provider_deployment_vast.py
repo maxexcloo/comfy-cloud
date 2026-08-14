@@ -264,7 +264,7 @@ async def deploy_serverless(
             "max_workers": preferences.vast_maximum_workers,
             "search_params": (
                 "verified=true rentable=true rented=false num_gpus=1 "
-                f"gpu_ram>={minimum_vram * 1000} "
+                f"gpu_ram>={minimum_vram} "
                 f"compute_cap>={MINIMUM_COMPUTE_CAPABILITY} "
                 f"cuda_max_good>={MINIMUM_CUDA_VERSION} "
                 f"reliability>={MINIMUM_RELIABILITY}"

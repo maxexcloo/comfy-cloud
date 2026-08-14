@@ -568,7 +568,7 @@ async def test_deploys_and_terminates_vast_serverless(tmp_path, monkeypatch):
             payload = json.loads(request.content)
             assert "compute_cap>=750" in payload["search_params"]
             assert "cuda_max_good>=13.0" in payload["search_params"]
-            assert "gpu_ram>=24000" in payload["search_params"]
+            assert "gpu_ram>=24" in payload["search_params"]
             assert "reliability>=0.99" in payload["search_params"]
             assert payload["gpu_ram"] == 24
             return httpx.Response(200, json={"id": 9})
