@@ -97,7 +97,7 @@
       <form class="dialog-body modal-body" id="deploy-form" method="post">
         <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
         <input id="deploy-memory" name="memory_gb" type="hidden" />
-        <label class="form-label">GPU<select class="form-select" id="deploy-gpu" name="gpu"><option value="">Loading Availability…</option></select></label>
+        <label class="form-label">Instance<select class="form-select" id="deploy-gpu" name="gpu"><option value="">Loading Availability…</option></select></label>
         <div class="alert alert-info" id="deploy-option-detail">Checking Current Availability And Pricing…</div>
         <div class="align-items-center d-flex gap-2"><button class="btn btn-primary" type="submit">Deploy</button><button class="btn btn-outline-secondary" data-close type="button">Cancel</button></div>
       </form>

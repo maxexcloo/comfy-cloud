@@ -1915,10 +1915,10 @@ def test_usage_normalisers():
         "value": 3.25,
     }
     assert normalise_usage("runpod", {"data": {"myself": {"credit": 42}}}) == [
-        {"label": "Credit balance", "unit": "USD", "value": 42}
+        {"label": "Credit", "unit": "USD", "value": 42}
     ]
     assert normalise_usage("vast", {"credit": 25}) == [
-        {"label": "Credit balance", "unit": "USD", "value": 25}
+        {"label": "Credit", "unit": "USD", "value": 25}
     ]
     assert normalise_usage(
         "cliproxyapi",

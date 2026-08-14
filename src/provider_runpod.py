@@ -92,19 +92,19 @@ class RunPodAdapter(BaseAdapter):
                     f"Bearer {required_preference('RUNPOD_API_KEY', preferences)}"
                 )
             },
-            json={"query": "query { myself { currentSpendPerHr spendLimit } }"},
+            json={"query": "query { myself { clientBalance currentSpendPerHr } }"},
         )
         response.raise_for_status()
         payload = response.json()
         metrics = []
         for label, path, unit in (
+            ("Credit", "data.myself.clientBalance", "USD"),
             ("Current Spend", "data.myself.currentSpendPerHr", "USD/hour"),
-            ("Spend Limit", "data.myself.spendLimit", "USD"),
         ):
             if (value := first_number(payload, path)) is not None:
                 metrics.append({"label": label, "unit": unit, "value": value})
         if not metrics:
-            raise RuntimeError("RunPod usage response did not include spend data")
+            raise RuntimeError("RunPod usage response did not include account data")
         return metrics
 
 

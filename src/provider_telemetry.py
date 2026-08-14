@@ -19,13 +19,15 @@ def normalise_usage(kind: str, value: object) -> list[dict[str, object]]:
     if kind == "runpod":
         credit = first_number(
             value,
+            "clientBalance",
             "credit",
             "balance",
+            "data.myself.clientBalance",
             "data.myself.credit",
             "data.myself.balance",
         )
         if credit is not None:
-            return [{"label": "Credit balance", "unit": "USD", "value": credit}]
+            return [{"label": "Credit", "unit": "USD", "value": credit}]
         records = value if isinstance(value, list) else []
         amount = sum(
             float(record.get("amount", 0))
@@ -36,7 +38,7 @@ def normalise_usage(kind: str, value: object) -> list[dict[str, object]]:
     if kind == "vast":
         credit = first_number(value, "credit", "balance")
         if credit is not None:
-            metrics.append({"label": "Credit balance", "unit": "USD", "value": credit})
+            metrics.append({"label": "Credit", "unit": "USD", "value": credit})
         for label, paths in (
             ("Current spend", ("current_spend", "currentSpend")),
             ("Total spent", ("total_spent", "totalSpent", "spent")),
@@ -54,7 +56,17 @@ def normalise_usage(kind: str, value: object) -> list[dict[str, object]]:
             "current_credit",
         )
         if credit is not None:
-            metrics.append({"label": "Credit balance", "unit": "USD", "value": credit})
+            metrics.append({"label": "Credit", "unit": "USD", "value": credit})
+        spend = first_number(
+            value,
+            "current_spend",
+            "currentSpend",
+            "month_spend",
+            "monthSpend",
+            "spend",
+        )
+        if spend is not None:
+            metrics.append({"label": "Spend", "unit": "USD", "value": spend})
         used = first_number(value, "container_groups_quotas.container_replicas_used")
         quota = first_number(value, "container_groups_quotas.container_replicas_quota")
         if used is not None and quota is not None and quota > 0:

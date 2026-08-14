@@ -53,10 +53,18 @@ async def deployment_options(
     return [
         {
             "available": True,
+            "cpu_cores": item.get("cpu_cores_effective") or item.get("cpu_cores"),
             "cost_per_hour": item.get("dph_total"),
             "id": str(item.get("id") or item.get("ask_contract_id")),
             "label": str(item.get("gpu_name") or "Vast GPU"),
+            "location": item.get("geolocation") or item.get("country"),
             "memory_gb": round(float(item.get("gpu_ram", 0)) / 1000, 1),
+            "reliability": item.get("reliability2"),
+            "system_memory_gb": (
+                round(float(item.get("cpu_ram", 0)) / 1000, 1)
+                if item.get("cpu_ram") is not None
+                else None
+            ),
         }
         for item in values
         if isinstance(item, dict) and (item.get("id") or item.get("ask_contract_id"))

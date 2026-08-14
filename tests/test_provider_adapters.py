@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -5,6 +7,7 @@ from comfy_control.control_config import Provider
 from comfy_control.control_preferences import ControlPreferences
 from comfy_control.provider_adapters import provider_adapter, provider_panel_url
 from comfy_control.provider_runpod import RunPodServerlessAdapter
+from comfy_control.provider_vast import VastServerlessAdapter
 
 
 @pytest.mark.parametrize(
@@ -92,7 +95,7 @@ async def test_runpod_usage_reports_account_spend():
         request = received
         return httpx.Response(
             200,
-            json={"data": {"myself": {"currentSpendPerHr": 1.25, "spendLimit": 80}}},
+            json={"data": {"myself": {"clientBalance": 42, "currentSpendPerHr": 1.25}}},
         )
 
     provider = Provider.model_validate(
@@ -114,11 +117,52 @@ async def test_runpod_usage_reports_account_spend():
         )
 
     assert metrics == [
+        {"label": "Credit", "unit": "USD", "value": 42},
         {"label": "Current Spend", "unit": "USD/hour", "value": 1.25},
-        {"label": "Spend Limit", "unit": "USD", "value": 80},
     ]
     assert request is not None
     assert request.headers["authorization"] == "Bearer runpod-key"
+
+
+@pytest.mark.asyncio
+async def test_vast_usage_reports_credit_and_month_spend():
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/api/v0/users/current/":
+            return httpx.Response(200, json={"balance": 25})
+        return httpx.Response(
+            200,
+            json={"results": [{"amount": 1.25}, {"amount": 2}]},
+        )
+
+    provider = Provider.model_validate(
+        {
+            "api_key": "worker-key",
+            "id": "vast",
+            "management": {"kind": "vast", "name": "comfy-control"},
+        }
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        metrics = await VastServerlessAdapter("vast").usage(
+            client,
+            provider,
+            ControlPreferences(vast_api_key="vast-key"),
+            lambda _: {},
+        )
+
+    assert metrics == [
+        {
+            "label": "Credit",
+            "maximum": 28.25,
+            "unit": "USD",
+            "value": 25,
+        },
+        {"label": "Month Spend", "unit": "USD", "value": 3.25},
+    ]
+    assert requests[1].url.params["limit"] == "500"
+    assert "day" in json.loads(requests[1].url.params["select_filters"])
 
 
 @pytest.mark.parametrize(

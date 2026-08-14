@@ -70,6 +70,15 @@
   min-width: 180px;
 }
 
+.usage-list progress {
+  height: 0.3rem;
+  margin-bottom: 0.2rem;
+}
+
+.usage-meter + .usage-meter {
+  margin-top: 0.3rem;
+}
+
 /* Dialogs */
 .dialog-body pre {
   margin: 0;

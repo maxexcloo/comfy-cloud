@@ -274,8 +274,23 @@ if (deployDialog) {
       return;
     }
     const details = [
+      option.type
+        ? option.type
+            .replaceAll("-", " ")
+            .replace(/\b\w/g, (letter) => letter.toUpperCase())
+        : null,
       option.available ? "Available" : "Currently Unavailable",
+      option.compatible ? "Model Compatible" : "Insufficient GPU Memory",
       option.memory_gb ? `${option.memory_gb} GB GPU Memory` : null,
+      option.cpu_cores ? `${option.cpu_cores} vCPU` : null,
+      option.system_memory_gb
+        ? `${option.system_memory_gb} GB System Memory`
+        : null,
+      option.cloud ? `${option.cloud} Cloud` : null,
+      option.location || null,
+      Number.isFinite(option.reliability)
+        ? `${(Number(option.reliability) * 100).toFixed(1)}% Reliability`
+        : null,
       Number.isFinite(option.cost_per_hour)
         ? `$${Number(option.cost_per_hour).toFixed(3)} Per Hour`
         : "Provider-Managed Pricing",
@@ -300,15 +315,16 @@ if (deployDialog) {
       deploymentOptions = (await response.json()).options;
       deployGpu.replaceChildren(
         new Option("Automatic (Recommended)", ""),
-        ...deploymentOptions.map(
-          (item) =>
-            new Option(
-              `${item.label}${Number.isFinite(item.cost_per_hour) ? ` · $${Number(item.cost_per_hour).toFixed(3)}/h` : ""}`,
-              item.id,
-              false,
-              false,
-            ),
-        ),
+        ...deploymentOptions.map((item) => {
+          const option = new Option(
+            `${item.label}${Number.isFinite(item.cost_per_hour) ? ` · $${Number(item.cost_per_hour).toFixed(3)}/h` : ""}`,
+            item.id,
+            false,
+            false,
+          );
+          option.disabled = !item.available || !item.compatible;
+          return option;
+        }),
       );
       deployGpu.disabled = false;
       updateDeployDetail();

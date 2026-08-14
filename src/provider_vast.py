@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import json
+from collections.abc import Callable
+from datetime import UTC, datetime
+
 import httpx
 
 from .control_config import Provider, ProviderAction
@@ -11,7 +16,7 @@ from .provider_adapter import (
     required_mapping_value,
 )
 from .provider_deployment_common import required_preference
-from .provider_telemetry import selected_fields
+from .provider_telemetry import first_number, selected_fields
 
 
 def vast_headers(preferences: ControlPreferences) -> dict[str, str]:
@@ -20,7 +25,72 @@ def vast_headers(preferences: ControlPreferences) -> dict[str, str]:
     }
 
 
-class VastPodAdapter(BaseAdapter):
+async def vast_usage(
+    client: httpx.AsyncClient,
+    preferences: ControlPreferences,
+) -> list[dict[str, object]]:
+    headers = vast_headers(preferences)
+    now = datetime.now(UTC)
+    account, charges = await asyncio.gather(
+        client.get("https://console.vast.ai/api/v0/users/current/", headers=headers),
+        client.get(
+            "https://console.vast.ai/api/v0/charges",
+            headers=headers,
+            params={
+                "limit": 500,
+                "select_filters": json.dumps(
+                    {
+                        "day": {
+                            "gte": int(
+                                now.replace(
+                                    day=1, hour=0, minute=0, second=0
+                                ).timestamp()
+                            ),
+                            "lte": int(now.timestamp()),
+                        }
+                    },
+                    separators=(",", ":"),
+                ),
+            },
+        ),
+    )
+    account.raise_for_status()
+    charges.raise_for_status()
+    charge_payload = charges.json()
+    records = (
+        charge_payload.get("results", []) if isinstance(charge_payload, dict) else []
+    )
+    spend = sum(
+        float(record.get("amount", 0)) for record in records if isinstance(record, dict)
+    )
+    balance = first_number(account.json(), "balance", "credit")
+    metrics: list[dict[str, object]] = []
+    if balance is not None:
+        metric: dict[str, object] = {
+            "label": "Credit",
+            "unit": "USD",
+            "value": balance,
+        }
+        if balance >= 0 and spend > 0:
+            metric["maximum"] = round(balance + spend, 4)
+        metrics.append(metric)
+    metrics.append({"label": "Month Spend", "unit": "USD", "value": round(spend, 4)})
+    return metrics
+
+
+class VastAdapter(BaseAdapter):
+    async def usage(
+        self,
+        client: httpx.AsyncClient,
+        provider: Provider,
+        preferences: ControlPreferences,
+        history_usage: Callable[[str], dict[str, int]],
+    ) -> list[dict[str, object]]:
+        del provider, history_usage
+        return await vast_usage(client, preferences)
+
+
+class VastPodAdapter(VastAdapter):
     def actions(
         self, provider: Provider, preferences: ControlPreferences
     ) -> dict[str, ProviderAction]:
@@ -96,7 +166,7 @@ class VastPodAdapter(BaseAdapter):
         )
 
 
-class VastServerlessAdapter(BaseAdapter):
+class VastServerlessAdapter(VastAdapter):
     async def discover(
         self,
         client: httpx.AsyncClient,

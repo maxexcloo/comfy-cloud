@@ -43,6 +43,13 @@ async def deployment_options(
     return [
         {
             "available": bool(item.get("secureCloud") or item.get("communityCloud")),
+            "cloud": (
+                "Secure"
+                if item.get("secureCloud")
+                else "Community"
+                if item.get("communityCloud")
+                else None
+            ),
             "cost_per_hour": item.get("securePrice") or item.get("communityPrice"),
             "id": str(item.get("id")),
             "label": str(item.get("displayName") or item.get("id")),

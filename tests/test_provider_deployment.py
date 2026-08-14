@@ -103,10 +103,14 @@ async def test_runpod_deployment_options_include_live_cost_and_availability(
     assert options == [
         {
             "available": True,
+            "cloud": "Community",
+            "compatible": True,
             "cost_per_hour": 0.42,
             "id": "L40S",
             "label": "NVIDIA L40S",
             "memory_gb": 48,
+            "minimum_memory_gb": 24,
+            "type": "pod",
         }
     ]
 
