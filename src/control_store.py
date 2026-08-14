@@ -558,7 +558,8 @@ class ControlStore:
             """
             SELECT history.id, history.created_at, history.parameters_json
             FROM history
-            WHERE NOT EXISTS (
+            WHERE parameters_json LIKE '%"input_media"%'
+              AND NOT EXISTS (
                 SELECT 1 FROM generation_media
                 WHERE generation_media.history_id = history.id
                   AND generation_media.role = 'input'
@@ -749,13 +750,24 @@ class ControlStore:
                         int(row["id"]),
                     ),
                 )
-            unindexed = self.connection.execute(
-                """
-                SELECT history.id, history.parameters_json FROM history
-                LEFT JOIN generation_search ON generation_search.history_id = history.id
-                WHERE generation_search.history_id IS NULL
-                """
-            ).fetchall()
+            history_count = self.connection.execute(
+                "SELECT COUNT(*) FROM history"
+            ).fetchone()[0]
+            search_count = self.connection.execute(
+                "SELECT COUNT(*) FROM generation_search"
+            ).fetchone()[0]
+            unindexed = (
+                self.connection.execute(
+                    """
+                    SELECT history.id, history.parameters_json FROM history
+                    LEFT JOIN generation_search
+                      ON generation_search.history_id = history.id
+                    WHERE generation_search.history_id IS NULL
+                    """
+                ).fetchall()
+                if search_count != history_count
+                else []
+            )
             for row in unindexed:
                 self._index_history(str(row["id"]), str(row["parameters_json"]))
 
@@ -966,7 +978,9 @@ class ControlStore:
                 """
                 SELECT id, operation, model, provider, provider_model, status,
                        created_at, updated_at, parameters_json, error
-                FROM history ORDER BY created_at, rowid
+                FROM history
+                WHERE provider_model = ''
+                ORDER BY created_at, rowid
                 """
             ).fetchall()
         return [dict(row) for row in rows]
