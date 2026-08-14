@@ -29,6 +29,10 @@ from comfy_control.provider_modal import ModalAdapter, provider_action
 ROOT = Path(__file__).parents[1]
 
 
+def runpod_gpu_response(items: list[dict[str, object]]) -> httpx.Response:
+    return httpx.Response(200, json={"data": {"gpuTypes": items}})
+
+
 def settings(tmp_path: Path) -> ControlSettings:
     return ControlSettings(
         api_key="control-key",
@@ -94,10 +98,9 @@ async def test_runpod_deployment_options_include_live_cost_and_availability(
     monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/v1/gpuTypes"
-        return httpx.Response(
-            200,
-            json=[
+        assert request.url.path == "/graphql"
+        return runpod_gpu_response(
+            [
                 {
                     "communityCloud": True,
                     "communityPrice": 0.42,
@@ -105,7 +108,7 @@ async def test_runpod_deployment_options_include_live_cost_and_availability(
                     "id": "L40S",
                     "memoryInGb": 48,
                 }
-            ],
+            ]
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
@@ -131,9 +134,8 @@ async def test_runpod_pod_options_separate_cloud_prices(monkeypatch):
     monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
 
     def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json=[
+        return runpod_gpu_response(
+            [
                 {
                     "communityCloud": True,
                     "communityPrice": 0.3,
@@ -143,7 +145,7 @@ async def test_runpod_pod_options_separate_cloud_prices(monkeypatch):
                     "secureCloud": True,
                     "securePrice": 0.5,
                 }
-            ],
+            ]
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
@@ -268,17 +270,16 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
 
     async def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request.url.path)
-        if request.url.path == "/v1/gpuTypes":
-            return httpx.Response(
-                200,
-                json=[
+        if request.url.path == "/graphql":
+            return runpod_gpu_response(
+                [
                     {
                         "communityCloud": True,
                         "displayName": "NVIDIA L40S",
                         "id": "NVIDIA L40S",
                         "memoryInGb": 48,
                     }
-                ],
+                ]
             )
         if request.method == "GET":
             return httpx.Response(200, json=[])
@@ -306,7 +307,7 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
     assert requests == [
         "/v1/templates",
         "/v1/templates",
-        "/v1/gpuTypes",
+        "/graphql",
         "/v1/endpoints",
     ]
     assert response.json()["id"] == "endpoint-1"
@@ -319,17 +320,16 @@ async def test_updates_existing_runpod_serverless_template(tmp_path, monkeypatch
 
     async def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request.url.path)
-        if request.url.path == "/v1/gpuTypes":
-            return httpx.Response(
-                200,
-                json=[
+        if request.url.path == "/graphql":
+            return runpod_gpu_response(
+                [
                     {
                         "communityCloud": True,
                         "displayName": "NVIDIA L40S",
                         "id": "NVIDIA L40S",
                         "memoryInGb": 48,
                     }
-                ],
+                ]
             )
         if request.method == "GET":
             return httpx.Response(
@@ -356,7 +356,7 @@ async def test_updates_existing_runpod_serverless_template(tmp_path, monkeypatch
     assert requests == [
         "/v1/templates",
         "/v1/templates/template-1/update",
-        "/v1/gpuTypes",
+        "/graphql",
         "/v1/endpoints",
     ]
     assert response.json()["id"] == "endpoint-1"
@@ -373,10 +373,9 @@ async def test_runpod_filters_gpus_by_installed_model_vram(tmp_path, monkeypatch
             return httpx.Response(200, json=[])
         if request.url.path == "/v1/templates":
             return httpx.Response(200, json={"id": "template-1"})
-        if request.url.path == "/v1/gpuTypes":
-            return httpx.Response(
-                200,
-                json=[
+        if request.url.path == "/graphql":
+            return runpod_gpu_response(
+                [
                     {
                         "communityCloud": True,
                         "displayName": "NVIDIA GeForce RTX 4090",
@@ -389,7 +388,7 @@ async def test_runpod_filters_gpus_by_installed_model_vram(tmp_path, monkeypatch
                         "id": "NVIDIA L40S",
                         "memoryInGb": 48,
                     },
-                ],
+                ]
             )
         endpoint_payload = json.loads(request.content)
         return httpx.Response(201, json={"id": "endpoint-1"})

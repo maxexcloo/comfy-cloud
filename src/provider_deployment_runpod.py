@@ -38,12 +38,21 @@ async def deployment_options(
 ) -> list[dict[str, object]]:
     response = await checked_request(
         client,
-        "GET",
-        "https://rest.runpod.io/v1/gpuTypes",
+        "POST",
+        "https://api.runpod.io/graphql",
         headers=headers(preferences),
+        json={
+            "query": (
+                "query { gpuTypes { id displayName memoryInGb secureCloud "
+                "communityCloud securePrice communityPrice } }"
+            )
+        },
     )
     payload = response.json()
-    values = payload if isinstance(payload, list) else []
+    if isinstance(payload, dict) and payload.get("errors"):
+        raise RuntimeError("RunPod GPU catalogue returned GraphQL errors")
+    data = payload.get("data") if isinstance(payload, dict) else None
+    values = data.get("gpuTypes", []) if isinstance(data, dict) else []
     options = []
     for item in values:
         if not isinstance(item, dict) or not item.get("id"):
