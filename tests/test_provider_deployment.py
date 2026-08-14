@@ -531,6 +531,7 @@ async def test_vast_pod_requires_worker_compatible_gpu(tmp_path, monkeypatch):
                 json={"offers": [{"dph_total": 0.4, "id": 123}]},
             )
         assert request.url.path == "/api/v0/asks/123/"
+        assert payload["runtype"] == "args"
         assert payload["target_state"] == "running"
         assert payload["env"]["-p 8000:8000"] == "1"
         assert payload["env"]["API_KEY"] == "worker-key"

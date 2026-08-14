@@ -178,6 +178,7 @@ async def deploy_pod(
             },
             "image": preferences.worker_image,
             "label": management.name,
+            "runtype": "args",
             "target_state": "running",
         },
     )
