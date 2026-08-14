@@ -433,7 +433,9 @@ def control_file(
                 or (provider != "cliproxyapi" and package not in installed)
             ):
                 continue
-            targets.append(Target(model=target_model, provider=provider))
+            target = Target(model=target_model, provider=provider)
+            if target not in targets:
+                targets.append(target)
         if targets:
             models.append(
                 RoutedModel(id=identifier, operation=operation, targets=targets)

@@ -16,6 +16,7 @@ def build_app(configuration: Mapping[str, str]) -> modal.App:
     image = modal.Image.from_registry(
         configuration.get("WORKER_IMAGE", "ghcr.io/maxexcloo/comfy-control:worker"),
         add_python=python_version,
+        force_build=True,
         setup_dockerfile_commands=["ENV PATH=/usr/local/bin:/usr/bin:/bin"],
     ).entrypoint([])
     models = modal.Volume.from_name(

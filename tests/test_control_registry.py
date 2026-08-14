@@ -46,3 +46,27 @@ def test_registry_omits_unconfigured_providers_and_empty_routes():
 
     assert configured.providers == []
     assert configured.models == []
+
+
+def test_registry_deduplicates_shared_provider_models():
+    configured_environment = environment() | {
+        "MODEL_PROFILES": "flux-2-klein-9b,krea-2-turbo"
+    }
+    configured = control_file(
+        configured_environment,
+        {
+            "images": [
+                {"model": "flux-2-klein-9b", "provider": "modal"},
+                {"model": "krea-2-turbo", "provider": "modal"},
+            ],
+            "videos": [],
+        },
+    )
+    upscale = next(model for model in configured.models if model.id == "image-upscale")
+
+    assert [target.model_dump() for target in upscale.targets] == [
+        {
+            "model": "image-upscale/realesrgan-x4plus",
+            "provider": "modal",
+        }
+    ]
