@@ -41,7 +41,7 @@ def normalise_usage(kind: str, value: object) -> list[dict[str, object]]:
             metrics.append({"label": "Credit", "unit": "USD", "value": credit})
         for label, paths in (
             ("Current spend", ("current_spend", "currentSpend")),
-            ("Total spent", ("total_spent", "totalSpent", "spent")),
+            ("Total spend", ("total_spend", "total_spent", "totalSpent", "spent")),
         ):
             found = first_number(value, *paths)
             if found is not None:

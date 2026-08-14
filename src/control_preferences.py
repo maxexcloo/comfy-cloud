@@ -5,6 +5,7 @@ import hashlib
 import os
 from collections.abc import Mapping
 from typing import Any, ClassVar
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from cryptography.fernet import Fernet, InvalidToken
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -32,6 +33,7 @@ class ControlPreferences(BaseModel):
         "cliproxy_management_key": ("CLIPROXY_MANAGEMENT_KEY",),
         "cliproxy_url": ("CLIPROXY_URL",),
         "comfyui_request_timeout": ("COMFYUI_REQUEST_TIMEOUT",),
+        "display_time_zone": ("DISPLAY_TIME_ZONE",),
         "generation_timeout": ("GENERATION_TIMEOUT",),
         "hf_token": ("HF_TOKEN",),
         "generation_queue_limit": ("GENERATION_QUEUE_LIMIT",),
@@ -199,6 +201,11 @@ class ControlPreferences(BaseModel):
             "type": "models",
         },
         "routes": {"label": "Provider routes", "section": "Routing", "type": "routes"},
+        "display_time_zone": {
+            "label": "Time zone",
+            "section": "Display",
+            "type": "select",
+        },
     }
     SECRET_FIELDS: ClassVar[frozenset[str]] = frozenset(
         name for name, metadata in FIELD_METADATA.items() if metadata.get("secret")
@@ -214,6 +221,7 @@ class ControlPreferences(BaseModel):
     salad_api_key: str = ""
     vast_api_key: str = ""
     worker_api_key: str = ""
+    display_time_zone: str = "Australia/Sydney"
     cliproxy_url: str = ""
     salad_organisation: str = ""
     salad_project: str = ""
@@ -255,6 +263,16 @@ class ControlPreferences(BaseModel):
         value = value.strip().rstrip("/")
         if value and not value.startswith(("http://", "https://")):
             raise ValueError("URL must use HTTP or HTTPS")
+        return value
+
+    @field_validator("display_time_zone")
+    @classmethod
+    def validate_time_zone(cls, value: str) -> str:
+        value = value.strip()
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("time zone must be a valid IANA time zone") from exc
         return value
 
     @field_validator("routes")
@@ -316,6 +334,7 @@ class ControlPreferences(BaseModel):
             cliproxy_management_key=os.getenv("CLIPROXY_MANAGEMENT_KEY", ""),
             cliproxy_url=os.getenv("CLIPROXY_URL", ""),
             comfyui_request_timeout=float(os.getenv("COMFYUI_REQUEST_TIMEOUT", "60")),
+            display_time_zone=os.getenv("DISPLAY_TIME_ZONE", "Australia/Sydney"),
             generation_timeout=float(os.getenv("GENERATION_TIMEOUT", "900")),
             hf_token=os.getenv("HF_TOKEN", ""),
             generation_queue_limit=int(os.getenv("GENERATION_QUEUE_LIMIT", "8")),
@@ -364,6 +383,7 @@ class ControlPreferences(BaseModel):
             "CLIPROXY_URL": self.cliproxy_url,
             "HF_TOKEN": self.hf_token,
             "COMFYUI_REQUEST_TIMEOUT": str(self.comfyui_request_timeout),
+            "DISPLAY_TIME_ZONE": self.display_time_zone,
             "GENERATION_TIMEOUT": str(self.generation_timeout),
             "GENERATION_QUEUE_LIMIT": str(self.generation_queue_limit),
             "MAXIMUM_REQUEST_MIB": str(self.maximum_request_mib),

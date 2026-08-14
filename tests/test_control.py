@@ -801,6 +801,7 @@ def test_packaged_revision_uses_live_worker_image(monkeypatch):
     overrides = ControlPreferences.environment_overrides()
 
     assert configured.worker_image == "ghcr.io/maxexcloo/comfy-control:worker"
+    assert configured.display_time_zone == "Australia/Sydney"
     assert "worker_image" not in overrides
 
 
@@ -835,6 +836,8 @@ async def test_server_rendered_settings_require_csrf(monkeypatch, tmp_path):
     assert 'data-model-package="flux-2-klein-9b"' in page.text
     assert "Generation Queue Limit" in page.text
     assert "Maximum Request Size (MiB)" in page.text
+    assert "Australia/Sydney" in page.text
+    assert "Dates and times" in page.text
     assert "Provider Routes" in page.text
     assert "Worker Model Packages" in page.text
     assert "Public Base URL" not in page.text
@@ -1353,6 +1356,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     )
     assert 'href="/assets/dashboard.css?current"' in providers.text
     assert 'data-bs-theme="dark"' in providers.text
+    assert 'data-time-zone="Australia/Sydney"' in providers.text
     assert "data-provider-refresh" in providers.text
     assert "table-bordered" in providers.text
     assert 'src="/assets/dashboard.js?current"' in providers.text
@@ -2047,6 +2051,10 @@ def test_usage_normalisers():
     ]
     assert normalise_usage("vast", {"credit": 25}) == [
         {"label": "Credit", "unit": "USD", "value": 25}
+    ]
+    assert normalise_usage("vast", {"balance": 0, "credit": 25, "total_spend": 7}) == [
+        {"label": "Credit", "unit": "USD", "value": 25},
+        {"label": "Total spend", "unit": "USD", "value": 7},
     ]
     assert normalise_usage(
         "cliproxyapi",

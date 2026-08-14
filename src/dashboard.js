@@ -2,6 +2,7 @@ const formatDate = (timestamp) =>
   new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "medium",
+    timeZone: document.body.dataset.timeZone || "Australia/Sydney",
   }).format(new Date(Number(timestamp) * 1000));
 
 for (const time of document.querySelectorAll("[data-timestamp]")) {

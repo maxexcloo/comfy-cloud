@@ -84,6 +84,8 @@ async def dashboard_js() -> Response:
 
 
 def settings_group(name: str) -> tuple[str, str]:
+    if name == "display_time_zone":
+        return "Display", "Dates and times"
     if name.startswith("cliproxy_"):
         return "Providers", "CLI Proxy API"
     if name.startswith("modal_"):
@@ -130,6 +132,17 @@ def prepare_field(field: dict[str, object]) -> dict[str, object]:
     prepared["label"] = title_label(prepared["label"])
     if prepared["name"] == "modal_gpu":
         prepared["options"] = ["A100", "H100", "L40S"]
+    elif prepared["name"] == "display_time_zone":
+        prepared["options"] = [
+            "America/Los_Angeles",
+            "America/New_York",
+            "Australia/Brisbane",
+            "Australia/Perth",
+            "Australia/Sydney",
+            "Europe/London",
+            "Pacific/Auckland",
+            "UTC",
+        ]
     return prepared
 
 
@@ -364,7 +377,7 @@ async def settings_page(request: Request) -> Response:
             continue
         prepared = prepare_field(field)
         unordered.setdefault(category, {}).setdefault(group, []).append(prepared)
-    category_order = {"Models": 1, "Routing": 0, "Worker": 2}
+    category_order = {"Display": 0, "Routing": 1, "Models": 2, "Worker": 3}
     categories = {
         category: {
             group: sorted(fields, key=lambda item: str(item["label"]).casefold())

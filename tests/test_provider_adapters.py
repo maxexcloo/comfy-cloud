@@ -109,7 +109,7 @@ def test_runpod_serverless_separates_gateway_and_worker_authentication():
 
 
 @pytest.mark.asyncio
-async def test_runpod_usage_reports_account_spend():
+async def test_runpod_usage_reports_credit():
     request = None
 
     def respond(received: httpx.Request) -> httpx.Response:
@@ -117,7 +117,7 @@ async def test_runpod_usage_reports_account_spend():
         request = received
         return httpx.Response(
             200,
-            json={"data": {"myself": {"clientBalance": 42, "currentSpendPerHr": 1.25}}},
+            json={"data": {"myself": {"clientBalance": 42}}},
         )
 
     provider = Provider.model_validate(
@@ -138,10 +138,7 @@ async def test_runpod_usage_reports_account_spend():
             lambda _: {},
         )
 
-    assert metrics == [
-        {"label": "Credit", "unit": "USD", "value": 42},
-        {"label": "Current Spend", "unit": "USD/hour", "value": 1.25},
-    ]
+    assert metrics == [{"label": "Credit", "unit": "USD", "value": 42}]
     assert request is not None
     assert request.headers["authorization"] == "Bearer runpod-key"
 
@@ -153,7 +150,9 @@ async def test_vast_usage_reports_credit_and_month_spend():
     def respond(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         if request.url.path == "/api/v0/users/current/":
-            return httpx.Response(200, json={"balance": 25})
+            return httpx.Response(
+                200, json={"balance": 0, "credit": 25, "total_spend": 82.5}
+            )
         return httpx.Response(
             200,
             json={"results": [{"amount": 1.25}, {"amount": 2}]},
@@ -182,12 +181,38 @@ async def test_vast_usage_reports_credit_and_month_spend():
             "value": 25,
         },
         {"label": "Month Spend", "unit": "USD", "value": 3.25},
+        {"label": "Total Spend", "unit": "USD", "value": 82.5},
     ]
     charge_request = next(
         request for request in requests if request.url.path == "/api/v0/charges/"
     )
     assert charge_request.url.params["limit"] == "500"
     assert "day" in json.loads(charge_request.url.params["select_filters"])
+
+
+@pytest.mark.asyncio
+async def test_vast_usage_keeps_credit_when_charges_are_unavailable():
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v0/users/current/":
+            return httpx.Response(200, json={"balance": 0, "credit": 8.91})
+        return httpx.Response(503)
+
+    provider = Provider.model_validate(
+        {
+            "api_key": "worker-key",
+            "id": "vast",
+            "management": {"kind": "vast", "name": "comfy-control"},
+        }
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        metrics = await VastServerlessAdapter("vast").usage(
+            client,
+            provider,
+            ControlPreferences(vast_api_key="vast-key"),
+            lambda _: {},
+        )
+
+    assert metrics == [{"label": "Credit", "unit": "USD", "value": 8.91}]
 
 
 @pytest.mark.asyncio

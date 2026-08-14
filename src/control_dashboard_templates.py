@@ -55,11 +55,13 @@ def render_dashboard(
     request: Request, template_name: str, page: str, **context: object
 ) -> HTMLResponse:
     settings = request.app.state.settings
+    controller = request.app.state.controller
     return HTMLResponse(
         TEMPLATES.get_template(template_name).render(
             csrf_token=csrf_token(settings, int(time.time()) + SESSION_SECONDS),
             message=request.query_params.get("message", ""),
             page=page,
+            time_zone=controller.preferences.display_time_zone,
             **context,
         ),
         headers={"Cache-Control": "no-store"},

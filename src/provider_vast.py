@@ -31,7 +31,7 @@ async def vast_usage(
 ) -> list[dict[str, object]]:
     headers = vast_headers(preferences)
     now = datetime.now(UTC)
-    account, charges = await asyncio.gather(
+    account_result, charges_result = await asyncio.gather(
         client.get("https://console.vast.ai/api/v0/users/current/", headers=headers),
         client.get(
             "https://console.vast.ai/api/v0/charges/",
@@ -53,17 +53,25 @@ async def vast_usage(
                 ),
             },
         ),
+        return_exceptions=True,
     )
+    if isinstance(account_result, BaseException):
+        raise account_result
+    account = account_result
     account.raise_for_status()
-    charges.raise_for_status()
-    charge_payload = charges.json()
+    charges = charges_result if isinstance(charges_result, httpx.Response) else None
+    charge_payload = (
+        charges.json() if charges is not None and charges.is_success else {}
+    )
     records = (
         charge_payload.get("results", []) if isinstance(charge_payload, dict) else []
     )
     spend = sum(
         float(record.get("amount", 0)) for record in records if isinstance(record, dict)
     )
-    balance = first_number(account.json(), "balance", "credit")
+    account_payload = account.json()
+    balance = first_number(account_payload, "credit", "balance")
+    total_spend = first_number(account_payload, "total_spend")
     metrics: list[dict[str, object]] = []
     if balance is not None:
         metric: dict[str, object] = {
@@ -74,7 +82,12 @@ async def vast_usage(
         if balance >= 0 and spend > 0:
             metric["maximum"] = round(balance + spend, 4)
         metrics.append(metric)
-    metrics.append({"label": "Month Spend", "unit": "USD", "value": round(spend, 4)})
+    if charges is not None and charges.is_success:
+        metrics.append(
+            {"label": "Month Spend", "unit": "USD", "value": round(spend, 4)}
+        )
+    if total_spend is not None:
+        metrics.append({"label": "Total Spend", "unit": "USD", "value": total_spend})
     return metrics
 
 
