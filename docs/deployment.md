@@ -27,7 +27,8 @@ override can instead select another immutable release or digest.
 The lightweight control image contains the API, dashboard and provider control
 plane. The CUDA-enabled worker image contains Comfy Control, pinned ComfyUI, the
 bundled catalogue and model profiles. Run workers on CUDA-capable hosts with
-persistent model and output storage.
+persistent model and output storage. Its CUDA 13.0 base matches the highest
+minimum CUDA version currently accepted by managed RunPod endpoints.
 
 Deploy matching control and worker images. The controller uses the current
 unversioned internal execution contract; compatibility with older worker APIs is

@@ -11,8 +11,18 @@ from comfy_control.provider_runpod import RunPodServerlessAdapter
     ("kind", "resource", "state"),
     [
         ("runpod-pod", {"desiredStatus": "RUNNING"}, "running"),
-        ("runpod", {"workers": {"ready": 0}}, "scaled-down"),
-        ("runpod", {"workers": {"running": 1}}, "ready"),
+        ("runpod", {"workers": [], "workersMin": 0}, "scaled-down"),
+        ("runpod", {"workers": [], "workersMin": 1}, "starting"),
+        (
+            "runpod",
+            {"workers": [{"desiredStatus": "EXITED"}], "workersMin": 1},
+            "error",
+        ),
+        (
+            "runpod",
+            {"workers": [{"desiredStatus": "RUNNING"}], "workersMin": 1},
+            "ready",
+        ),
         ("salad", {"current_state": {"status": "RUNNING"}}, "running"),
         ("vast-pod", {"actual_status": "running"}, "running"),
         ("vast", {"endpoint_state": "ready"}, "ready"),
@@ -48,6 +58,29 @@ def test_proxy_panel_url_is_derived_without_an_adapter():
     assert provider_panel_url(provider, {}, provider.base_url) == (
         "https://proxy.example/management.html"
     )
+
+
+def test_runpod_status_exposes_counts_without_worker_secrets():
+    resource = {
+        "workers": [
+            {
+                "desiredStatus": "RUNNING",
+                "env": {"WORKER_API_KEY": "must-not-leak"},
+            }
+        ],
+        "workersMax": 2,
+        "workersMin": 1,
+    }
+
+    state, details = RunPodServerlessAdapter("runpod").status(resource)
+
+    assert state == "ready"
+    assert details == {
+        "workerStates": {"running": 1},
+        "workersMax": 2,
+        "workersMin": 1,
+    }
+    assert "must-not-leak" not in str(details)
 
 
 @pytest.mark.asyncio

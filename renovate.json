@@ -2,6 +2,13 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "dependencyDashboard": false,
   "extends": ["config:recommended", ":enablePreCommit"],
+  "packageRules": [
+    {
+      "allowedVersions": "/^13\\.0\\./",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["nvidia/cuda"]
+    }
+  ],
   "customManagers": [
     {
       "customType": "regex",

@@ -55,6 +55,7 @@ class RunPodAdapter(BaseAdapter):
         management = provider.management
         assert management is not None
         collection = "endpoints" if self.serverless else "pods"
+        parameters = {"includeWorkers": "true"} if self.serverless else None
         response = await client.get(
             f"https://rest.runpod.io/v1/{collection}",
             headers={
@@ -62,6 +63,7 @@ class RunPodAdapter(BaseAdapter):
                     f"Bearer {required_preference('RUNPOD_API_KEY', preferences)}"
                 )
             },
+            params=parameters,
         )
         if response.status_code == 404:
             raise ProviderNotDeployed(f"provider resource not found: {management.name}")
@@ -125,13 +127,37 @@ class RunPodServerlessAdapter(RunPodAdapter):
 
     def status(self, resource: dict[str, object]) -> tuple[str, dict[str, object]]:
         workers = resource.get("workers")
-        active = first_number(workers, "running", "ready")
-        return "ready" if active else "scaled-down", selected_fields(
+        states: dict[str, int] = {}
+        if isinstance(workers, list):
+            for worker in workers:
+                if not isinstance(worker, dict):
+                    continue
+                state = str(worker.get("desiredStatus") or "unknown").lower()
+                states[state] = states.get(state, 0) + 1
+        elif isinstance(workers, dict):
+            states = {
+                str(key).lower(): int(value)
+                for key, value in workers.items()
+                if isinstance(value, int)
+            }
+        running = states.get("running", 0) + states.get("ready", 0)
+        minimum = first_number(resource, "workersMin", "minWorkers") or 0
+        if running:
+            state = "ready"
+        elif minimum and states.get("exited"):
+            state = "error"
+        elif minimum:
+            state = "starting"
+        else:
+            state = "scaled-down"
+        details = selected_fields(
             resource,
             "executionTimeoutMs",
-            "gpuIds",
+            "gpuTypeIds",
             "idleTimeout",
-            "maxWorkers",
-            "minWorkers",
-            "workers",
+            "workersMax",
+            "workersMin",
+            "workersStandby",
         )
+        details["workerStates"] = states
+        return state, details
