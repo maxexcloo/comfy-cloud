@@ -6,6 +6,7 @@ import httpx
 
 from .control_config import ControlSettings, Provider
 from .control_preferences import ControlPreferences
+from .model_profiles import required_vram_gb
 from .provider_deployment_common import (
     checked_request,
     configured_environment,
@@ -25,13 +26,17 @@ def headers(preferences: ControlPreferences) -> dict[str, str]:
 async def deployment_options(
     client: httpx.AsyncClient, preferences: ControlPreferences
 ) -> list[dict[str, object]]:
+    minimum_vram = max(
+        preferences.vast_minimum_gpu_memory_gb,
+        required_vram_gb(preferences.model_profiles),
+    )
     response = await checked_request(
         client,
         "POST",
         "https://console.vast.ai/api/v0/bundles/",
         headers=headers(preferences),
         json={
-            "gpu_ram": {"gte": preferences.vast_minimum_gpu_memory_gb * 1000},
+            "gpu_ram": {"gte": minimum_vram * 1000},
             "limit": 20,
             "num_gpus": {"eq": 1},
             "order": [["dph_total", "asc"]],
@@ -64,6 +69,10 @@ async def deploy_pod(
     preferences: ControlPreferences,
     settings: ControlSettings,
 ) -> httpx.Response:
+    minimum_vram = max(
+        preferences.vast_minimum_gpu_memory_gb,
+        required_vram_gb(preferences.model_profiles),
+    )
     specification = deployment_asset("vast", "pod.json")
     environment = configured_environment(
         specification.get("env"), provider, preferences, settings
@@ -76,7 +85,7 @@ async def deploy_pod(
         json={
             "allocated_storage": specification.get("disk_space", 100),
             "direct_port_count": {"gte": 1},
-            "gpu_ram": {"gte": preferences.vast_minimum_gpu_memory_gb * 1000},
+            "gpu_ram": {"gte": minimum_vram * 1000},
             "limit": 20,
             "num_gpus": {"eq": 1},
             "order": [["dph_total", "asc"]],
@@ -119,6 +128,10 @@ async def deploy_serverless(
     preferences: ControlPreferences,
     settings: ControlSettings,
 ) -> httpx.Response:
+    minimum_vram = max(
+        preferences.vast_minimum_gpu_memory_gb,
+        required_vram_gb(preferences.model_profiles),
+    )
     specification = deployment_asset("vast", "serverless.json")
     environment = configured_environment(
         specification.get("env"), provider, preferences, settings
@@ -182,11 +195,11 @@ async def deploy_serverless(
             "cold_workers": 0,
             "endpoint_id": endpoint_id,
             "endpoint_name": management.name,
-            "gpu_ram": preferences.vast_minimum_gpu_memory_gb,
+            "gpu_ram": minimum_vram,
             "max_workers": preferences.vast_maximum_workers,
             "search_params": (
                 "verified=true rentable=true rented=false num_gpus=1 "
-                f"gpu_ram>={preferences.vast_minimum_gpu_memory_gb * 1000} "
+                f"gpu_ram>={minimum_vram * 1000} "
                 "cuda_max_good>=13.0"
             ),
             "template_hash": str(template["hash_id"]),

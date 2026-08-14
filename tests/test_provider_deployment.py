@@ -222,6 +222,18 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
 
     async def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request.url.path)
+        if request.url.path == "/v1/gpuTypes":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "communityCloud": True,
+                        "displayName": "NVIDIA L40S",
+                        "id": "NVIDIA L40S",
+                        "memoryInGb": 48,
+                    }
+                ],
+            )
         if request.method == "GET":
             return httpx.Response(200, json=[])
         payload = json.loads(request.content)
@@ -245,7 +257,12 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
             settings(tmp_path),
         )
 
-    assert requests == ["/v1/templates", "/v1/templates", "/v1/endpoints"]
+    assert requests == [
+        "/v1/templates",
+        "/v1/templates",
+        "/v1/gpuTypes",
+        "/v1/endpoints",
+    ]
     assert response.json()["id"] == "endpoint-1"
 
 
@@ -256,6 +273,18 @@ async def test_updates_existing_runpod_serverless_template(tmp_path, monkeypatch
 
     async def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request.url.path)
+        if request.url.path == "/v1/gpuTypes":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "communityCloud": True,
+                        "displayName": "NVIDIA L40S",
+                        "id": "NVIDIA L40S",
+                        "memoryInGb": 48,
+                    }
+                ],
+            )
         if request.method == "GET":
             return httpx.Response(
                 200,
@@ -281,9 +310,51 @@ async def test_updates_existing_runpod_serverless_template(tmp_path, monkeypatch
     assert requests == [
         "/v1/templates",
         "/v1/templates/template-1/update",
+        "/v1/gpuTypes",
         "/v1/endpoints",
     ]
     assert response.json()["id"] == "endpoint-1"
+
+
+@pytest.mark.asyncio
+async def test_runpod_filters_gpus_by_installed_model_vram(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
+    endpoint_payload: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal endpoint_payload
+        if request.url.path == "/v1/templates" and request.method == "GET":
+            return httpx.Response(200, json=[])
+        if request.url.path == "/v1/templates":
+            return httpx.Response(200, json={"id": "template-1"})
+        if request.url.path == "/v1/gpuTypes":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "communityCloud": True,
+                        "displayName": "NVIDIA GeForce RTX 4090",
+                        "id": "NVIDIA GeForce RTX 4090",
+                        "memoryInGb": 24,
+                    },
+                    {
+                        "communityCloud": True,
+                        "displayName": "NVIDIA L40S",
+                        "id": "NVIDIA L40S",
+                        "memoryInGb": 48,
+                    },
+                ],
+            )
+        endpoint_payload = json.loads(request.content)
+        return httpx.Response(201, json={"id": "endpoint-1"})
+
+    selected = preferences().model_copy(
+        update={"model_profiles": ["flux-2-klein-9b", "krea-2-turbo"]}
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        await deploy_provider(client, provider("runpod"), selected, settings(tmp_path))
+
+    assert endpoint_payload["gpuTypeIds"] == ["NVIDIA L40S"]
 
 
 @pytest.mark.asyncio
@@ -329,6 +400,8 @@ async def test_deploys_and_terminates_vast_serverless(tmp_path, monkeypatch):
         if request.method == "POST" and request.url.path == "/api/v0/workergroups/":
             payload = json.loads(request.content)
             assert "cuda_max_good>=13.0" in payload["search_params"]
+            assert "gpu_ram>=24000" in payload["search_params"]
+            assert payload["gpu_ram"] == 24
             return httpx.Response(200, json={"id": 9})
         if request.method == "GET":
             return httpx.Response(

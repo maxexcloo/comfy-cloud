@@ -7,6 +7,7 @@ import httpx
 
 from .control_config import ControlSettings, Provider
 from .control_preferences import ControlPreferences
+from .model_profiles import required_vram_gb
 from .provider_deployment_common import (
     checked_request,
     configured_environment,
@@ -165,6 +166,26 @@ async def deploy_serverless(
         )
         if item.strip()
     ]
+    minimum_vram = required_vram_gb(preferences.model_profiles)
+    options = await deployment_options(client, preferences)
+    matching_options = {
+        str(key): option
+        for option in options
+        for key in (option["id"], option["label"])
+    }
+    gpu_types = [
+        str(matching_options[gpu]["id"])
+        for gpu in gpu_types
+        if gpu in matching_options
+        and matching_options[gpu]["available"]
+        and isinstance(matching_options[gpu]["memory_gb"], (int, float))
+        and matching_options[gpu]["memory_gb"] >= minimum_vram
+    ]
+    if not gpu_types:
+        raise RuntimeError(
+            "RunPod has no available configured GPU with at least "
+            f"{minimum_vram} GB VRAM"
+        )
     endpoint: dict[str, object] = {
         "executionTimeoutMs": int(provider.request_timeout * 1000),
         "gpuCount": 1,
