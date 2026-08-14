@@ -1,3 +1,2 @@
 .venv/
-src/dashboard_*.html
-src/media_library.html
+comfy_control/control/dashboard/templates/

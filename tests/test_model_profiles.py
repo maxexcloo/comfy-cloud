@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from comfy_control.model_profiles import profile_details, required_vram_gb
+from comfy_control.catalogue.profiles import profile_details, required_vram_gb
 
 ROOT = Path(__file__).parents[1]
 
@@ -8,7 +8,7 @@ ROOT = Path(__file__).parents[1]
 def test_control_image_includes_model_profiles():
     dockerfile = (ROOT / "Dockerfile.control").read_text()
 
-    assert "COPY profiles ./profiles" in dockerfile
+    assert "COPY catalogue ./catalogue" in dockerfile
 
 
 def test_control_and_worker_images_use_compatible_python():

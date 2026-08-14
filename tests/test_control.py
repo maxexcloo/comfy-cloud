@@ -11,23 +11,23 @@ import yaml
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-from comfy_control.cliproxy import CliproxyClient
-from comfy_control.control import create_app
-from comfy_control.control_config import ControlFile, ControlSettings
-from comfy_control.control_dashboard_routes import (
+from comfy_control.control.app import create_app
+from comfy_control.control.config import ControlFile, ControlSettings
+from comfy_control.control.dashboard.routes import (
     provider_fields,
     usage_with_resource_cost,
 )
-from comfy_control.control_dashboard_routes import (
+from comfy_control.control.dashboard.routes import (
     provider_logs as dashboard_provider_logs,
 )
-from comfy_control.control_http import exception_message
-from comfy_control.control_inference import normalise_grok_image_options
-from comfy_control.control_preferences import ControlPreferences
-from comfy_control.control_registry import control_file as registry_control_file
-from comfy_control.control_store import ControlStore
-from comfy_control.controller import Controller, history_parameters
-from comfy_control.provider_telemetry import normalise_usage, normalise_xai_quota
+from comfy_control.control.http import exception_message
+from comfy_control.control.inference.common import normalise_grok_image_options
+from comfy_control.control.preferences import ControlPreferences
+from comfy_control.control.registry import control_file as registry_control_file
+from comfy_control.control.service import Controller, history_parameters
+from comfy_control.control.store import ControlStore
+from comfy_control.providers.cliproxy import CliproxyClient
+from comfy_control.providers.telemetry import normalise_usage, normalise_xai_quota
 
 ROOT = Path(__file__).parents[1]
 

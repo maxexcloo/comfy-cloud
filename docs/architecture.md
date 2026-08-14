@@ -23,6 +23,12 @@ and CLI Proxy API each own their discovery, status, lifecycle additions and tele
 separate modules behind a small common adapter contract. The controller coordinates
 adapters without containing provider API URLs or response-shape branching.
 
+The root `comfy_control/` package follows those runtime boundaries. Catalogue
+loading and model preparation, control-plane behaviour, provider integrations and
+worker execution live in separate subpackages. Dashboard, inference, operation and
+provider-deployment implementations are further split within their owning package;
+filenames do not encode their parent package.
+
 ## Configuration
 
 The control plane has a deliberately small bootstrap environment:

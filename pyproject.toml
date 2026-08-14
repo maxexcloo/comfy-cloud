@@ -33,13 +33,10 @@ vast = ["aiohttp>=3.11,<4"]
 comfy-control = "comfy_control.cli:main"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["src"]
-
-[tool.hatch.build.targets.wheel.sources]
-"src" = "comfy_control"
+only-include = ["comfy_control"]
 
 [tool.hatch.version]
-path = "src/__init__.py"
+path = "comfy_control/__init__.py"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

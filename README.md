@@ -47,11 +47,11 @@ without restarting the control plane.
 
 ## Repository Layout
 
-- `catalogue/`: checksum-pinned API-format ComfyUI workflows and manifests.
+- `catalogue/`: workflows, manifests and pinned model-source profiles.
+- `comfy_control/`: implementation split into catalogue, control, provider and
+  worker packages.
 - `deploy/`: provider-specific Comfy Control deployment assets.
 - `docs/`: architecture, catalogue, development and deployment guidance.
-- `profiles/`: pinned model sources.
-- `src/`: Comfy Control implementation.
 - `tests/`: behavioural and repository tests.
 
 ## Develop

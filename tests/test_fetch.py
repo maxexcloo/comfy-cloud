@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from comfy_control.fetch import fetch_profile, prune_profiles
+from comfy_control.catalogue.fetch import fetch_profile, prune_profiles
 
 
 def test_huggingface_destination_places_root_file_in_model_subdirectory(

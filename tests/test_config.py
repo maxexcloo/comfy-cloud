@@ -1,6 +1,6 @@
 import pytest
 
-from comfy_control.config import Settings
+from comfy_control.worker.config import Settings
 
 
 def test_settings_require_api_key(monkeypatch):

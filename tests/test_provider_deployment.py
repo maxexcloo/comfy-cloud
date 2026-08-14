@@ -7,24 +7,24 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from comfy_control import provider_deployment_common
-from comfy_control.control_config import (
+from comfy_control.control.config import (
     ControlSettings,
     Provider,
     ProviderManagement,
 )
-from comfy_control.control_preferences import ControlPreferences, RoutePreference
-from comfy_control.provider_adapter import ProviderNotDeployed
-from comfy_control.provider_deployment import (
+from comfy_control.control.preferences import ControlPreferences, RoutePreference
+from comfy_control.providers.base import ProviderNotDeployed
+from comfy_control.providers.deployment import common as provider_deployment_common
+from comfy_control.providers.deployment import (
     deploy_provider,
     deployment_options,
     terminate_provider,
 )
-from comfy_control.provider_deployment_common import (
+from comfy_control.providers.deployment.common import (
     DeploymentSelection,
     configured_environment,
 )
-from comfy_control.provider_modal import ModalAdapter, provider_action
+from comfy_control.providers.modal import ModalAdapter, provider_action
 
 ROOT = Path(__file__).parents[1]
 
@@ -251,7 +251,7 @@ def test_runpod_serverless_uses_initialising_health_check():
 def test_modal_termination_uses_supported_cli(tmp_path, monkeypatch):
     calls: list[tuple[list[str], dict[str, object]]] = []
     monkeypatch.setattr(
-        "comfy_control.provider_modal.subprocess.run",
+        "comfy_control.providers.modal.subprocess.run",
         lambda command, **kwargs: calls.append((command, kwargs)),
     )
 
@@ -321,7 +321,7 @@ async def test_modal_discovery_clears_a_stale_resource(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "modal", fake_modal)
     monkeypatch.setattr(
-        "comfy_control.provider_modal.web_url",
+        "comfy_control.providers.modal.web_url",
         lambda *_: (_ for _ in ()).throw(ModalNotFoundError()),
     )
     adapter = ModalAdapter("modal")

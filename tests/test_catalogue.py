@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from comfy_control.catalogue import Catalogue
+from comfy_control.catalogue.workflows import Catalogue
 
 ROOT = Path(__file__).parents[1]
 

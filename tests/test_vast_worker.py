@@ -4,7 +4,7 @@ import pytest
 from aiohttp import FormData, web
 from aiohttp.test_utils import TestClient, TestServer
 
-from comfy_control import vast_worker
+from comfy_control.worker import vast_gateway
 
 
 @pytest.mark.asyncio
@@ -28,12 +28,12 @@ async def test_proxy_preserves_method_query_and_multipart(monkeypatch):
     upstream_app.router.add_route("*", "/{path:.*}", upstream)
     upstream_server = TestServer(upstream_app)
     await upstream_server.start_server()
-    monkeypatch.setattr(vast_worker, "API_KEY", "test-key")
+    monkeypatch.setattr(vast_gateway, "API_KEY", "test-key")
     monkeypatch.setattr(
-        vast_worker, "GATEWAY_BASE", str(upstream_server.make_url("/")).rstrip("/")
+        vast_gateway, "GATEWAY_BASE", str(upstream_server.make_url("/")).rstrip("/")
     )
 
-    client = TestClient(TestServer(vast_worker.create_app()))
+    client = TestClient(TestServer(vast_gateway.create_app()))
     await client.start_server()
     try:
         response = await client.get("/view?filename=a%20b.png&type=output")
@@ -70,12 +70,12 @@ async def test_proxy_unwraps_vast_json_envelope(monkeypatch):
     upstream_app.router.add_post("/v1/videos", upstream)
     upstream_server = TestServer(upstream_app)
     await upstream_server.start_server()
-    monkeypatch.setattr(vast_worker, "API_KEY", "test-key")
+    monkeypatch.setattr(vast_gateway, "API_KEY", "test-key")
     monkeypatch.setattr(
-        vast_worker, "GATEWAY_BASE", str(upstream_server.make_url("/")).rstrip("/")
+        vast_gateway, "GATEWAY_BASE", str(upstream_server.make_url("/")).rstrip("/")
     )
 
-    client = TestClient(TestServer(vast_worker.create_app()))
+    client = TestClient(TestServer(vast_gateway.create_app()))
     await client.start_server()
     try:
         response = await client.post(

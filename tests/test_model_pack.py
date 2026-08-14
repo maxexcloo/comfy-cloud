@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from comfy_control.model_pack import pack_file, unpack_file
+from comfy_control.catalogue.pack import pack_file, unpack_file
 
 
 def test_pack_round_trip(tmp_path):

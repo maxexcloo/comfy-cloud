@@ -1,4 +1,4 @@
-from comfy_control.control_registry import PROVIDER_CATALOGUE, control_file, routes
+from comfy_control.control.registry import PROVIDER_CATALOGUE, control_file, routes
 
 
 def environment() -> dict[str, str]:

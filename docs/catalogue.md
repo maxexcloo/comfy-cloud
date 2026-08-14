@@ -8,7 +8,8 @@ node inputs:
 
 Directory names use `<profile>-<operation>`, where the operation identifies the
 workflow implementation. Each manifest's `profile` must exactly match a
-`profiles/<profile>.yaml` file, and its ID uses `<profile>/<operation-name>`.
+`catalogue/profiles/<profile>.yaml` file, and its ID uses
+`<profile>/<operation-name>`.
 Source-free profiles with zero minimum VRAM describe pipelines made entirely from
 built-in ComfyUI nodes.
 
@@ -83,13 +84,14 @@ by provider, elapsed time, file size and visual result.
 
 ## Profiles
 
-Profiles under `profiles/` pin weight sources independently from workflow logic.
+Profiles under `catalogue/profiles/` pin weight sources independently from
+workflow logic while keeping all model catalogue data in one place.
 The control-plane Settings page defaults to `flux-2-klein-9b`; select one or more
 profile names there to change the models prepared on managed workers. Fetch a
 profile manually with:
 
 ```bash
-comfy-control models-fetch profiles/flux-2-klein-9b.yaml \
+comfy-control models-fetch catalogue/profiles/flux-2-klein-9b.yaml \
   --models-dir /opt/ComfyUI/models
 ```
 

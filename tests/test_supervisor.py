@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-from comfy_control.supervisor import _comfy_arguments, _prepare_models, run
-from comfy_control.worker_logs import capture_process_logs, entries
+from comfy_control.worker.logs import capture_process_logs, entries
+from comfy_control.worker.supervisor import _comfy_arguments, _prepare_models, run
 
 
 def test_external_models_directory_is_added_to_comfy(monkeypatch, tmp_path):
@@ -32,9 +32,9 @@ def test_configured_model_profile_is_prepared(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setenv("MODEL_PROFILES", "test-profile")
     monkeypatch.setenv("MODELS_DIR", str(tmp_path / "models"))
-    monkeypatch.setenv("PROFILES_DIR", str(profiles_dir))
+    monkeypatch.setenv("MODEL_CATALOGUE_DIR", str(profiles_dir))
     monkeypatch.setattr(
-        "comfy_control.supervisor.fetch_profile",
+        "comfy_control.worker.supervisor.fetch_profile",
         lambda profile_path, models_dir: calls.append((profile_path, models_dir)) or [],
     )
 
@@ -49,7 +49,7 @@ def test_empty_model_selection_prunes_all_managed_profiles(monkeypatch, tmp_path
     monkeypatch.setenv("MODEL_PROFILES", "")
     monkeypatch.setenv("MODELS_DIR", str(models))
     monkeypatch.setattr(
-        "comfy_control.supervisor.prune_profiles",
+        "comfy_control.worker.supervisor.prune_profiles",
         lambda selected, models_dir: calls.append((selected, models_dir)) or [],
     )
 
@@ -72,11 +72,11 @@ def test_gateway_starts_before_model_preparation(monkeypatch):
             events.append(("wait", timeout))
 
     monkeypatch.setattr(
-        "comfy_control.supervisor._start_gateway",
+        "comfy_control.worker.supervisor._start_gateway",
         lambda *_: events.append("gateway") or Gateway(),
     )
     monkeypatch.setattr(
-        "comfy_control.supervisor._prepare_models",
+        "comfy_control.worker.supervisor._prepare_models",
         lambda: events.append("models") or (_ for _ in ()).throw(RuntimeError("stop")),
     )
 

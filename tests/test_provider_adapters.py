@@ -3,11 +3,11 @@ import json
 import httpx
 import pytest
 
-from comfy_control.control_config import Provider
-from comfy_control.control_preferences import ControlPreferences
-from comfy_control.provider_adapters import provider_adapter, provider_panel_url
-from comfy_control.provider_runpod import RunPodServerlessAdapter
-from comfy_control.provider_vast import VastPodAdapter, VastServerlessAdapter
+from comfy_control.control.config import Provider
+from comfy_control.control.preferences import ControlPreferences
+from comfy_control.providers.registry import provider_adapter, provider_panel_url
+from comfy_control.providers.runpod import RunPodServerlessAdapter
+from comfy_control.providers.vast import VastPodAdapter, VastServerlessAdapter
 
 
 @pytest.mark.parametrize(
@@ -256,10 +256,10 @@ async def test_vast_pod_can_be_discovered_while_ports_are_pending():
 @pytest.mark.parametrize(
     ("kind", "module"),
     [
-        ("modal", "comfy_control.provider_modal"),
-        ("runpod-pod", "comfy_control.provider_runpod"),
-        ("salad", "comfy_control.provider_salad"),
-        ("vast-pod", "comfy_control.provider_vast"),
+        ("modal", "comfy_control.providers.modal"),
+        ("runpod-pod", "comfy_control.providers.runpod"),
+        ("salad", "comfy_control.providers.salad"),
+        ("vast-pod", "comfy_control.providers.vast"),
     ],
 )
 def test_provider_implementations_are_isolated_by_provider(kind, module):

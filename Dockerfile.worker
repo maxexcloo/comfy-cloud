@@ -36,9 +36,8 @@ RUN git init /opt/ComfyUI \
 
 WORKDIR /opt/comfy-control
 COPY pyproject.toml uv.lock README.md ./
-COPY src ./src
+COPY comfy_control ./comfy_control
 COPY catalogue ./catalogue
-COPY profiles ./profiles
 RUN uv export --frozen --no-dev --extra build --extra modal --extra vast --no-emit-project \
       --no-hashes --output-file /tmp/requirements.txt \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /tmp/requirements.txt \
@@ -49,7 +48,7 @@ RUN uv export --frozen --no-dev --extra build --extra modal --extra vast --no-em
 RUN --mount=type=secret,id=HF_TOKEN,env=HF_TOKEN \
     --mount=type=secret,id=CIVITAI_TOKEN,env=CIVITAI_TOKEN \
     if [ -n "${MODEL_PROFILE}" ]; then \
-      comfy-control models-fetch "/opt/comfy-control/profiles/${MODEL_PROFILE}.yaml" \
+      comfy-control models-fetch "/opt/comfy-control/catalogue/profiles/${MODEL_PROFILE}.yaml" \
         --models-dir /opt/ComfyUI/models; \
     fi
 

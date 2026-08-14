@@ -2,12 +2,13 @@
 
 ## Structure
 
-- Keep Comfy Control code directly in `src/` and tests in `tests/`.
+- Keep Comfy Control code in the root `comfy_control/` package, split by
+  `catalogue`, `control`, `providers` and `worker`; keep tests in `tests/`.
 - Keep detailed operational documentation in `docs/`; keep `README.md` focused on
   purpose, architecture and the shortest working setup.
 - Keep only `AGENTS.md` and `README.md` as root Markdown files; put other project
   documentation in `docs/`.
-- Keep pinned model sources in `profiles/`.
+- Keep pinned model sources in `catalogue/profiles/`.
 - Keep provider deployment assets grouped by provider in `deploy/`.
 - Keep local orchestration in root `compose.yaml`.
 - Keep workflow manifests beside their API-format workflow JSON in `catalogue/`.

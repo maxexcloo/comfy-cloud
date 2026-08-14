@@ -2,8 +2,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from comfy_control.catalogue_import import import_grok_catalogue
-from comfy_control.control_store import ControlStore
+from comfy_control.catalogue.importer import import_grok_catalogue
+from comfy_control.control.store import ControlStore
 
 
 def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:

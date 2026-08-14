@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from comfy_control.cliproxy import CliproxyClient
+from comfy_control.providers.cliproxy import CliproxyClient
 
 
 @pytest.mark.asyncio
