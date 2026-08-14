@@ -1187,6 +1187,35 @@ class ControlStore:
                 (time.time(), status, error, attempt_id),
             )
 
+    def reconcile_interrupted_requests(self) -> None:
+        message = "controller restarted before the request completed"
+        now = time.time()
+        with self.lock, self.connection:
+            self.connection.execute(
+                """
+                UPDATE provider_attempts SET
+                    error = ?,
+                    finished_at = ?,
+                    status = 'failed'
+                WHERE status = 'running'
+                """,
+                (message, now),
+            )
+            self.connection.execute(
+                """
+                UPDATE history SET
+                    error = ?,
+                    status = 'failed',
+                    updated_at = ?
+                WHERE status IN ('queued', 'in_progress')
+                  AND id NOT IN (
+                      SELECT id FROM jobs
+                      WHERE status IN ('queued', 'in_progress')
+                  )
+                """,
+                (message, int(now)),
+            )
+
     def attempts(self, history_id: str) -> list[dict[str, object]]:
         with self.lock:
             rows = self.connection.execute(

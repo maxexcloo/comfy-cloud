@@ -2459,6 +2459,34 @@ def test_historical_routes_and_unique_input_lineage_are_reconciled(tmp_path: Pat
     second.state.controller.store.close()
 
 
+def test_interrupted_image_requests_are_failed_on_restart(tmp_path: Path):
+    configured = settings(tmp_path)
+    first = create_app(configured)
+    store = first.state.controller.store
+    store.save_history(
+        "interrupted",
+        "image_generation",
+        "public/image",
+        '{"model":"public/image","prompt":"interrupted"}',
+    )
+    store.update_history("interrupted", "in_progress", provider="worker")
+    store.start_attempt("interrupted", "worker", "worker/image")
+    store.close()
+
+    second = create_app(configured)
+    history = next(
+        item
+        for item in second.state.controller.store.histories()
+        if item["id"] == "interrupted"
+    )
+
+    assert history["status"] == "failed"
+    assert history["error"] == "controller restarted before the request completed"
+    assert history["attempts"][0]["status"] == "failed"
+    assert history["attempts"][0]["finished_at"] is not None
+    second.state.controller.store.close()
+
+
 def test_historical_worker_model_maps_to_selected_fallback_provider(tmp_path: Path):
     configured = settings(tmp_path)
     configured.config_file.write_text(

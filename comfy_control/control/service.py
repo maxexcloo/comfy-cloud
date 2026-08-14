@@ -115,6 +115,7 @@ class Controller:
     def __init__(self, settings: ControlSettings):
         self.settings = settings
         self.store = ControlStore(settings.database_path)
+        self.store.reconcile_interrupted_requests()
         initial_preferences = ControlPreferences()
         initial_preferences = ControlPreferences.model_validate(
             initial_preferences.model_dump()
