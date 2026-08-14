@@ -32,6 +32,7 @@ def workflow_operation_names(
 
 
 class NodeTarget(BaseModel):
+    factor: float = 1
     node: str
     input: str
 
@@ -151,7 +152,16 @@ class WorkflowModel(BaseModel):
                     else [configured_targets]
                 )
                 for target in targets:
-                    graph[target.node]["inputs"][target.input] = merged[name]
+                    value = merged[name]
+                    if target.factor != 1:
+                        if not isinstance(value, (float, int)) or isinstance(
+                            value, bool
+                        ):
+                            raise TypeError(
+                                f"{self.id}: mapped input {name} must be numeric"
+                            )
+                        value *= target.factor
+                    graph[target.node]["inputs"][target.input] = value
         return graph
 
 

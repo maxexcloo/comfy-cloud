@@ -354,7 +354,7 @@ async def test_updates_existing_runpod_serverless_template(tmp_path, monkeypatch
             )
         payload = json.loads(request.content)
         if request.url.path.endswith("/update"):
-            assert payload["env"]["MODEL_PROFILES"] == "flux-2-klein-9b"
+            assert payload["env"]["MODEL_PROFILES"] == ("flux-2-klein-9b,image-upscale")
             assert "isServerless" not in payload
             return httpx.Response(200, json={"id": "template-1"})
         assert payload["templateId"] == "template-1"

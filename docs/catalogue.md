@@ -59,10 +59,10 @@ first-frame `image`.
 ## Image upscaling
 
 `POST /v1/images/upscales` routes an uploaded image through the same configured
-image-provider order as generation. The bundled `image-upscale/lanczos` pipeline
-accepts `scale` from greater than 1 through 4 and `method` as `area`, `bicubic`,
-`bilinear`, `lanczos` or `nearest-exact`. It has no model weights and defaults to
-Lanczos at 2×:
+image-provider order as generation. The bundled
+`image-upscale/realesrgan-x4plus` pipeline uses ComfyUI's native model-upscale
+nodes and the pinned RealESRGAN x4plus model. It accepts a final `scale` from
+greater than 1 through 4 and defaults to 2×:
 
 ```bash
 curl -D response-headers.txt \
@@ -75,13 +75,11 @@ curl -D response-headers.txt \
 ```
 
 The response includes `x-comfy-duration-seconds`, `x-comfy-history-id` and
-`x-comfy-provider`. History stores the method and scale; Media records the source
-and output dimensions and links both assets. This makes 2×, 3× and 4× runs directly
-comparable by provider, elapsed time, file size and visual result. A scale factor of
-2 produces four times the pixels and 4 produces sixteen times the pixels, so memory
-and processing costs rise materially even though the pipeline does not invent new
-detail. Learned enhancement should be published as a separate upscale model so its
-content changes and checkpoint cost remain explicit.
+`x-comfy-provider`. History stores the model and requested scale; Media records the
+source and output dimensions and links both assets. Every request first performs
+the native 4× AI enhancement. A 2× or 3× request then downsamples that enhanced
+result to its requested final dimensions. This makes the runs directly comparable
+by provider, elapsed time, file size and visual result.
 
 ## Profiles
 

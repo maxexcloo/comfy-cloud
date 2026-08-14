@@ -21,6 +21,7 @@ MODEL_DIRECTORY_KEYS = (
     "diffusion_models",
     "loras",
     "text_encoders",
+    "upscale_models",
     "vae",
 )
 SHUTDOWN_TIMEOUT = 10

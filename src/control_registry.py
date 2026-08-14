@@ -84,7 +84,7 @@ MODEL_PACKAGES = {
     "flux-2-klein-9b": {
         "image-edit": "flux-2-klein-9b/image-edit",
         "image-generation": "flux-2-klein-9b/text-to-image",
-        "image-upscale": "image-upscale/lanczos",
+        "image-upscale": "image-upscale/realesrgan-x4plus",
     },
     "grok-imagine": {
         "image-edit": "grok-imagine-image-quality",
@@ -94,7 +94,7 @@ MODEL_PACKAGES = {
     },
     "krea-2-turbo": {
         "image-generation": "krea-2-turbo/text-to-image",
-        "image-upscale": "image-upscale/lanczos",
+        "image-upscale": "image-upscale/realesrgan-x4plus",
     },
     "minimax-h3": {
         "image-to-video": "minimax-h3/image-to-video",

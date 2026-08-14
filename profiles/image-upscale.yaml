@@ -1,3 +1,9 @@
 name: image-upscale
 minimum_vram_gb: 0
-sources: []
+sources:
+  - type: huggingface
+    repo: Comfy-Org/Real-ESRGAN_repackaged
+    revision: 612512cf5dfee6e3fda729e422318ebb373e04a1
+    include:
+      - RealESRGAN_x4plus.safetensors
+    destination: upscale_models

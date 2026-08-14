@@ -65,13 +65,12 @@ def test_catalogue_maps_image_to_video_first_frame():
 
 def test_catalogue_maps_image_upscale_inputs():
     catalogue = Catalogue.load((ROOT / "catalogue",))
-    graph = catalogue.get("image-upscale").render(
-        {"image": "source.png", "method": "bicubic", "scale": 3.5}
-    )
+    graph = catalogue.get("image-upscale").render({"image": "source.png", "scale": 3.5})
 
     assert graph["1"]["inputs"]["image"] == "source.png"
-    assert graph["2"]["inputs"]["scale_by"] == 3.5
-    assert graph["2"]["inputs"]["upscale_method"] == "bicubic"
+    assert graph["2"]["inputs"]["model_name"] == "RealESRGAN_x4plus.safetensors"
+    assert graph["3"]["inputs"]["image"] == ["1", 0]
+    assert graph["4"]["inputs"]["scale_by"] == 0.875
 
 
 def test_catalogue_exposes_alias_only_once():
@@ -79,7 +78,7 @@ def test_catalogue_exposes_alias_only_once():
     assert [model.id for model in catalogue.list()] == [
         "flux-2-klein-9b/image-edit",
         "flux-2-klein-9b/text-to-image",
-        "image-upscale/lanczos",
+        "image-upscale/realesrgan-x4plus",
         "krea-2-turbo/text-to-image",
         "minimax-h3/image-to-video",
         "minimax-h3/text-to-video",
@@ -92,17 +91,23 @@ def test_catalogue_only_exposes_workflows_with_required_models(tmp_path):
     model.required_files = ["checkpoints/test.safetensors"]
 
     assert model.missing_files(tmp_path) == ["checkpoints/test.safetensors"]
-    assert [model.id for model in catalogue.list_available(tmp_path)] == [
-        "image-upscale/lanczos"
-    ]
+    assert catalogue.list_available(tmp_path) == []
 
     checkpoint = tmp_path / "checkpoints/test.safetensors"
     checkpoint.parent.mkdir()
     checkpoint.write_bytes(b"model")
 
     assert [item.id for item in catalogue.list_available(tmp_path)] == [
+        "flux-2-klein-9b/text-to-image"
+    ]
+
+    upscaler = tmp_path / "upscale_models/RealESRGAN_x4plus.safetensors"
+    upscaler.parent.mkdir()
+    upscaler.write_bytes(b"model")
+
+    assert [item.id for item in catalogue.list_available(tmp_path)] == [
         "flux-2-klein-9b/text-to-image",
-        "image-upscale/lanczos",
+        "image-upscale/realesrgan-x4plus",
     ]
 
 

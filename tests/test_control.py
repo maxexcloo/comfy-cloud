@@ -118,7 +118,7 @@ models:
   - id: public/upscale
     operation: image_upscale
     targets:
-      - model: image-upscale/lanczos
+      - model: image-upscale/realesrgan-x4plus
         provider: worker
   - id: public/video
     operation: video_generation
@@ -191,8 +191,7 @@ def worker_app() -> FastAPI:
                 assert await images[0].read() == b"image"
             output = (b"edit", "image/png", "edit.png")
         elif operation == "image_upscale":
-            assert spec["model"] == "image-upscale/lanczos"
-            assert spec["parameters"]["method"] in {"bicubic", "lanczos"}
+            assert spec["model"] == "image-upscale/realesrgan-x4plus"
             assert 1 < spec["parameters"]["scale"] <= 4
             image = form.getlist("image")[0]
             assert await image.read() in {b"image", b"source-image"}
@@ -244,7 +243,6 @@ async def test_image_upscale_routes_to_worker_and_records_lineage(tmp_path: Path
             "/v1/images/upscales",
             headers={"Authorization": "Bearer control-key"},
             data={
-                "method": "bicubic",
                 "model": "public/upscale",
                 "response_format": "url",
                 "scale": "3",
@@ -262,7 +260,6 @@ async def test_image_upscale_routes_to_worker_and_records_lineage(tmp_path: Path
         if item["id"] == history_id
     )
     assert history["operation"] == "image_upscale"
-    assert history["parameters"]["method"] == "bicubic"
     assert history["parameters"]["scale"] == 3.0
     media = app.state.controller.store.media_library(
         filters=[{"path": "history_id", "value": history_id}]
@@ -307,7 +304,6 @@ async def test_media_ui_edits_and_upscales_images(tmp_path: Path):
             f"/media/{source['asset_id']}/upscale",
             data={
                 "csrf_token": token,
-                "method": "lanczos",
                 "model": "public/upscale",
                 "scale": "2",
             },
@@ -501,7 +497,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
         "public/image-edit",
         "public/upscale",
         "public/video",
-        "worker/image-upscale/lanczos",
+        "worker/image-upscale/realesrgan-x4plus",
         "worker/worker/image",
         "worker/worker/image-edit",
         "worker/worker/video",

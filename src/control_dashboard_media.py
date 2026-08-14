@@ -235,7 +235,6 @@ async def media_upscale(asset_id: int, request: Request) -> Response:
         request,
         "/v1/images/upscales",
         {
-            "method": "lanczos",
             "model": "image-upscale",
             "provider": "",
             "scale": "2",

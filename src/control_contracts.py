@@ -172,9 +172,6 @@ class ImageGenerationResponse(BaseModel):
 
 
 class ImageUpscaleRequest(BaseModel):
-    method: Literal["area", "bicubic", "bilinear", "lanczos", "nearest-exact"] = (
-        "lanczos"
-    )
     model: str = "image-upscale"
     provider: str | None = None
     response_format: Literal["b64_json", "url"] = "url"

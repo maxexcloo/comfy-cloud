@@ -41,6 +41,13 @@ def deployment_asset(*parts: str) -> dict[str, Any]:
     return value
 
 
+def worker_model_profiles(preferences: ControlPreferences) -> str:
+    profiles = list(preferences.model_profiles)
+    if any(profile in {"flux-2-klein-9b", "krea-2-turbo"} for profile in profiles):
+        profiles.append("image-upscale")
+    return ",".join(dict.fromkeys(profiles))
+
+
 def worker_environment(
     provider: Provider,
     preferences: ControlPreferences,
@@ -63,6 +70,7 @@ def worker_environment(
     ):
         if (value := configured.get(name)) or name == "MODEL_PROFILES":
             environment[name] = str(value or "")
+    environment["MODEL_PROFILES"] = worker_model_profiles(preferences)
     return environment
 
 

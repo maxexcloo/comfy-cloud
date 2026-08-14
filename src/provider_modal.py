@@ -12,6 +12,7 @@ import httpx
 from .control_config import ControlSettings, Provider
 from .control_preferences import ControlPreferences
 from .provider_adapter import BaseAdapter, Discovery, ProviderNotDeployed
+from .provider_deployment_common import worker_model_profiles
 
 
 def action_response(status: str) -> httpx.Response:
@@ -54,6 +55,7 @@ def provider_action(
     environment["API_KEY"] = preferences.worker_api_key
     environment["CONTROL_UI_PASSWORD"] = settings.ui_password
     environment["CONTROL_UI_USERNAME"] = settings.ui_username
+    environment["MODEL_PROFILES"] = worker_model_profiles(preferences)
     module.build_app(environment).deploy(name=management.name)
     return action_response("deployed")
 

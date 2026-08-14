@@ -177,9 +177,9 @@ async def test_internal_execution_upscales_an_uploaded_image():
     spec = json.dumps(
         {
             "execution_id": "upscale_1",
-            "model": "image-upscale/lanczos",
+            "model": "image-upscale/realesrgan-x4plus",
             "operation": "image_upscale",
-            "parameters": {"method": "lanczos", "scale": 4.0},
+            "parameters": {"scale": 4.0},
         }
     )
     async with httpx.AsyncClient(
@@ -197,7 +197,6 @@ async def test_internal_execution_upscales_an_uploaded_image():
     assert response.status_code == 200
     assert app.state.runtime.run.await_args.args[1] == {
         "image": "uploaded/source.png",
-        "method": "lanczos",
         "scale": 4.0,
     }
 

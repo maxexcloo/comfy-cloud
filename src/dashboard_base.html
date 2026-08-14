@@ -62,7 +62,7 @@
             <label class="form-label">Provider<select class="form-select" id="media-action-provider" name="provider"><option value="">Automatic</option></select></label>
             <label class="form-label" data-edit-field>Prompt<textarea class="form-control" id="media-action-prompt" name="prompt" placeholder="Describe The Changes" rows="4"></textarea></label>
             <label class="form-label" data-upscale-field>Scale<select class="form-select" id="media-action-scale" name="scale"><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select><small class="form-hint" id="media-upscale-summary"></small></label>
-            <label class="form-label" data-upscale-field>Method<select class="form-select" id="media-action-method" name="method"><option value="lanczos">Lanczos · Recommended</option><option value="bicubic">Bicubic · Smooth</option><option value="bilinear">Bilinear · Faster</option><option value="nearest-exact">Nearest Exact · Pixel Art</option></select><small class="form-hint">Interpolation Resizes Existing Detail; It Does Not Generate New Detail.</small></label>
+            <div class="alert alert-info" data-upscale-field>RealESRGAN restores detail with a native 4× AI upscale. Smaller outputs are downsampled after enhancement.</div>
             <div class="alert alert-danger d-none" id="media-action-error" role="alert"></div>
           </div>
           <footer class="modal-footer">
