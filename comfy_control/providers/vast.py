@@ -185,13 +185,14 @@ class VastServerlessAdapter(VastAdapter):
         preferences: ControlPreferences,
         spec: dict[str, object],
         files: list[tuple[str, tuple[str, bytes, str]]],
+        routed_request: dict[str, object] | None,
     ) -> list[tuple[bytes, str, str]] | None:
         management = provider.management
         assert management is not None
         request_index = 0
         deadline = asyncio.get_running_loop().time() + provider.request_timeout
-        route: dict[str, object] = {}
-        while asyncio.get_running_loop().time() < deadline:
+        route = routed_request or {}
+        while not route.get("url") and asyncio.get_running_loop().time() < deadline:
             route_response = await client.post(
                 "https://run.vast.ai/route/",
                 headers=vast_headers(preferences),
@@ -281,6 +282,7 @@ class VastServerlessAdapter(VastAdapter):
         )
         identifier = str(required_mapping_value(resource, "id"))
         base_url = None
+        routed_request = None
         if route:
             route_response = await client.post(
                 "https://run.vast.ai/route/",
@@ -288,10 +290,12 @@ class VastServerlessAdapter(VastAdapter):
                 json={"cost": 100, "endpoint": management.name},
             )
             route_response.raise_for_status()
-            base_url = str(required_mapping_value(route_response.json(), "url")).rstrip(
-                "/"
-            )
-        return Discovery(base_url, resource, identifier)
+            value = route_response.json()
+            if not isinstance(value, dict):
+                raise TypeError("Vast.ai route response is invalid")
+            routed_request = value
+            base_url = str(required_mapping_value(value, "url")).rstrip("/")
+        return Discovery(base_url, resource, identifier, routed_request)
 
     def route_confirms_ready(self) -> bool:
         return True

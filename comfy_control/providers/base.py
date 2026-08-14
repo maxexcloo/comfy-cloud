@@ -22,6 +22,7 @@ class Discovery:
     base_url: str | None
     resource: dict[str, object]
     resource_id: str
+    routed_request: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,7 @@ class ProviderAdapter(Protocol):
         preferences: ControlPreferences,
         spec: dict[str, object],
         files: list[tuple[str, tuple[str, bytes, str]]],
+        routed_request: dict[str, object] | None,
     ) -> list[tuple[bytes, str, str]] | None: ...
 
     async def live_status(
@@ -177,8 +179,9 @@ class BaseAdapter:
         preferences: ControlPreferences,
         spec: dict[str, object],
         files: list[tuple[str, tuple[str, bytes, str]]],
+        routed_request: dict[str, object] | None,
     ) -> list[tuple[bytes, str, str]] | None:
-        del client, provider, preferences, spec, files
+        del client, provider, preferences, spec, files, routed_request
         return None
 
     async def live_status(self, provider: Provider) -> tuple[str, dict[str, object]]:

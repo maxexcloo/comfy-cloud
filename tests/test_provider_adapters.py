@@ -268,6 +268,7 @@ async def test_vast_serverless_routes_authenticated_execution():
                 "parameters": {"prompt": "A wombat"},
             },
             [("image", ("input.png", b"input", "image/png"))],
+            None,
         )
 
     worker_request = requests[1]

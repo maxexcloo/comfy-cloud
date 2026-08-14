@@ -103,6 +103,7 @@ class ProviderRuntime:
     last_used: float = field(default_factory=time.monotonic)
     lifecycle_revision: int = 0
     ready: bool = False
+    routed_request: dict[str, object] | None = None
     state: str = "unknown"
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     usage: dict[str, object] = field(default_factory=lambda: {"status": "unconfigured"})
@@ -586,6 +587,8 @@ class Controller:
         )
         if discovery.base_url is not None:
             runtime.base_url = discovery.base_url
+        if discovery.routed_request is not None:
+            runtime.routed_request = discovery.routed_request
         self.store.save_provider_resource(runtime.config.id, discovery.resource_id)
         return discovery.resource
 
@@ -1264,8 +1267,10 @@ class Controller:
         async with runtime.lock:
             runtime.active_requests += 1
         try:
+            adapter = provider_adapter(runtime.config)
             await self.ensure_ready(runtime, execution_id[:16])
-            await self.refresh_endpoint(runtime)
+            if adapter is None or not adapter.route_confirms_ready():
+                await self.refresh_endpoint(runtime)
             runtime.state = "busy"
             spec = {
                 "execution_id": execution_id,
@@ -1273,14 +1278,16 @@ class Controller:
                 "operation": operation,
                 "parameters": parameters,
             }
-            adapter = provider_adapter(runtime.config)
             if adapter is not None:
+                routed_request = runtime.routed_request
+                runtime.routed_request = None
                 serverless_outputs = await adapter.execute_serverless(
                     self.lifecycle_client,
                     runtime.config,
                     self.preferences,
                     spec,
                     files or [],
+                    routed_request,
                 )
                 if serverless_outputs is not None:
                     runtime.ready = True
