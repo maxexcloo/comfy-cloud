@@ -19,6 +19,7 @@ from .control_dashboard_templates import pagination_context, render_dashboard
 from .control_http import error
 from .control_preferences import ConfigurationConflict
 from .provider_adapters import provider_panel_url
+from .provider_deployment_common import DeploymentSelection
 from .provider_telemetry import first_number
 
 DASHBOARD_CSS = resources.files("comfy_control").joinpath("dashboard.css").read_text()
@@ -461,6 +462,7 @@ async def provider_action(
     if not valid_csrf(request, settings, str(form.get("csrf_token", ""))):
         return error("invalid CSRF token", 403, "invalid_csrf")
     preferences = None
+    selection = None
     if action_name == "deploy" and (gpu := str(form.get("gpu", "")).strip()):
         updates: dict[str, object] = {}
         if provider_id == "modal":
@@ -473,6 +475,11 @@ async def provider_action(
             memory = str(form.get("memory_gb", "")).strip()
             if memory:
                 updates["vast_minimum_gpu_memory_gb"] = max(1, int(float(memory)))
+        memory = str(form.get("memory_gb", "")).strip()
+        selection = DeploymentSelection(
+            memory_gb=float(memory) if memory else None,
+            option_id=gpu,
+        )
         if updates:
             preferences = controller.preferences.model_copy(update=updates)
     try:
@@ -481,6 +488,7 @@ async def provider_action(
             action_name,
             uuid.uuid4().hex[:16],
             preferences=preferences,
+            selection=selection,
         )
     except Exception as exc:  # noqa: BLE001 - provider SDK boundary
         return error(str(exc), 400, "provider_action_failed")

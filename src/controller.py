@@ -32,6 +32,7 @@ from .provider_adapters import (
     provider_panel_url,
 )
 from .provider_deployment import deployment_options
+from .provider_deployment_common import DeploymentSelection
 from .provider_modal import (
     provider_action as modal_provider_action,
 )
@@ -770,6 +771,7 @@ class Controller:
         provider: str,
         action_name: str = "lifecycle",
         preferences: ControlPreferences | None = None,
+        selection: DeploymentSelection | None = None,
     ) -> httpx.Response:
         selected_preferences = preferences or self.preferences
         if action_name == "deploy" and self.resource_id(provider) is not None:
@@ -791,6 +793,7 @@ class Controller:
                 self.providers[provider].config,
                 selected_preferences,
                 self.settings,
+                selection,
             )
         elif action.internal == "provider-terminate":
             resource_id = self.resource_id(provider)
@@ -885,10 +888,11 @@ class Controller:
         action_name: str,
         request_id: str,
         preferences: ControlPreferences | None = None,
+        selection: DeploymentSelection | None = None,
     ) -> dict[str, object]:
         async with self.configuration_lock:
             return await self._run_provider_action(
-                provider, action_name, request_id, preferences
+                provider, action_name, request_id, preferences, selection
             )
 
     async def _run_provider_action(
@@ -897,6 +901,7 @@ class Controller:
         action_name: str,
         request_id: str,
         preferences: ControlPreferences | None = None,
+        selection: DeploymentSelection | None = None,
     ) -> dict[str, object]:
         try:
             runtime = self.providers[provider]
@@ -917,7 +922,11 @@ class Controller:
             if action_name == "stop":
                 runtime.state = "stopping"
             response = await self.action(
-                action, provider, action_name, preferences=preferences
+                action,
+                provider,
+                action_name,
+                preferences=preferences,
+                selection=selection,
             )
             if action_name == "deploy":
                 runtime.state = "starting"

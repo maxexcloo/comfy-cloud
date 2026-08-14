@@ -8,6 +8,7 @@ from .control_config import ControlSettings, Provider
 from .control_preferences import ControlPreferences
 from .model_profiles import required_vram_gb
 from .provider_deployment_common import (
+    DeploymentSelection,
     checked_request,
     configured_environment,
     deployment_asset,
@@ -89,6 +90,8 @@ async def deploy_pod(
     provider: Provider,
     preferences: ControlPreferences,
     settings: ControlSettings,
+    *,
+    selection: DeploymentSelection | None = None,
 ) -> httpx.Response:
     minimum_vram = max(
         preferences.vast_minimum_gpu_memory_gb,
@@ -115,11 +118,29 @@ async def deploy_pod(
     offers = payload.get("offers", []) if isinstance(payload, dict) else []
     if isinstance(offers, dict):
         offers = [offers]
-    offer = next((item for item in offers if isinstance(item, dict)), None)
+    offer = next(
+        (
+            item
+            for item in offers
+            if isinstance(item, dict)
+            and (
+                selection is None
+                or not selection.option_id
+                or str(item.get("id") or item.get("ask_contract_id"))
+                == selection.option_id
+            )
+        ),
+        None,
+    )
     if offer is None or not (
         offer_id := offer.get("id") or offer.get("ask_contract_id")
     ):
-        raise RuntimeError("Vast.ai has no suitable rentable GPU offer")
+        message = (
+            "selected Vast offer is no longer available"
+            if selection is not None and selection.option_id
+            else "Vast.ai has no suitable rentable GPU offer"
+        )
+        raise RuntimeError(message)
     management = provider.management
     assert management is not None
     return await checked_request(
@@ -143,7 +164,10 @@ async def deploy_serverless(
     provider: Provider,
     preferences: ControlPreferences,
     settings: ControlSettings,
+    *,
+    selection: DeploymentSelection | None = None,
 ) -> httpx.Response:
+    del selection
     minimum_vram = max(
         preferences.vast_minimum_gpu_memory_gb,
         required_vram_gb(preferences.model_profiles),

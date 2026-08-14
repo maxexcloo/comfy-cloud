@@ -9,6 +9,7 @@ import httpx
 from .control_config import ControlSettings, Provider, ProviderAction
 from .control_preferences import ControlPreferences
 from .provider_deployment import deploy_provider, terminate_provider
+from .provider_deployment_common import DeploymentSelection
 from .provider_telemetry import normalise_usage
 
 
@@ -64,6 +65,7 @@ class ProviderAdapter(Protocol):
         provider: Provider,
         preferences: ControlPreferences,
         settings: ControlSettings,
+        selection: DeploymentSelection | None = None,
     ) -> httpx.Response: ...
 
     async def discover(
@@ -120,8 +122,11 @@ class BaseAdapter:
         provider: Provider,
         preferences: ControlPreferences,
         settings: ControlSettings,
+        selection: DeploymentSelection | None = None,
     ) -> httpx.Response:
-        return await deploy_provider(client, provider, preferences, settings)
+        return await deploy_provider(
+            client, provider, preferences, settings, selection=selection
+        )
 
     async def discover(
         self,

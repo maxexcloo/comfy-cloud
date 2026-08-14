@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,12 @@ from .control_preferences import ControlPreferences
 DEPLOYMENT_ROOT = Path(
     os.getenv("CONTROL_DEPLOYMENT_ROOT", "/opt/comfy-control/deploy")
 )
+
+
+@dataclass(frozen=True)
+class DeploymentSelection:
+    memory_gb: float | None = None
+    option_id: str | None = None
 
 
 def required_preference(name: str, preferences: ControlPreferences) -> str:

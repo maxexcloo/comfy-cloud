@@ -9,6 +9,7 @@ from .control_config import ControlSettings, Provider
 from .control_preferences import ControlPreferences
 from .model_profiles import required_vram_gb
 from .provider_deployment_common import (
+    DeploymentSelection,
     checked_request,
     configured_environment,
     deployment_asset,
@@ -65,6 +66,8 @@ async def deploy_pod(
     provider: Provider,
     preferences: ControlPreferences,
     settings: ControlSettings,
+    *,
+    selection: DeploymentSelection | None = None,
 ) -> httpx.Response:
     environment = preferences.environment()
     payload = deployment_asset("runpod", "pod.json")
@@ -80,7 +83,9 @@ async def deploy_pod(
         payload["ports"] = [
             item.strip() for item in payload["ports"].split(",") if item.strip()
         ]
-    if gpu_types := environment.get("RUNPOD_GPU_TYPES"):
+    if selection is not None and selection.option_id:
+        payload["gpuTypeIds"] = [selection.option_id]
+    elif gpu_types := environment.get("RUNPOD_GPU_TYPES"):
         payload["gpuTypeIds"] = [
             item.strip() for item in gpu_types.split(",") if item.strip()
         ]
@@ -102,6 +107,8 @@ async def deploy_serverless(
     provider: Provider,
     preferences: ControlPreferences,
     settings: ControlSettings,
+    *,
+    selection: DeploymentSelection | None = None,
 ) -> httpx.Response:
     environment = preferences.environment()
     template = deployment_asset("runpod", "serverless.json")
@@ -173,6 +180,8 @@ async def deploy_serverless(
         )
         if item.strip()
     ]
+    if selection is not None and selection.option_id:
+        gpu_types = [selection.option_id]
     minimum_vram = required_vram_gb(preferences.model_profiles)
     options = await deployment_options(client, preferences)
     matching_options = {

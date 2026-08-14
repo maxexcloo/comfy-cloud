@@ -7,6 +7,7 @@ import httpx
 from .control_config import ControlSettings, Provider
 from .control_preferences import ControlPreferences
 from .provider_deployment_common import (
+    DeploymentSelection,
     checked_request,
     configured_environment,
     deployment_asset,
@@ -44,7 +45,10 @@ async def gpu_classes(
     client: httpx.AsyncClient,
     provider: Provider,
     preferences: ControlPreferences,
+    selection: DeploymentSelection | None = None,
 ) -> list[str]:
+    if selection is not None and selection.option_id:
+        return [selection.option_id]
     if preferences.salad_gpu_classes:
         return preferences.salad_gpu_classes
     organisation, _ = scope(provider, preferences)
@@ -113,6 +117,8 @@ async def deploy(
     provider: Provider,
     preferences: ControlPreferences,
     settings: ControlSettings,
+    *,
+    selection: DeploymentSelection | None = None,
 ) -> httpx.Response:
     payload = deployment_asset("salad", "container-group.json")
     container = payload.get("container")
@@ -125,7 +131,9 @@ async def deploy(
     resources = container.get("resources")
     if not isinstance(resources, dict):
         raise TypeError("SaladCloud deployment asset has no resources")
-    resources["gpu_classes"] = await gpu_classes(client, provider, preferences)
+    resources["gpu_classes"] = await gpu_classes(
+        client, provider, preferences, selection
+    )
     management = provider.management
     assert management is not None
     payload["name"] = management.name

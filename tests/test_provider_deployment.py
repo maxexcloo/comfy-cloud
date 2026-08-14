@@ -20,7 +20,10 @@ from comfy_control.provider_deployment import (
     deployment_options,
     terminate_provider,
 )
-from comfy_control.provider_deployment_common import configured_environment
+from comfy_control.provider_deployment_common import (
+    DeploymentSelection,
+    configured_environment,
+)
 from comfy_control.provider_modal import ModalAdapter, provider_action
 
 ROOT = Path(__file__).parents[1]
@@ -398,7 +401,12 @@ async def test_vast_pod_requires_worker_compatible_gpu(tmp_path, monkeypatch):
             assert payload["gpu_ram"] == {"gte": 24000}
             return httpx.Response(
                 200,
-                json={"offers": [{"dph_total": 0.4, "id": 123}]},
+                json={
+                    "offers": [
+                        {"dph_total": 0.3, "id": 122},
+                        {"dph_total": 0.4, "id": 123},
+                    ]
+                },
             )
         assert request.url.path == "/api/v0/asks/123/"
         assert payload["target_state"] == "running"
@@ -406,7 +414,11 @@ async def test_vast_pod_requires_worker_compatible_gpu(tmp_path, monkeypatch):
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         response = await deploy_provider(
-            client, provider("vast-pod"), preferences(), settings(tmp_path)
+            client,
+            provider("vast-pod"),
+            preferences(),
+            settings(tmp_path),
+            selection=DeploymentSelection(option_id="123"),
         )
 
     assert response.json()["new_contract"] == 456

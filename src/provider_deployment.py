@@ -5,6 +5,7 @@ import httpx
 from .control_config import ControlSettings, Provider
 from .control_preferences import ControlPreferences
 from .model_profiles import required_vram_gb
+from .provider_deployment_common import DeploymentSelection
 from .provider_deployment_runpod import (
     deploy_pod as deploy_runpod_pod,
 )
@@ -92,20 +93,32 @@ async def deploy_provider(
     provider: Provider,
     preferences: ControlPreferences,
     settings: ControlSettings,
+    *,
+    selection: DeploymentSelection | None = None,
 ) -> httpx.Response:
     management = provider.management
     if management is None:
         raise RuntimeError("provider has no deployment management")
     if management.kind == "runpod-pod":
-        return await deploy_runpod_pod(client, provider, preferences, settings)
+        return await deploy_runpod_pod(
+            client, provider, preferences, settings, selection=selection
+        )
     if management.kind == "runpod":
-        return await deploy_runpod_serverless(client, provider, preferences, settings)
+        return await deploy_runpod_serverless(
+            client, provider, preferences, settings, selection=selection
+        )
     if management.kind == "salad":
-        return await deploy_salad(client, provider, preferences, settings)
+        return await deploy_salad(
+            client, provider, preferences, settings, selection=selection
+        )
     if management.kind == "vast-pod":
-        return await deploy_vast_pod(client, provider, preferences, settings)
+        return await deploy_vast_pod(
+            client, provider, preferences, settings, selection=selection
+        )
     if management.kind == "vast":
-        return await deploy_vast_serverless(client, provider, preferences, settings)
+        return await deploy_vast_serverless(
+            client, provider, preferences, settings, selection=selection
+        )
     raise RuntimeError(f"unsupported standalone provider: {management.kind}")
 
 
