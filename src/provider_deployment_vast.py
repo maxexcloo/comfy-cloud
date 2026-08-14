@@ -19,6 +19,7 @@ from .provider_deployment_common import (
 
 MINIMUM_COMPUTE_CAPABILITY = 750
 MINIMUM_CUDA_VERSION = 13.0
+MINIMUM_RELIABILITY = 0.99
 
 
 def offer_filters(minimum_vram: int) -> dict[str, object]:
@@ -27,6 +28,7 @@ def offer_filters(minimum_vram: int) -> dict[str, object]:
         "cuda_max_good": {"gte": MINIMUM_CUDA_VERSION},
         "gpu_ram": {"gte": minimum_vram * 1000},
         "num_gpus": {"eq": 1},
+        "reliability": {"gte": MINIMUM_RELIABILITY},
         "rentable": {"eq": True},
         "rented": {"eq": False},
         "type": "ondemand",
@@ -241,7 +243,8 @@ async def deploy_serverless(
                 "verified=true rentable=true rented=false num_gpus=1 "
                 f"gpu_ram>={minimum_vram * 1000} "
                 f"compute_cap>={MINIMUM_COMPUTE_CAPABILITY} "
-                f"cuda_max_good>={MINIMUM_CUDA_VERSION}"
+                f"cuda_max_good>={MINIMUM_CUDA_VERSION} "
+                f"reliability>={MINIMUM_RELIABILITY}"
             ),
             "template_hash": str(template["hash_id"]),
             "test_workers": 1,

@@ -399,6 +399,7 @@ async def test_vast_pod_requires_worker_compatible_gpu(tmp_path, monkeypatch):
             assert payload["compute_cap"] == {"gte": 750}
             assert payload["cuda_max_good"] == {"gte": 13.0}
             assert payload["gpu_ram"] == {"gte": 24000}
+            assert payload["reliability"] == {"gte": 0.99}
             return httpx.Response(
                 200,
                 json={
@@ -444,6 +445,7 @@ async def test_deploys_and_terminates_vast_serverless(tmp_path, monkeypatch):
             assert "compute_cap>=750" in payload["search_params"]
             assert "cuda_max_good>=13.0" in payload["search_params"]
             assert "gpu_ram>=24000" in payload["search_params"]
+            assert "reliability>=0.99" in payload["search_params"]
             assert payload["gpu_ram"] == 24
             return httpx.Response(200, json={"id": 9})
         if request.method == "GET":
