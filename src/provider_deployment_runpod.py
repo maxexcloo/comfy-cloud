@@ -31,7 +31,10 @@ def headers(preferences: ControlPreferences) -> dict[str, str]:
 
 
 async def deployment_options(
-    client: httpx.AsyncClient, preferences: ControlPreferences
+    client: httpx.AsyncClient,
+    preferences: ControlPreferences,
+    *,
+    cloud_variants: bool = False,
 ) -> list[dict[str, object]]:
     response = await checked_request(
         client,
@@ -41,24 +44,46 @@ async def deployment_options(
     )
     payload = response.json()
     values = payload if isinstance(payload, list) else []
-    return [
-        {
-            "available": bool(item.get("secureCloud") or item.get("communityCloud")),
-            "cloud": (
-                "Secure"
-                if item.get("secureCloud")
-                else "Community"
-                if item.get("communityCloud")
-                else None
-            ),
-            "cost_per_hour": item.get("securePrice") or item.get("communityPrice"),
-            "id": str(item.get("id")),
-            "label": str(item.get("displayName") or item.get("id")),
+    options = []
+    for item in values:
+        if not isinstance(item, dict) or not item.get("id"):
+            continue
+        identifier = str(item["id"])
+        common = {
+            "label": str(item.get("displayName") or identifier),
             "memory_gb": item.get("memoryInGb"),
+            "provider_option_id": identifier,
         }
-        for item in values
-        if isinstance(item, dict) and item.get("id")
-    ]
+        if cloud_variants:
+            for cloud, available_key, price_key in (
+                ("Community", "communityCloud", "communityPrice"),
+                ("Secure", "secureCloud", "securePrice"),
+            ):
+                if not item.get(available_key):
+                    continue
+                options.append(
+                    {
+                        **common,
+                        "available": True,
+                        "cloud": cloud,
+                        "cost_per_hour": item.get(price_key),
+                        "id": f"{cloud.casefold()}:{identifier}",
+                        "variant": cloud.casefold(),
+                    }
+                )
+        else:
+            options.append(
+                {
+                    **common,
+                    "available": bool(
+                        item.get("secureCloud") or item.get("communityCloud")
+                    ),
+                    "cost_per_hour": item.get("securePrice")
+                    or item.get("communityPrice"),
+                    "id": identifier,
+                }
+            )
+    return options
 
 
 async def deploy_pod(
@@ -85,6 +110,8 @@ async def deploy_pod(
         ]
     if selection is not None and selection.option_id:
         payload["gpuTypeIds"] = [selection.option_id]
+        if selection.variant:
+            payload["cloudType"] = selection.variant.upper()
     elif gpu_types := environment.get("RUNPOD_GPU_TYPES"):
         payload["gpuTypeIds"] = [
             item.strip() for item in gpu_types.split(",") if item.strip()
@@ -93,6 +120,8 @@ async def deploy_pod(
         payload["dataCenterIds"] = [
             item.strip() for item in data_centres.split(",") if item.strip()
         ]
+    payload["allowedCudaVersions"] = ["13.0"]
+    payload["computeType"] = "GPU"
     return await checked_request(
         client,
         "POST",

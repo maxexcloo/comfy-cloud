@@ -263,12 +263,16 @@ if (deployDialog) {
   const deployForm = document.getElementById("deploy-form");
   const deployGpu = document.getElementById("deploy-gpu");
   const deployMemory = document.getElementById("deploy-memory");
+  const deployOption = document.getElementById("deploy-option");
+  const deployVariant = document.getElementById("deploy-variant");
   let deploymentOptions = [];
   const updateDeployDetail = () => {
     const option = deploymentOptions.find(
       (item) => item.id === deployGpu.value,
     );
     deployMemory.value = option?.memory_gb || "";
+    deployOption.value = option?.provider_option_id || option?.id || "";
+    deployVariant.value = option?.variant || "";
     if (!option) {
       deployDetail.textContent = "The Provider Will Choose Automatically.";
       return;
@@ -323,7 +327,7 @@ if (deployDialog) {
         new Option("Automatic (Recommended)", ""),
         ...deploymentOptions.map((item) => {
           const option = new Option(
-            `${item.label}${Number.isFinite(item.cost_per_hour) ? ` · $${Number(item.cost_per_hour).toFixed(3)}/h` : ""}`,
+            `${item.label}${item.cloud ? ` (${item.cloud})` : ""}${Number.isFinite(item.cost_per_hour) ? ` · $${Number(item.cost_per_hour).toFixed(3)}/h` : ""}`,
             item.id,
             false,
             false,

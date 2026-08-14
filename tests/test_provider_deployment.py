@@ -68,12 +68,20 @@ async def test_deploys_runpod_pod_from_credentials(tmp_path, monkeypatch):
         payload = json.loads(request.content)
         assert payload["dockerStartCmd"] == []
         assert payload["env"]["API_KEY"] == "worker-key"
+        assert payload["allowedCudaVersions"] == ["13.0"]
+        assert payload["cloudType"] == "COMMUNITY"
+        assert payload["computeType"] == "GPU"
+        assert payload["gpuTypeIds"] == ["L40S"]
         assert payload["ports"] == ["8000/http"]
         return httpx.Response(201, json={"id": "pod-1"})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         response = await deploy_provider(
-            client, provider("runpod-pod"), preferences(), settings(tmp_path)
+            client,
+            provider("runpod-pod"),
+            preferences(),
+            settings(tmp_path),
+            selection=DeploymentSelection(option_id="L40S", variant="community"),
         )
 
     assert response.json()["id"] == "pod-1"
@@ -106,15 +114,46 @@ async def test_runpod_deployment_options_include_live_cost_and_availability(
     assert options == [
         {
             "available": True,
-            "cloud": "Community",
             "compatible": True,
             "cost_per_hour": 0.42,
             "id": "L40S",
             "label": "NVIDIA L40S",
             "memory_gb": 48,
             "minimum_memory_gb": 24,
+            "provider_option_id": "L40S",
             "type": "pod",
         }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_runpod_pod_options_separate_cloud_prices(monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "communityCloud": True,
+                    "communityPrice": 0.3,
+                    "displayName": "NVIDIA L40S",
+                    "id": "L40S",
+                    "memoryInGb": 48,
+                    "secureCloud": True,
+                    "securePrice": 0.5,
+                }
+            ],
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        options = await deployment_options(
+            client, provider("runpod-pod"), preferences()
+        )
+
+    assert [(option["id"], option["cost_per_hour"]) for option in options] == [
+        ("community:L40S", 0.3),
+        ("secure:L40S", 0.5),
     ]
 
 

@@ -55,7 +55,11 @@ async def deployment_options(
             for gpu in ("A100", "H100", "L40S")
         ]
     elif management.kind in {"runpod", "runpod-pod"}:
-        options = await runpod_deployment_options(client, preferences)
+        options = await runpod_deployment_options(
+            client,
+            preferences,
+            cloud_variants=management.kind == "runpod-pod",
+        )
     elif management.kind == "salad":
         options = await salad_deployment_options(client, provider, preferences)
     elif management.kind in {"vast", "vast-pod"}:

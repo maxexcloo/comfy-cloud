@@ -478,7 +478,8 @@ async def provider_action(
         memory = str(form.get("memory_gb", "")).strip()
         selection = DeploymentSelection(
             memory_gb=float(memory) if memory else None,
-            option_id=gpu,
+            option_id=str(form.get("option_id", "")).strip() or gpu,
+            variant=str(form.get("variant", "")).strip() or None,
         )
         if updates:
             preferences = controller.preferences.model_copy(update=updates)

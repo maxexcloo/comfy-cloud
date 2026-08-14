@@ -21,6 +21,7 @@ DEPLOYMENT_ROOT = Path(
 class DeploymentSelection:
     memory_gb: float | None = None
     option_id: str | None = None
+    variant: str | None = None
 
 
 def required_preference(name: str, preferences: ControlPreferences) -> str:
