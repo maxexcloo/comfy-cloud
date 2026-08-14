@@ -138,9 +138,13 @@ async def deploy_pod(
             item.strip() for item in payload["ports"].split(",") if item.strip()
         ]
     if selection is not None and selection.option_id:
-        payload["gpuTypeIds"] = [selection.option_id]
+        gpu_type = selection.option_id
         if selection.variant:
             payload["cloudType"] = selection.variant.upper()
+            prefix = f"{selection.variant.casefold()}:"
+            if gpu_type.casefold().startswith(prefix):
+                gpu_type = gpu_type[len(prefix) :]
+        payload["gpuTypeIds"] = [gpu_type]
     elif gpu_types := environment.get("RUNPOD_GPU_TYPES"):
         payload["gpuTypeIds"] = [
             item.strip() for item in gpu_types.split(",") if item.strip()

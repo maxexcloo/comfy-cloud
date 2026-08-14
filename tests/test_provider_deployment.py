@@ -85,7 +85,9 @@ async def test_deploys_runpod_pod_from_credentials(tmp_path, monkeypatch):
             provider("runpod-pod"),
             preferences(),
             settings(tmp_path),
-            selection=DeploymentSelection(option_id="L40S", variant="community"),
+            selection=DeploymentSelection(
+                option_id="community:L40S", variant="community"
+            ),
         )
 
     assert response.json()["id"] == "pod-1"
