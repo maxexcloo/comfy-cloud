@@ -1474,6 +1474,9 @@ providers:
     ) as client:
         bearer = {"Authorization": "Bearer control-key"}
         status = await client.get("/ops/status", headers=bearer)
+        deployment_options = await client.get(
+            "/ops/providers/worker/deployment-options", headers=bearer
+        )
         rejected = await client.post(
             "/ops/providers/worker/actions/deploy", headers=bearer
         )
@@ -1488,6 +1491,7 @@ providers:
     assert status.json()["providers"][0]["actions"] == [
         {"name": "deploy", "confirmation": "Deploy the worker?"}
     ]
+    assert deployment_options.json() == {"options": [], "provider": "worker"}
     assert rejected.status_code == 400
     assert deployed.json()["body"] == {"api_key": "***", "status": "deployed"}
     messages = [
@@ -2295,6 +2299,9 @@ def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):
     test_body = schema["paths"]["/ops/providers/{provider_id}/test"]["post"][
         "requestBody"
     ]
+    deployment_body = schema["paths"][
+        "/ops/providers/{provider_id}/actions/{action_name}"
+    ]["post"]["requestBody"]
     image_create = schema["paths"]["/v1/images/generations"]["post"]
     image_edit = schema["paths"]["/v1/images/edits"]["post"]
     video_create = schema["paths"]["/v1/videos"]["post"]
@@ -2308,6 +2315,9 @@ def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):
     assert test_body["content"]["application/json"]["schema"]["required"] == [
         "model",
         "prompt",
+    ]
+    assert deployment_body["content"]["application/json"]["schema"]["required"] == [
+        "option_id"
     ]
     assert image_create["operationId"] == "create_image"
     assert image_create["requestBody"]["content"]["application/json"]["schema"][

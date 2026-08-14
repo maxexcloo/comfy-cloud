@@ -6,24 +6,57 @@ import uuid
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
+from pydantic import ValidationError
 
 from .control_contracts import (
     ProviderActionResult,
+    ProviderDeploymentOptions,
+    ProviderDeploymentRequest,
     ProviderLogs,
     ProviderTestRequest,
     ProviderTestResult,
 )
 from .control_dashboard import bearer_authorised, ui_authorised
 from .control_http import RequestBodyTooLarge, error, exception_message, limited_body
+from .provider_deployment_common import DeploymentSelection
 
 TEST_MAXIMUM_BYTES = 16 * 1024
 
 router = APIRouter(prefix="/ops/providers", tags=["operations"])
 
 
+@router.get(
+    "/{provider_id}/deployment-options",
+    operation_id="provider_deployment_options",
+    response_model=ProviderDeploymentOptions,
+)
+async def provider_deployment_options(provider_id: str, request: Request) -> Response:
+    controller = request.app.state.controller
+    settings = request.app.state.settings
+    if not (ui_authorised(request, settings) or bearer_authorised(request, settings)):
+        return Response(status_code=401)
+    try:
+        options = await controller.deployment_options(provider_id)
+    except KeyError as exc:
+        return error(str(exc), 404, "provider_not_found")
+    except Exception as exc:  # noqa: BLE001 - provider API boundary
+        return error(exception_message(exc), 502, "deployment_options_unavailable")
+    return JSONResponse({"options": options, "provider": provider_id})
+
+
 @router.post(
     "/{provider_id}/actions/{action_name}",
     operation_id="provider_action",
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "schema": ProviderDeploymentRequest.model_json_schema()
+                }
+            },
+            "required": False,
+        }
+    },
     response_model=ProviderActionResult,
 )
 async def provider_action(
@@ -46,9 +79,36 @@ async def provider_action(
         request_id=request_id,
     )
     try:
+        preferences = None
+        selection = None
+        body = await limited_body(request, TEST_MAXIMUM_BYTES)
+        if body:
+            deployment = ProviderDeploymentRequest.model_validate_json(body)
+            selection = DeploymentSelection(
+                memory_gb=deployment.memory_gb,
+                option_id=deployment.option_id,
+                variant=deployment.variant,
+            )
+            updates: dict[str, object] = {}
+            if provider_id == "modal":
+                updates["modal_gpu"] = deployment.option_id
+            elif provider_id in {"vast", "vast-pod"} and deployment.memory_gb:
+                updates["vast_minimum_gpu_memory_gb"] = max(
+                    1, int(deployment.memory_gb)
+                )
+            if updates:
+                preferences = controller.preferences.model_copy(update=updates)
         result = await controller.run_provider_action(
-            provider_id, action_name, request_id
+            provider_id,
+            action_name,
+            request_id,
+            preferences=preferences,
+            selection=selection,
         )
+    except RequestBodyTooLarge:
+        return error("request body is too large", 413, "request_too_large")
+    except ValidationError as exc:
+        return error(str(exc), 400, "invalid_request")
     except KeyError as exc:
         controller.store.event(
             "error",

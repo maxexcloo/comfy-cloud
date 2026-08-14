@@ -121,6 +121,17 @@ class ProviderActionResult(BaseModel):
     state: str
 
 
+class ProviderDeploymentOptions(BaseModel):
+    options: list[dict[str, Any]]
+    provider: str
+
+
+class ProviderDeploymentRequest(BaseModel):
+    memory_gb: float | None = Field(default=None, gt=0)
+    option_id: str = Field(min_length=1)
+    variant: str | None = None
+
+
 class ProviderTestRequest(BaseModel):
     model: str
     prompt: str = Field(min_length=1, max_length=2000)
