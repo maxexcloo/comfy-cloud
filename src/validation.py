@@ -41,10 +41,15 @@ def validate_repository(catalogue_dir: Path, profiles_dir: Path) -> None:
             raise ValueError(f"profile must have a name: {path}")
         if name in profiles:
             raise ValueError(f"duplicate profile name: {name}")
-        if profile.get("minimum_vram_gb", 0) <= 0:
-            raise ValueError(f"profile must declare positive minimum_vram_gb: {name}")
-        if not isinstance(profile.get("sources"), list) or not profile["sources"]:
-            raise ValueError(f"profile must declare sources: {name}")
+        minimum_vram = profile.get("minimum_vram_gb")
+        if not isinstance(minimum_vram, int) or minimum_vram < 0:
+            raise ValueError(
+                f"profile must declare non-negative minimum_vram_gb: {name}"
+            )
+        if not isinstance(profile.get("sources"), list):
+            raise TypeError(f"profile must declare a source list: {name}")
+        if minimum_vram > 0 and not profile["sources"]:
+            raise ValueError(f"model profile must declare sources: {name}")
         if path.stem != name:
             raise ValueError(f"profile name must match its filename: {name}")
         for source in profile["sources"]:
@@ -72,10 +77,19 @@ def validate_repository(catalogue_dir: Path, profiles_dir: Path) -> None:
         operation_name, operation_suffix = workflow_operation_names(
             model.operation, "image" in model.input_map
         )
-        expected_id = f"{model.profile}/{operation_name}"
+        implementation = (
+            model.id.rsplit("/", 1)[-1]
+            if model.operation == "image_upscale"
+            else operation_name
+        )
+        expected_id = f"{model.profile}/{implementation}"
         if model.id != expected_id:
             raise ValueError(f"workflow id must be {expected_id}: {model.id}")
-        expected_directory = f"{model.profile}-{operation_suffix}"
+        expected_directory = (
+            f"{model.profile}-{implementation}"
+            if model.operation == "image_upscale"
+            else f"{model.profile}-{operation_suffix}"
+        )
         workflow_path = model._workflow_path
         if workflow_path is None or workflow_path.parent.name != expected_directory:
             raise ValueError(

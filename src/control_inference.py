@@ -90,6 +90,10 @@ def canonical_parameters(values: dict[str, object]) -> dict[str, object]:
             raise ValueError(f"{name} must be at least 1")
     if parameters.get("seed") is not None and int(parameters["seed"]) < 0:
         raise ValueError("seed must be at least 0")
+    if parameters.get("scale") is not None:
+        if isinstance(parameters["scale"], bool):
+            raise ValueError("scale must be a number")
+        parameters["scale"] = float(parameters["scale"])
     return parameters
 
 

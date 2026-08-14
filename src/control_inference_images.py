@@ -7,7 +7,11 @@ import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
-from .control_contracts import ImageGenerationRequest, ImageGenerationResponse
+from .control_contracts import (
+    ImageGenerationRequest,
+    ImageGenerationResponse,
+    ImageUpscaleRequest,
+)
 from .control_dashboard import bearer_authorised
 from .control_http import RequestBodyTooLarge, error, exception_message, limited_body
 from .control_inference import (
@@ -186,6 +190,154 @@ async def generate_image(request: Request, operation: str, path: str) -> Respons
 )
 async def image_generations(request: Request) -> Response:
     return await generate_image(request, "image_generation", "/v1/images/generations")
+
+
+@router.post(
+    "/images/upscales",
+    operation_id="upscale_image",
+    response_model=ImageGenerationResponse,
+    responses={
+        200: {
+            "headers": {
+                "x-comfy-duration-seconds": {
+                    "description": "End-to-end provider attempt duration.",
+                    "schema": {"type": "number"},
+                },
+                "x-comfy-history-id": {"schema": {"type": "string"}},
+                "x-comfy-provider": {"schema": {"type": "string"}},
+            }
+        }
+    },
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "allOf": [
+                            ImageUpscaleRequest.model_json_schema(),
+                            {
+                                "properties": {
+                                    "image": {"format": "binary", "type": "string"}
+                                },
+                                "required": ["image"],
+                                "type": "object",
+                            },
+                        ]
+                    }
+                }
+            },
+            "required": True,
+        }
+    },
+)
+async def image_upscales(request: Request) -> Response:
+    controller = request.app.state.controller
+    settings = request.app.state.settings
+    if not bearer_authorised(request, settings):
+        return error("invalid API key", 401, "invalid_api_key")
+    try:
+        await limited_body(request, controller.preferences.maximum_request_bytes)
+    except RequestBodyTooLarge:
+        return error("request body is too large", 413, "request_too_large")
+    try:
+        form = await request.form()
+        model_id = str(form.get("model", "image-upscale"))
+        provider = str(form.get("provider", "")).strip() or None
+        _, targets = controller.resolve_model(model_id, "image_upscale", provider)
+        images = [
+            value
+            for key, value in form.multi_items()
+            if key == "image" and hasattr(value, "read")
+        ]
+        if len(images) != 1:
+            raise ValueError("exactly one image is required")
+        image = images[0]
+        content = await image.read()
+        content_type = image.content_type or "application/octet-stream"
+        if not content_type.startswith("image/"):
+            raise ValueError("image must use an image media type")
+        options = ImageUpscaleRequest.model_validate(
+            {
+                key: value
+                for key, value in form.items()
+                if key in ImageUpscaleRequest.model_fields
+            }
+        )
+        parameters = canonical_parameters(options.model_dump())
+    except ValueError as exc:
+        return error(str(exc), 400, "invalid_request")
+    except KeyError as exc:
+        return error(str(exc), 404, "model_not_found")
+
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+    history_id = f"upscale_{uuid.uuid4().hex}"
+    filename = image.filename or "input"
+    files = [("image", (filename, content, content_type))]
+    history = options.model_dump(exclude_none=True)
+    history["input_media"] = [
+        {
+            "content_type": content_type,
+            "filename": filename,
+            "size": len(content),
+        }
+    ]
+    controller.store.save_history(
+        history_id,
+        "image_upscale",
+        model_id,
+        json.dumps(history_parameters(history), separators=(",", ":")),
+    )
+    controller.media.save_input(history_id, content, content_type, filename, "image")
+    failures: list[str] = []
+    for target in targets:
+        controller.store.update_history(
+            history_id,
+            "in_progress",
+            provider=target.provider,
+            provider_model=target.model,
+        )
+        attempt_id = controller.store.start_attempt(
+            history_id, target.provider, target.model
+        )
+        try:
+            outputs = await controller.execute_internal(
+                target,
+                history_id,
+                "image_upscale",
+                parameters,
+                files,
+            )
+        except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
+            message = exception_message(exc)
+            controller.store.finish_attempt(attempt_id, "failed", message)
+            failures.append(f"{target.provider}: {message}")
+            continue
+        controller.store.finish_attempt(attempt_id, "completed")
+        controller.store.update_history(
+            history_id, "completed", provider=target.provider
+        )
+        content_body = internal_image_content(
+            request,
+            controller,
+            history_id,
+            outputs,
+            options.response_format,
+        )
+        attempt = controller.store.attempts(history_id)[-1]
+        duration = float(attempt["finished_at"]) - float(attempt["started_at"])
+        return Response(
+            content=content_body,
+            media_type="application/json",
+            headers={
+                "x-comfy-duration-seconds": f"{duration:.3f}",
+                "x-comfy-history-id": history_id,
+                "x-comfy-provider": target.provider,
+                "x-request-id": request_id,
+            },
+        )
+    failure = "; ".join(failures) or "all providers failed"
+    controller.store.update_history(history_id, "failed", error=failure)
+    return error(failure, 502, "providers_failed")
 
 
 @router.post(

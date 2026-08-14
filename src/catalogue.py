@@ -9,7 +9,12 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-Operation = Literal["image_generation", "image_edit", "video_generation"]
+Operation = Literal[
+    "image_edit",
+    "image_generation",
+    "image_upscale",
+    "video_generation",
+]
 
 
 def workflow_operation_names(
@@ -19,6 +24,8 @@ def workflow_operation_names(
         return "text-to-image", "t2i"
     if operation == "image_edit":
         return "image-edit", "edit"
+    if operation == "image_upscale":
+        return "image-upscale", "upscale"
     if has_image_input:
         return "image-to-video", "i2v"
     return "text-to-video", "t2v"
@@ -57,10 +64,12 @@ class WorkflowModel(BaseModel):
         workflow = Path(self.workflow)
         if workflow.is_absolute() or ".." in workflow.parts:
             raise ValueError("workflow must be relative to its catalogue manifest")
-        if "prompt" not in self.input_map:
+        if self.operation != "image_upscale" and "prompt" not in self.input_map:
             raise ValueError("input_map must include prompt")
-        if self.operation == "image_edit" and "image" not in self.input_map:
-            raise ValueError("image_edit input_map must include image")
+        if self.operation in {"image_edit", "image_upscale"} and (
+            "image" not in self.input_map
+        ):
+            raise ValueError(f"{self.operation} input_map must include image")
         for required in self.required_files:
             path = Path(required)
             if path.is_absolute() or ".." in path.parts:

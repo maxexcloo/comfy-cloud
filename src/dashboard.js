@@ -416,13 +416,122 @@ const formatDuration = (seconds) => {
   return `${minutes} min ${Math.round(seconds % 60)} s`;
 };
 
+const mediaKind = (contentType) => {
+  const [kind, format] = String(contentType || "media").split("/", 2);
+  return `${kind.charAt(0).toUpperCase()}${kind.slice(1)}${format ? ` · ${format.toUpperCase()}` : ""}`;
+};
+
+const titleText = (value) =>
+  String(value || "")
+    .replaceAll(/[_-]+/g, " ")
+    .replaceAll(/\b\w/g, (character) => character.toUpperCase());
+
 const mediaDialog = document.getElementById("media-dialog");
 if (mediaDialog) {
+  const actionDialog = document.getElementById("media-action-dialog");
+  const actionError = document.getElementById("media-action-error");
+  const actionForm = document.getElementById("media-action-form");
+  const actionModel = document.getElementById("media-action-model");
+  const actionProvider = document.getElementById("media-action-provider");
+  const actionScale = document.getElementById("media-action-scale");
+  const actionSubmit = document.getElementById("media-action-submit");
   const detailRoot = document.getElementById("media-detail");
   const nextButton = mediaDialog.querySelector("[data-next-media]");
   const previousButton = mediaDialog.querySelector("[data-previous-media]");
   let activeAssetId = null;
+  let activeItem;
+  let activeMediaAction;
+  let mediaNotice;
   let openRequest = 0;
+  const providerLabel = (provider) =>
+    ({
+      cliproxyapi: "CLI Proxy API",
+      modal: "Modal",
+      runpod: "RunPod",
+      "runpod-pod": "RunPod (Pod)",
+      salad: "SaladCloud",
+      vast: "Vast",
+      "vast-pod": "Vast (Pod)",
+    })[provider] || titleText(provider);
+  const updateActionProviders = () => {
+    const selected = activeItem.actions[activeMediaAction].find(
+      (model) => model.id === actionModel.value,
+    );
+    actionProvider.replaceChildren(element("option", "", "Automatic"));
+    actionProvider.firstElementChild.value = "";
+    for (const provider of selected?.providers || []) {
+      const option = element("option", "", providerLabel(provider));
+      option.value = provider;
+      actionProvider.append(option);
+    }
+  };
+  const updateUpscaleSummary = () => {
+    const scale = Number(actionScale.value);
+    const summary = document.getElementById("media-upscale-summary");
+    if (!activeItem.width || !activeItem.height) {
+      summary.textContent = `${scale * scale}× The Source Pixel Count`;
+      return;
+    }
+    summary.textContent = `${activeItem.width} × ${activeItem.height} → ${Math.round(activeItem.width * scale)} × ${Math.round(activeItem.height * scale)} · ${scale * scale}× Pixels`;
+  };
+  const openMediaAction = (action) => {
+    activeMediaAction = action;
+    const editing = action === "image_edit";
+    const label = editing ? "Edit Image" : "Upscale Image";
+    document.getElementById("media-action-kind").textContent = mediaKind(
+      activeItem.content_type,
+    );
+    document.getElementById("media-action-title").textContent = label;
+    actionSubmit.textContent = label;
+    actionError.classList.add("d-none");
+    actionError.textContent = "";
+    for (const field of actionDialog.querySelectorAll("[data-edit-field]"))
+      field.classList.toggle("d-none", !editing);
+    for (const field of actionDialog.querySelectorAll("[data-upscale-field]"))
+      field.classList.toggle("d-none", editing);
+    document.getElementById("media-action-prompt").required = editing;
+    actionModel.replaceChildren();
+    for (const model of activeItem.actions[action]) {
+      const option = element("option", "", model.id);
+      option.value = model.id;
+      actionModel.append(option);
+    }
+    updateActionProviders();
+    updateUpscaleSummary();
+    actionDialog.showModal();
+  };
+  actionModel.addEventListener("change", updateActionProviders);
+  actionScale.addEventListener("change", updateUpscaleSummary);
+  for (const close of actionDialog.querySelectorAll("[data-close]"))
+    close.addEventListener("click", () => actionDialog.close());
+  closeDialogOnBackdrop(actionDialog);
+  actionForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(actionForm);
+    form.append("csrf_token", actionDialog.dataset.csrfToken);
+    const action = activeMediaAction === "image_edit" ? "edit" : "upscale";
+    actionSubmit.disabled = true;
+    actionSubmit.setAttribute("aria-busy", "true");
+    actionError.classList.add("d-none");
+    try {
+      const response = await fetch(`/media/${activeAssetId}/${action}`, {
+        body: form,
+        method: "POST",
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result.error?.message || "The Image Action Failed");
+      mediaNotice = `${activeMediaAction === "image_edit" ? "Image Edited" : "Image Upscaled"}${result.provider ? ` With ${providerLabel(result.provider)}` : ""}`;
+      actionDialog.close();
+      await openMedia(result.asset_id);
+    } catch (error) {
+      actionError.textContent = error.message;
+      actionError.classList.remove("d-none");
+    } finally {
+      actionSubmit.disabled = false;
+      actionSubmit.removeAttribute("aria-busy");
+    }
+  });
   const availableMediaIds = () => [
     ...new Set(
       [...document.querySelectorAll("[data-media-id]:not(.related-item)")].map(
@@ -450,11 +559,16 @@ if (mediaDialog) {
       return;
     }
     const item = await response.json();
+    activeItem = item;
     const use = item.uses[0] || {};
     const actualModel = use.provider_model || use.model;
-    document.getElementById("media-kind").textContent = item.content_type;
+    document.getElementById("media-kind").textContent = mediaKind(
+      item.content_type,
+    );
     document.getElementById("media-title").textContent =
-      actualModel || `Media ${item.id}`;
+      actualModel && !actualModel.includes("/")
+        ? titleText(actualModel)
+        : actualModel || `Media ${item.id}`;
     const preview = item.content_type.startsWith("video/")
       ? element("video", "media-preview")
       : element("img", "media-preview");
@@ -463,25 +577,69 @@ if (mediaDialog) {
     else preview.alt = use.prompt || "Generated Media";
 
     const facts = element("div", "detail-grid");
-    facts.append(
-      labelledValue("Provider", use.provider),
+    const factItems = [
+      labelledValue("Provider", providerLabel(use.provider)),
       labelledValue("Model", actualModel),
       labelledValue(
         "Dimensions",
         item.width && item.height ? `${item.width} × ${item.height}` : "—",
       ),
       labelledValue("Size", formatBytes(item.size)),
-      labelledValue("Generation Time", formatDuration(use.generation_seconds)),
-    );
+    ];
+    if (Number.isFinite(use.generation_seconds))
+      factItems.push(
+        labelledValue(
+          "Generation Time",
+          formatDuration(use.generation_seconds),
+        ),
+      );
+    facts.append(...factItems);
     const body = document.createDocumentFragment();
-    body.append(preview, facts);
+    if (mediaNotice) {
+      body.append(element("div", "alert alert-success", mediaNotice));
+      mediaNotice = undefined;
+    }
+    body.append(preview);
+    if (item.content_type.startsWith("image/")) {
+      const actions = element(
+        "div",
+        "align-items-center d-flex flex-wrap gap-2 justify-content-between my-3",
+      );
+      const actionButtons = element("div", "d-flex flex-wrap gap-2");
+      for (const [operation, label] of [
+        ["image_edit", "Edit Image"],
+        ["image_upscale", "Upscale Image"],
+      ]) {
+        if (!item.actions[operation]?.length) continue;
+        const button = element(
+          "button",
+          operation === "image_upscale"
+            ? "btn btn-primary btn-sm"
+            : "btn btn-outline-primary btn-sm",
+          label,
+        );
+        button.dataset.mediaAction = operation;
+        button.type = "button";
+        actionButtons.append(button);
+      }
+      if (actionButtons.childElementCount) {
+        actions.append(
+          element("strong", "text-secondary", "Image Actions"),
+          actionButtons,
+        );
+        body.append(actions);
+      }
+    }
+    body.append(facts);
     for (const generation of item.uses) {
       const section = element("section", "card card-body detail-section");
       const heading = element(
         "div",
         "align-items-center d-flex justify-content-between",
       );
-      heading.append(element("h3", "", "Generation Details"));
+      heading.append(
+        element("h3", "", `${titleText(generation.operation)} Details`),
+      );
       const historyLink = element("a", "", "View History");
       historyLink.href = `/history?q=${encodeURIComponent(generation.history_id)}`;
       const links = element("div", "d-flex gap-2");
@@ -501,13 +659,15 @@ if (mediaDialog) {
           element("p", "prompt", generation.prompt),
         );
       }
-      section.append(element("small", "", "Parameters"));
+      const parameterDetails = element("details");
+      parameterDetails.append(element("summary", "", "Parameters"));
       const parameters = element(
         "pre",
         "parameters",
         JSON.stringify(generation.parameters, null, 2),
       );
-      section.append(parameters);
+      parameterDetails.append(parameters);
+      section.append(parameterDetails);
       body.append(section);
     }
     const related = [
@@ -547,6 +707,11 @@ if (mediaDialog) {
     openMedia(ids[(baseIndex + direction + ids.length) % ids.length]);
   };
   document.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-media-action]");
+    if (action) {
+      openMediaAction(action.dataset.mediaAction);
+      return;
+    }
     const target = event.target.closest("[data-media-id]");
     if (target) openMedia(target.dataset.mediaId);
   });

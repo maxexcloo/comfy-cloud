@@ -6,9 +6,11 @@ Each directory under `catalogue/` contains a manifest beside its checksum-pinned
 API-format ComfyUI workflow JSON. The manifest maps portable API fields to concrete
 node inputs:
 
-Directory names use `<profile>-<operation>`, where the operation is `t2i`, `edit`,
-`i2v` or `t2v`. Each manifest's `profile` must exactly match a
+Directory names use `<profile>-<operation>`, where the operation identifies the
+workflow implementation. Each manifest's `profile` must exactly match a
 `profiles/<profile>.yaml` file, and its ID uses `<profile>/<operation-name>`.
+Source-free profiles with zero minimum VRAM describe pipelines made entirely from
+built-in ComfyUI nodes.
 
 ```yaml
 id: flux-2-klein-9b/text-to-image
@@ -53,6 +55,33 @@ Image edits accept `image`, `prompt`, and optional `n`, `seed`, `steps` and
 `response_format`. Their dimensions follow the uploaded image. MiniMax video
 requests accept `prompt`, `size` and `seconds`; image-to-video also accepts the
 first-frame `image`.
+
+## Image upscaling
+
+`POST /v1/images/upscales` routes an uploaded image through the same configured
+image-provider order as generation. The bundled `image-upscale/lanczos` pipeline
+accepts `scale` from greater than 1 through 4 and `method` as `area`, `bicubic`,
+`bilinear`, `lanczos` or `nearest-exact`. It has no model weights and defaults to
+Lanczos at 2×:
+
+```bash
+curl -D response-headers.txt \
+  -H "Authorization: Bearer ${CONTROL_API_KEY}" \
+  -F image=@source.png \
+  -F model=image-upscale \
+  -F response_format=url \
+  -F scale=2 \
+  https://comfy-control.example/v1/images/upscales
+```
+
+The response includes `x-comfy-duration-seconds`, `x-comfy-history-id` and
+`x-comfy-provider`. History stores the method and scale; Media records the source
+and output dimensions and links both assets. This makes 2×, 3× and 4× runs directly
+comparable by provider, elapsed time, file size and visual result. A scale factor of
+2 produces four times the pixels and 4 produces sixteen times the pixels, so memory
+and processing costs rise materially even though the pipeline does not invent new
+detail. Learned enhancement should be published as a separate upscale model so its
+content changes and checkpoint cost remain explicit.
 
 ## Profiles
 

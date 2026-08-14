@@ -1,0 +1,24 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "input.png",
+      "upload": "image"
+    }
+  },
+  "2": {
+    "class_type": "ImageScaleBy",
+    "inputs": {
+      "image": ["1", 0],
+      "scale_by": 2,
+      "upscale_method": "lanczos"
+    }
+  },
+  "3": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "upscaled-lanczos",
+      "images": ["2", 0]
+    }
+  }
+}

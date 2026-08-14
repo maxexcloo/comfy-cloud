@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -114,6 +115,11 @@ models:
     targets:
       - model: worker/image-edit
         provider: worker
+  - id: public/upscale
+    operation: image_upscale
+    targets:
+      - model: image-upscale/lanczos
+        provider: worker
   - id: public/video
     operation: video_generation
     targets:
@@ -174,9 +180,23 @@ def worker_app() -> FastAPI:
         elif operation == "image_edit":
             assert spec["model"] == "worker/image-edit"
             images = form.getlist("image")
-            assert [image.filename for image in images] == ["mara.png", "elise.png"]
-            assert [await image.read() for image in images] == [b"mara", b"elise"]
+            if len(images) == 2:
+                assert [image.filename for image in images] == [
+                    "mara.png",
+                    "elise.png",
+                ]
+                assert [await image.read() for image in images] == [b"mara", b"elise"]
+            else:
+                assert len(images) == 1
+                assert await images[0].read() == b"image"
             output = (b"edit", "image/png", "edit.png")
+        elif operation == "image_upscale":
+            assert spec["model"] == "image-upscale/lanczos"
+            assert spec["parameters"]["method"] in {"bicubic", "lanczos"}
+            assert 1 < spec["parameters"]["scale"] <= 4
+            image = form.getlist("image")[0]
+            assert await image.read() in {b"image", b"source-image"}
+            output = (b"upscaled", "image/png", "upscaled.png")
         else:
             assert spec["model"] == "worker/video"
             images = form.getlist("image")
@@ -211,6 +231,109 @@ async def attach_worker(app: FastAPI) -> None:
     runtime.client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=worker_app()), base_url="http://worker"
     )
+
+
+@pytest.mark.asyncio
+async def test_image_upscale_routes_to_worker_and_records_lineage(tmp_path: Path):
+    app = create_app(settings(tmp_path))
+    await attach_worker(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        response = await client.post(
+            "/v1/images/upscales",
+            headers={"Authorization": "Bearer control-key"},
+            data={
+                "method": "bicubic",
+                "model": "public/upscale",
+                "response_format": "url",
+                "scale": "3",
+            },
+            files={"image": ("source.png", b"source-image", "image/png")},
+        )
+
+    assert response.status_code == 200
+    assert float(response.headers["x-comfy-duration-seconds"]) >= 0
+    assert response.headers["x-comfy-provider"] == "worker"
+    history_id = response.headers["x-comfy-history-id"]
+    history = next(
+        item
+        for item in app.state.controller.store.histories()
+        if item["id"] == history_id
+    )
+    assert history["operation"] == "image_upscale"
+    assert history["parameters"]["method"] == "bicubic"
+    assert history["parameters"]["scale"] == 3.0
+    media = app.state.controller.store.media_library(
+        filters=[{"path": "history_id", "value": history_id}]
+    )
+    detail = app.state.controller.store.media_detail(media["data"][0]["asset_id"])
+    assert detail is not None
+    assert [source["filename"] for source in detail["lineage"]["sources"]] == [
+        "source.png"
+    ]
+    await app.state.controller.close()
+
+
+@pytest.mark.asyncio
+async def test_media_ui_edits_and_upscales_images(tmp_path: Path):
+    app = create_app(settings(tmp_path))
+    await attach_worker(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://control"
+    ) as client:
+        generated = await client.post(
+            "/v1/images/generations",
+            headers={"Authorization": "Bearer control-key"},
+            json={"model": "public/image", "prompt": "Source Image"},
+        )
+        history_id = generated.headers["x-comfy-history-id"]
+        source = app.state.controller.store.media_library(
+            filters=[{"path": "history_id", "value": history_id}]
+        )["data"][0]
+        await sign_in(client)
+        page = await client.get("/media")
+        token = re.search(r'data-csrf-token="([^"]+)"', page.text).group(1)
+        detail = await client.get(f"/media/{source['asset_id']}")
+        edited = await client.post(
+            f"/media/{source['asset_id']}/edit",
+            data={
+                "csrf_token": token,
+                "model": "public/image-edit",
+                "prompt": "Add More Detail",
+            },
+        )
+        upscaled = await client.post(
+            f"/media/{source['asset_id']}/upscale",
+            data={
+                "csrf_token": token,
+                "method": "lanczos",
+                "model": "public/upscale",
+                "scale": "2",
+            },
+        )
+
+    assert detail.json()["actions"] == {
+        "image_edit": [{"id": "public/image-edit", "providers": ["worker"]}],
+        "image_upscale": [{"id": "public/upscale", "providers": ["worker"]}],
+    }
+    assert edited.status_code == 200
+    assert upscaled.status_code == 200
+    assert edited.json()["asset_id"] != source["asset_id"]
+    assert upscaled.json()["asset_id"] != source["asset_id"]
+    assert (
+        app.state.controller.store.media_lineage(edited.json()["asset_id"])["sources"][
+            0
+        ]["id"]
+        == source["asset_id"]
+    )
+    assert (
+        app.state.controller.store.media_lineage(upscaled.json()["asset_id"])[
+            "sources"
+        ][0]["id"]
+        == source["asset_id"]
+    )
+    await app.state.controller.close()
 
 
 @pytest.mark.asyncio
@@ -352,7 +475,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
 
     assert health.json() == {
         "status": "ready",
-        "models": 3,
+        "models": 4,
         "providers": 1,
     }
     assert denied.status_code == 401
@@ -376,7 +499,9 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert [model["id"] for model in models.json()["data"]] == [
         "public/image",
         "public/image-edit",
+        "public/upscale",
         "public/video",
+        "worker/image-upscale/lanczos",
         "worker/worker/image",
         "worker/worker/image-edit",
         "worker/worker/video",
@@ -1279,7 +1404,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert javascript.headers["content-type"].startswith("text/javascript")
     assert javascript.headers["cache-control"] == "no-store"
     assert "if (!mediaDialog.open) mediaDialog.showModal()" in javascript.text
-    assert 'labelledValue("Generation Time"' in javascript.text
+    assert '"Generation Time"' in javascript.text
     assert '["KiB", "MiB", "GiB"]' in javascript.text
     assert 'event.key === "ArrowLeft"' in javascript.text
     assert 'event.key === "ArrowRight"' in javascript.text
@@ -1706,6 +1831,7 @@ def test_control_file_enables_configured_providers(monkeypatch):
     assert [model.id for model in loaded.models] == [
         "image-edit",
         "image-generation",
+        "image-upscale",
         "image-to-video",
         "text-to-video",
     ]
@@ -2304,6 +2430,7 @@ def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):
     ]["post"]["requestBody"]
     image_create = schema["paths"]["/v1/images/generations"]["post"]
     image_edit = schema["paths"]["/v1/images/edits"]["post"]
+    image_upscale = schema["paths"]["/v1/images/upscales"]["post"]
     video_create = schema["paths"]["/v1/videos"]["post"]
     assert status_schema["content"]["application/json"]["schema"]["$ref"].endswith(
         "/OperationsStatus"
@@ -2328,6 +2455,13 @@ def test_controller_openapi_is_current_and_has_no_legacy_api(tmp_path: Path):
     ].endswith("/ImageGenerationResponse")
     assert image_edit["operationId"] == "edit_image"
     assert "multipart/form-data" in image_edit["requestBody"]["content"]
+    assert image_upscale["operationId"] == "upscale_image"
+    assert "multipart/form-data" in image_upscale["requestBody"]["content"]
+    assert set(image_upscale["responses"]["200"]["headers"]) == {
+        "x-comfy-duration-seconds",
+        "x-comfy-history-id",
+        "x-comfy-provider",
+    }
     assert video_create["operationId"] == "create_video"
     assert set(video_create["requestBody"]["content"]) == {
         "application/json",

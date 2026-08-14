@@ -46,6 +46,17 @@ MODEL_ROUTES = {
             "vast",
         ),
     ),
+    "image-upscale": (
+        "image_upscale",
+        (
+            "modal",
+            "runpod-pod",
+            "runpod",
+            "salad",
+            "vast-pod",
+            "vast",
+        ),
+    ),
     "image-to-video": (
         "video_generation",
         (
@@ -73,6 +84,7 @@ MODEL_PACKAGES = {
     "flux-2-klein-9b": {
         "image-edit": "flux-2-klein-9b/image-edit",
         "image-generation": "flux-2-klein-9b/text-to-image",
+        "image-upscale": "image-upscale/lanczos",
     },
     "grok-imagine": {
         "image-edit": "grok-imagine-image-quality",
@@ -80,7 +92,10 @@ MODEL_PACKAGES = {
         "image-to-video": "grok-imagine-video-1.5",
         "text-to-video": "grok-imagine-video-1.5",
     },
-    "krea-2-turbo": {"image-generation": "krea-2-turbo/text-to-image"},
+    "krea-2-turbo": {
+        "image-generation": "krea-2-turbo/text-to-image",
+        "image-upscale": "image-upscale/lanczos",
+    },
     "minimax-h3": {
         "image-to-video": "minimax-h3/image-to-video",
         "text-to-video": "minimax-h3/text-to-video",
@@ -98,6 +113,7 @@ PROVIDER_MODEL_PACKAGES = {
 ROUTE_FAMILIES = {
     "image-edit": "images",
     "image-generation": "images",
+    "image-upscale": "images",
     "image-to-video": "videos",
     "text-to-video": "videos",
 }

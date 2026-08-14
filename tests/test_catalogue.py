@@ -63,11 +63,23 @@ def test_catalogue_maps_image_to_video_first_frame():
     assert graph["8"]["inputs"]["steps"] == 16
 
 
+def test_catalogue_maps_image_upscale_inputs():
+    catalogue = Catalogue.load((ROOT / "catalogue",))
+    graph = catalogue.get("image-upscale").render(
+        {"image": "source.png", "method": "bicubic", "scale": 3.5}
+    )
+
+    assert graph["1"]["inputs"]["image"] == "source.png"
+    assert graph["2"]["inputs"]["scale_by"] == 3.5
+    assert graph["2"]["inputs"]["upscale_method"] == "bicubic"
+
+
 def test_catalogue_exposes_alias_only_once():
     catalogue = Catalogue.load((ROOT / "catalogue",))
     assert [model.id for model in catalogue.list()] == [
         "flux-2-klein-9b/image-edit",
         "flux-2-klein-9b/text-to-image",
+        "image-upscale/lanczos",
         "krea-2-turbo/text-to-image",
         "minimax-h3/image-to-video",
         "minimax-h3/text-to-video",
@@ -80,13 +92,18 @@ def test_catalogue_only_exposes_workflows_with_required_models(tmp_path):
     model.required_files = ["checkpoints/test.safetensors"]
 
     assert model.missing_files(tmp_path) == ["checkpoints/test.safetensors"]
-    assert catalogue.list_available(tmp_path) == []
+    assert [model.id for model in catalogue.list_available(tmp_path)] == [
+        "image-upscale/lanczos"
+    ]
 
     checkpoint = tmp_path / "checkpoints/test.safetensors"
     checkpoint.parent.mkdir()
     checkpoint.write_bytes(b"model")
 
-    assert catalogue.list_available(tmp_path) == [model]
+    assert [item.id for item in catalogue.list_available(tmp_path)] == [
+        "flux-2-klein-9b/text-to-image",
+        "image-upscale/lanczos",
+    ]
 
 
 def test_catalogue_hides_workflows_with_unregistered_nodes(tmp_path):

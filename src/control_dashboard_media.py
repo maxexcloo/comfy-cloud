@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import (
     FileResponse,
@@ -132,6 +133,17 @@ async def media_detail(asset_id: int, request: Request) -> Response:
     if detail is None:
         return error("media was not found", 404, "not_found")
     detail.pop("path", None)
+    detail["actions"] = {
+        operation: [
+            {
+                "id": model.id,
+                "providers": [target.provider for target in model.targets],
+            }
+            for model in controller.config.models
+            if model.operation == operation
+        ]
+        for operation in ("image_edit", "image_upscale")
+    }
     return JSONResponse(detail, headers={"Cache-Control": "no-store"})
 
 
@@ -144,3 +156,88 @@ async def media_lineage(asset_id: int, request: Request) -> Response:
     if controller.store.media_asset(asset_id) is None:
         return error("media was not found", 404, "not_found")
     return JSONResponse(controller.store.media_lineage(asset_id))
+
+
+async def run_media_action(
+    asset_id: int, request: Request, path: str, fields: dict[str, str]
+) -> Response:
+    controller = request.app.state.controller
+    settings = request.app.state.settings
+    if not ui_authorised(request, settings):
+        return Response(status_code=401)
+    form = await request.form()
+    if not valid_csrf(request, settings, str(form.get("csrf_token", ""))):
+        return error("invalid CSRF token", 403, "invalid_csrf")
+    asset = controller.store.media_asset(asset_id)
+    if asset is None or not Path(asset.path).is_file():
+        return error("media was not found", 404, "not_found")
+    if not asset.content_type.startswith("image/"):
+        return error("media must be an image", 400, "invalid_media")
+    data = {
+        name: str(form.get(name, default)).strip() for name, default in fields.items()
+    }
+    if not data.get("model"):
+        return error("model is required", 400, "invalid_request")
+    if data.get("provider") == "":
+        data.pop("provider", None)
+    data["response_format"] = "url"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=request.app), base_url="http://dashboard"
+    ) as client:
+        response = await client.post(
+            path,
+            data=data,
+            files={
+                "image": (
+                    Path(asset.path).name,
+                    Path(asset.path).read_bytes(),
+                    asset.content_type,
+                )
+            },
+            headers={"Authorization": f"Bearer {settings.api_key}"},
+        )
+    if not response.is_success:
+        return Response(
+            content=response.content,
+            media_type=response.headers.get("content-type"),
+            status_code=response.status_code,
+        )
+    history_id = response.headers["x-comfy-history-id"]
+    media = controller.store.media_library(
+        filters=[{"path": "history_id", "value": history_id}]
+    )["data"]
+    output = next((item for item in media if item["role"] == "output"), None)
+    if output is None:
+        return error("action produced no media", 502, "missing_output")
+    return JSONResponse(
+        {
+            "asset_id": output["asset_id"],
+            "history_id": history_id,
+            "provider": response.headers.get("x-comfy-provider"),
+        }
+    )
+
+
+@router.post("/{asset_id}/edit", include_in_schema=False)
+async def media_edit(asset_id: int, request: Request) -> Response:
+    return await run_media_action(
+        asset_id,
+        request,
+        "/v1/images/edits",
+        {"model": "", "prompt": "", "provider": ""},
+    )
+
+
+@router.post("/{asset_id}/upscale", include_in_schema=False)
+async def media_upscale(asset_id: int, request: Request) -> Response:
+    return await run_media_action(
+        asset_id,
+        request,
+        "/v1/images/upscales",
+        {
+            "method": "lanczos",
+            "model": "image-upscale",
+            "provider": "",
+            "scale": "2",
+        },
+    )

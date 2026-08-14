@@ -170,6 +170,39 @@ async def test_internal_execution_uploads_named_files():
 
 
 @pytest.mark.asyncio
+async def test_internal_execution_upscales_an_uploaded_image():
+    app = create_app(settings())
+    app.state.runtime.run = AsyncMock(return_value=[OutputRef("upscaled.png")])
+    app.state.runtime.comfy.upload = AsyncMock(return_value="uploaded/source.png")
+    spec = json.dumps(
+        {
+            "execution_id": "upscale_1",
+            "model": "image-upscale/lanczos",
+            "operation": "image_upscale",
+            "parameters": {"method": "lanczos", "scale": 4.0},
+        }
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/internal/executions",
+            headers={"Authorization": "Bearer test-key"},
+            files={
+                "image": ("source.png", b"image", "image/png"),
+                "spec": (None, spec),
+            },
+        )
+
+    assert response.status_code == 200
+    assert app.state.runtime.run.await_args.args[1] == {
+        "image": "uploaded/source.png",
+        "method": "lanczos",
+        "scale": 4.0,
+    }
+
+
+@pytest.mark.asyncio
 async def test_internal_execution_is_idempotent():
     app = create_app(settings())
     app.state.runtime.run = AsyncMock(return_value=[OutputRef("result.png")])

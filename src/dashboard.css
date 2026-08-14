@@ -125,6 +125,10 @@ code {
   overflow-wrap: anywhere;
 }
 
+.media-action-dialog {
+  width: min(94vw, 640px) !important;
+}
+
 .detail-grid {
   display: grid;
   gap: 0.7rem;

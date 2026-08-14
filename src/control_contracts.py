@@ -171,6 +171,16 @@ class ImageGenerationResponse(BaseModel):
     data: list[ImageData]
 
 
+class ImageUpscaleRequest(BaseModel):
+    method: Literal["area", "bicubic", "bilinear", "lanczos", "nearest-exact"] = (
+        "lanczos"
+    )
+    model: str = "image-upscale"
+    provider: str | None = None
+    response_format: Literal["b64_json", "url"] = "url"
+    scale: float = Field(default=2, gt=1, le=4)
+
+
 class InferenceModel(BaseModel):
     created: int
     id: str

@@ -178,6 +178,7 @@ def create_app(settings: Settings) -> FastAPI:
                     "cancel",
                     "image_edit",
                     "image_generation",
+                    "image_upscale",
                     "video_generation",
                 ],
                 "deployment_type": settings.deployment_type,

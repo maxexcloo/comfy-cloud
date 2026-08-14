@@ -32,7 +32,7 @@
     <dialog id="media-dialog" aria-labelledby="media-title">
       <div class="modal-dialog modal-dialog-scrollable modal-xl">
         <div class="modal-content">
-          <header class="dialog-head gap-3 modal-header">
+          <header class="dialog-head gap-3 justify-content-between modal-header w-100">
             <div>
               <small id="media-kind">Media</small>
               <h2 id="media-title">Media Details</h2>
@@ -45,6 +45,31 @@
           </header>
           <div class="dialog-body modal-body" id="media-detail"><p>Loading…</p></div>
         </div>
+      </div>
+    </dialog>
+    <dialog aria-labelledby="media-action-title" data-csrf-token="{{ csrf_token }}" id="media-action-dialog">
+      <div class="media-action-dialog modal-dialog">
+        <form class="modal-content" id="media-action-form">
+          <header class="dialog-head justify-content-between modal-header w-100">
+            <div>
+              <small id="media-action-kind">Media Action</small>
+              <h2 id="media-action-title">Edit Image</h2>
+            </div>
+            <button class="btn btn-secondary btn-sm" data-close type="button">Close</button>
+          </header>
+          <div class="dialog-body modal-body">
+            <label class="form-label">Model<select class="form-select" id="media-action-model" name="model" required></select></label>
+            <label class="form-label">Provider<select class="form-select" id="media-action-provider" name="provider"><option value="">Automatic</option></select></label>
+            <label class="form-label" data-edit-field>Prompt<textarea class="form-control" id="media-action-prompt" name="prompt" placeholder="Describe The Changes" rows="4"></textarea></label>
+            <label class="form-label" data-upscale-field>Scale<select class="form-select" id="media-action-scale" name="scale"><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select><small class="form-hint" id="media-upscale-summary"></small></label>
+            <label class="form-label" data-upscale-field>Method<select class="form-select" id="media-action-method" name="method"><option value="lanczos">Lanczos · Recommended</option><option value="bicubic">Bicubic · Smooth</option><option value="bilinear">Bilinear · Faster</option><option value="nearest-exact">Nearest Exact · Pixel Art</option></select><small class="form-hint">Interpolation Resizes Existing Detail; It Does Not Generate New Detail.</small></label>
+            <div class="alert alert-danger d-none" id="media-action-error" role="alert"></div>
+          </div>
+          <footer class="modal-footer">
+            <button class="btn btn-outline-secondary" data-close type="button">Cancel</button>
+            <button class="btn btn-primary" id="media-action-submit" type="submit">Edit Image</button>
+          </footer>
+        </form>
       </div>
     </dialog>
     <script crossorigin="anonymous" integrity="sha384-pku3birjgGovaJ9ngF7SaxKkF/eYUvBjiMJ+jTtWbNesIj2Rud2K63+4JD7EF4gk" src="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/js/tabler.min.js"></script>

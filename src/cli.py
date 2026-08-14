@@ -190,7 +190,12 @@ def create_parser() -> argparse.ArgumentParser:
     add.add_argument(
         "--operation",
         required=True,
-        choices=["image_generation", "image_edit", "video_generation"],
+        choices=[
+            "image_edit",
+            "image_generation",
+            "image_upscale",
+            "video_generation",
+        ],
     )
     add.add_argument("--workflow", required=True)
     add.add_argument("--mapping", required=True)
