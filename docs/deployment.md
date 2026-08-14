@@ -9,20 +9,11 @@ ghcr.io/OWNER/comfy-control:control
 ghcr.io/OWNER/comfy-control:worker
 ```
 
-Pushing a semantic release tag such as `v0.1.0` also publishes immutable release
-tags and shortened minor-version tags:
-
-```text
-ghcr.io/OWNER/comfy-control:0.1.0-control
-ghcr.io/OWNER/comfy-control:0.1.0-worker
-ghcr.io/OWNER/comfy-control:0.1-control
-ghcr.io/OWNER/comfy-control:0.1-worker
-```
-
 Every build receives role-specific `sha-<short-sha>-control` and
 `sha-<short-sha>-worker` tags. A published control image automatically deploys the
 worker image built from the same source revision. An explicit `WORKER_IMAGE`
-override can instead select another immutable release or digest.
+override can instead select another immutable build or digest. Comfy Control has
+one current API and does not retain versioned or legacy contracts.
 
 The lightweight control image contains the API, dashboard and provider control
 plane. The CUDA-enabled worker image contains Comfy Control, pinned ComfyUI, the
@@ -97,9 +88,10 @@ command with `comfy-control serverless` when the ComfyUI frontend should not be
 exposed. Vast.ai Serverless uses `comfy-control vast-serverless` for its request
 envelope.
 
-The dashboard displays RunPod billing history, Vast.ai credit, Modal billing-cycle
-spend, SaladCloud replica quota and CLI Proxy API usage. SaladCloud monetary credit is
-currently portal-only, so its public API contributes usage and quota instead.
+The dashboard displays RunPod credit, Vast.ai credit and spend, Modal billing-cycle
+spend, SaladCloud replica quota and CLI Proxy API usage. SaladCloud monetary credit
+and spend are currently portal-only, so its supported public API contributes quota
+instead.
 Comfy Control derives CLI Proxy API request totals from its durable history and reads
 Grok allowances from CLI Proxy API's authenticated account data. CLI Proxy API v7
 removed the legacy aggregate usage route, while its replacement is a destructive

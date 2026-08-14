@@ -151,7 +151,7 @@ async def test_vast_usage_reports_credit_and_month_spend():
         requests.append(request)
         if request.url.path == "/api/v0/users/current/":
             return httpx.Response(
-                200, json={"balance": 0, "credit": 25, "total_spend": 82.5}
+                200, json={"balance": 0, "credit": 25, "total_spend": -82.5}
             )
         return httpx.Response(
             200,

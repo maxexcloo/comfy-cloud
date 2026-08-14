@@ -72,6 +72,8 @@ async def vast_usage(
     account_payload = account.json()
     balance = first_number(account_payload, "credit", "balance")
     total_spend = first_number(account_payload, "total_spend")
+    if total_spend is not None:
+        total_spend = abs(total_spend)
     metrics: list[dict[str, object]] = []
     if balance is not None:
         metric: dict[str, object] = {
