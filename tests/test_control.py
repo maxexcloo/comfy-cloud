@@ -26,6 +26,7 @@ from comfy_control.control.preferences import ControlPreferences
 from comfy_control.control.registry import control_file as registry_control_file
 from comfy_control.control.service import Controller, history_parameters
 from comfy_control.control.store import ControlStore
+from comfy_control.providers.base import StartRecovery
 from comfy_control.providers.cliproxy import CliproxyClient
 from comfy_control.providers.telemetry import normalise_usage, normalise_xai_quota
 
@@ -1990,6 +1991,100 @@ providers:
     controller.action.assert_awaited_once()
     assert controller.action.await_args.args[2] == "deploy"
     assert controller.check_ready.await_count == 3
+    await controller.close()
+
+
+@pytest.mark.asyncio
+async def test_request_replaces_runpod_pod_stranded_on_busy_host(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "provider-key")
+    configured = settings(tmp_path)
+    configured.config_file.write_text(
+        """
+models: []
+providers:
+  - id: runpod-pod
+    api_key: worker-key
+    management:
+      kind: runpod-pod
+      name: comfy-control
+""".lstrip()
+    )
+    app = create_app(configured)
+    controller = app.state.controller
+    runtime = controller.providers["runpod-pod"]
+    controller.store.save_provider_resource("runpod-pod", "pod-old")
+    controller.check_ready = AsyncMock(side_effect=[False, False, True])
+    request = httpx.Request("POST", "https://rest.runpod.io/v1/pods/pod-old/start")
+    response = httpx.Response(500, request=request)
+    controller.action = AsyncMock(
+        side_effect=httpx.HTTPStatusError(
+            "host capacity unavailable", request=request, response=response
+        )
+    )
+    adapter = AsyncMock()
+    adapter.recover_start.return_value = StartRecovery("pod-new", "pod-old")
+    adapter.terminate.return_value = httpx.Response(204)
+    monkeypatch.setattr(
+        "comfy_control.control.service.provider_adapter", lambda _: adapter
+    )
+
+    await controller.ensure_ready(runtime, "request-1")
+
+    assert controller.store.provider_resource("runpod-pod") == "pod-new"
+    adapter.terminate.assert_awaited_once_with(
+        controller.lifecycle_client,
+        runtime.config,
+        controller.preferences,
+        "pod-old",
+    )
+    await controller.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_runpod_replacement_restores_original_pod(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "provider-key")
+    configured = settings(tmp_path)
+    configured.config_file.write_text(
+        """
+models: []
+providers:
+  - id: runpod-pod
+    api_key: worker-key
+    management:
+      kind: runpod-pod
+      name: comfy-control
+    startup_timeout: 0
+""".lstrip()
+    )
+    app = create_app(configured)
+    controller = app.state.controller
+    runtime = controller.providers["runpod-pod"]
+    controller.store.save_provider_resource("runpod-pod", "pod-old")
+    controller.check_ready = AsyncMock(side_effect=[False, False])
+    request = httpx.Request("POST", "https://rest.runpod.io/v1/pods/pod-old/start")
+    response = httpx.Response(500, request=request)
+    controller.action = AsyncMock(
+        side_effect=httpx.HTTPStatusError(
+            "host capacity unavailable", request=request, response=response
+        )
+    )
+    adapter = AsyncMock()
+    adapter.recover_start.return_value = StartRecovery("pod-new", "pod-old")
+    adapter.terminate.return_value = httpx.Response(204)
+    monkeypatch.setattr(
+        "comfy_control.control.service.provider_adapter", lambda _: adapter
+    )
+
+    with pytest.raises(TimeoutError, match="did not become ready"):
+        await controller.ensure_ready(runtime, "request-1")
+
+    assert controller.store.provider_resource("runpod-pod") == "pod-old"
+    adapter.terminate.assert_awaited_once_with(
+        controller.lifecycle_client,
+        runtime.config,
+        controller.preferences,
+        "pod-new",
+    )
     await controller.close()
 
 

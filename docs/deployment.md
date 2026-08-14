@@ -58,6 +58,14 @@ discovered URL to become healthy, forward the request, and apply the configured 
 policy. Provider resource identifiers are saved in the controller database; serving
 URLs are rediscovered because they may change after a start or scale event.
 
+If RunPod reports that an existing Pod's host no longer has a free GPU, Comfy
+Control creates the cheapest available compatible replacement from the configured
+GPU classes. It keeps the old Pod until the replacement is healthy, then removes
+the old resource. A failed replacement is removed and the old resource identifier
+is restored. RunPod Pod volumes are local to their Pods, so model files are prepared
+again on a replacement. RunPod network volumes are portable, but the managed
+deployment does not attach one automatically.
+
 Configure provider credentials, `HF_TOKEN`, model profiles and GPU preferences
 through Settings. The packaged controller locks its worker image to the matching
 source revision. Set `WORKER_IMAGE` only to override that default with another

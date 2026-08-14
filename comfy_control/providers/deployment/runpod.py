@@ -167,6 +167,59 @@ async def deploy_pod(
     )
 
 
+async def replace_unavailable_pod(
+    client: httpx.AsyncClient,
+    provider: Provider,
+    preferences: ControlPreferences,
+    settings: ControlSettings,
+) -> httpx.Response:
+    minimum_vram = required_vram_gb(worker_model_profiles(provider, preferences))
+    configured = set(preferences.runpod_gpu_types)
+    options = await deployment_options(client, preferences, cloud_variants=True)
+    compatible = [
+        option
+        for option in options
+        if option["available"]
+        and isinstance(option["memory_gb"], (float, int))
+        and option["memory_gb"] >= minimum_vram
+        and (
+            not configured
+            or configured
+            & {
+                str(option["id"]),
+                str(option["label"]),
+                str(option["provider_option_id"]),
+            }
+        )
+    ]
+    if not compatible:
+        raise RuntimeError(
+            "RunPod has no available configured replacement GPU with at least "
+            f"{minimum_vram} GB VRAM"
+        )
+    selected = min(
+        compatible,
+        key=lambda option: (
+            option["cost_per_hour"]
+            if isinstance(option["cost_per_hour"], (float, int))
+            else float("inf"),
+            str(option["label"]).casefold(),
+            str(option["variant"]),
+        ),
+    )
+    return await deploy_pod(
+        client,
+        provider,
+        preferences,
+        settings,
+        selection=DeploymentSelection(
+            memory_gb=float(selected["memory_gb"]),
+            option_id=str(selected["id"]),
+            variant=str(selected["variant"]),
+        ),
+    )
+
+
 async def deploy_serverless(
     client: httpx.AsyncClient,
     provider: Provider,

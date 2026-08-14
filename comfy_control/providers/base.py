@@ -24,6 +24,12 @@ class Discovery:
     resource_id: str
 
 
+@dataclass(frozen=True)
+class StartRecovery:
+    new_resource_id: str
+    old_resource_id: str
+
+
 def required_mapping_value(value: object, key: str) -> object:
     if not isinstance(value, dict) or key not in value or value[key] in (None, ""):
         raise RuntimeError(f"provider response has no {key}")
@@ -81,6 +87,16 @@ class ProviderAdapter(Protocol):
     async def live_status(
         self, provider: Provider
     ) -> tuple[str, dict[str, object]]: ...
+
+    async def recover_start(
+        self,
+        client: httpx.AsyncClient,
+        provider: Provider,
+        preferences: ControlPreferences,
+        settings: ControlSettings,
+        resource_id: str,
+        response: httpx.Response,
+    ) -> StartRecovery | None: ...
 
     def panel_url(
         self, provider: Provider, details: dict[str, object], base_url: str | None
@@ -145,6 +161,18 @@ class BaseAdapter:
 
     async def live_status(self, provider: Provider) -> tuple[str, dict[str, object]]:
         raise RuntimeError(f"live provider status is not implemented: {self.kind}")
+
+    async def recover_start(
+        self,
+        client: httpx.AsyncClient,
+        provider: Provider,
+        preferences: ControlPreferences,
+        settings: ControlSettings,
+        resource_id: str,
+        response: httpx.Response,
+    ) -> StartRecovery | None:
+        del client, provider, preferences, settings, resource_id, response
+        return None
 
     def panel_url(
         self, provider: Provider, details: dict[str, object], base_url: str | None

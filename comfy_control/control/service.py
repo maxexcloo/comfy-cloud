@@ -24,6 +24,7 @@ from comfy_control.control.http import exception_message
 from comfy_control.control.media import ControlMedia
 from comfy_control.control.preferences import ConfigurationManager, ControlPreferences
 from comfy_control.control.store import ControlStore, Job
+from comfy_control.providers.base import StartRecovery
 from comfy_control.providers.cliproxy import CliproxyClient
 from comfy_control.providers.deployment import deployment_options
 from comfy_control.providers.deployment.common import DeploymentSelection
@@ -989,6 +990,8 @@ class Controller:
     async def ensure_ready(self, runtime: ProviderRuntime, request_id: str) -> None:
         if await self.check_ready(runtime):
             return
+        recovery: StartRecovery | None = None
+        recovery_adapter = None
         actions = self.available_actions(runtime.config.id)
         deploy_action = actions.get("deploy")
         start_action = actions.get("start")
@@ -1021,25 +1024,97 @@ class Controller:
                     provider=runtime.config.id,
                     request_id=request_id,
                 )
-                await self.action(start_action, runtime.config.id, "start")
+                try:
+                    await self.action(start_action, runtime.config.id, "start")
+                except httpx.HTTPStatusError as exc:
+                    recovery_adapter = provider_adapter(runtime.config)
+                    resource_id = self.resource_id(runtime.config.id)
+                    if recovery_adapter is None or resource_id is None:
+                        raise
+                    recovery = await recovery_adapter.recover_start(
+                        self.lifecycle_client,
+                        runtime.config,
+                        self.preferences,
+                        self.settings,
+                        resource_id,
+                        exc.response,
+                    )
+                    if recovery is None:
+                        raise
+                    self.store.save_provider_resource(
+                        runtime.config.id, recovery.new_resource_id
+                    )
+                    runtime.base_url = None
+                    runtime.ready = False
+                    self.store.event(
+                        "warning",
+                        "replacing provider resource after host capacity failure",
+                        provider=runtime.config.id,
+                        request_id=request_id,
+                    )
         lifecycle_revision = runtime.lifecycle_revision
         deadline = time.monotonic() + runtime.config.startup_timeout
-        while time.monotonic() < deadline:
-            if await self.check_ready(runtime):
-                self.store.event(
-                    "info",
-                    "provider ready",
-                    provider=runtime.config.id,
-                    request_id=request_id,
+        try:
+            while time.monotonic() < deadline:
+                if await self.check_ready(runtime):
+                    self.store.event(
+                        "info",
+                        "provider ready",
+                        provider=runtime.config.id,
+                        request_id=request_id,
+                    )
+                    if recovery is not None and recovery_adapter is not None:
+                        try:
+                            await recovery_adapter.terminate(
+                                self.lifecycle_client,
+                                runtime.config,
+                                self.preferences,
+                                recovery.old_resource_id,
+                            )
+                        except Exception as exc:  # noqa: BLE001 - cleanup boundary
+                            self.store.event(
+                                "warning",
+                                f"old provider resource cleanup failed: {exception_message(exc)}",
+                                provider=runtime.config.id,
+                                request_id=request_id,
+                            )
+                        else:
+                            self.store.event(
+                                "info",
+                                "old provider resource removed after replacement",
+                                provider=runtime.config.id,
+                                request_id=request_id,
+                            )
+                    return
+                if runtime.lifecycle_revision != lifecycle_revision:
+                    raise RuntimeError(
+                        f"provider {runtime.config.id} was terminated while starting"
+                    )
+                await asyncio.sleep(2)
+            runtime.state = "failed"
+            raise TimeoutError(f"provider {runtime.config.id} did not become ready")
+        except BaseException:
+            if recovery is not None and recovery_adapter is not None:
+                try:
+                    await recovery_adapter.terminate(
+                        self.lifecycle_client,
+                        runtime.config,
+                        self.preferences,
+                        recovery.new_resource_id,
+                    )
+                except Exception as exc:  # noqa: BLE001 - rollback boundary
+                    self.store.event(
+                        "warning",
+                        f"replacement rollback failed: {exception_message(exc)}",
+                        provider=runtime.config.id,
+                        request_id=request_id,
+                    )
+                self.store.save_provider_resource(
+                    runtime.config.id, recovery.old_resource_id
                 )
-                return
-            if runtime.lifecycle_revision != lifecycle_revision:
-                raise RuntimeError(
-                    f"provider {runtime.config.id} was terminated while starting"
-                )
-            await asyncio.sleep(2)
-        runtime.state = "failed"
-        raise TimeoutError(f"provider {runtime.config.id} did not become ready")
+                runtime.base_url = None
+                runtime.ready = False
+            raise
 
     async def idle_reaper(self) -> None:
         while True:

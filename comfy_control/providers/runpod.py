@@ -4,16 +4,18 @@ from collections.abc import Callable
 
 import httpx
 
-from comfy_control.control.config import Provider, ProviderAction
+from comfy_control.control.config import ControlSettings, Provider, ProviderAction
 from comfy_control.control.preferences import ControlPreferences
 from comfy_control.providers.base import (
     BaseAdapter,
     Discovery,
     ProviderNotDeployed,
+    StartRecovery,
     named_resource,
     required_mapping_value,
 )
 from comfy_control.providers.deployment.common import required_preference
+from comfy_control.providers.deployment.runpod import replace_unavailable_pod
 from comfy_control.providers.telemetry import first_number, selected_fields
 
 
@@ -106,6 +108,29 @@ class RunPodAdapter(BaseAdapter):
 
 
 class RunPodPodAdapter(RunPodAdapter):
+    async def recover_start(
+        self,
+        client: httpx.AsyncClient,
+        provider: Provider,
+        preferences: ControlPreferences,
+        settings: ControlSettings,
+        resource_id: str,
+        response: httpx.Response,
+    ) -> StartRecovery | None:
+        if (
+            response.status_code != 500
+            or "not enough free gpus" not in response.text.lower()
+        ):
+            return None
+        replacement = await replace_unavailable_pod(
+            client, provider, preferences, settings
+        )
+        value = replacement.json()
+        replacement_id = value.get("id") if isinstance(value, dict) else None
+        if not isinstance(replacement_id, str) or not replacement_id:
+            raise RuntimeError("RunPod replacement response has no id")
+        return StartRecovery(replacement_id, resource_id)
+
     def status(self, resource: dict[str, object]) -> tuple[str, dict[str, object]]:
         return str(resource.get("desiredStatus", "unknown")).lower(), selected_fields(
             resource,

@@ -13,7 +13,7 @@ from comfy_control.control.config import (
     ProviderManagement,
 )
 from comfy_control.control.preferences import ControlPreferences, RoutePreference
-from comfy_control.providers.base import ProviderNotDeployed
+from comfy_control.providers.base import ProviderNotDeployed, StartRecovery
 from comfy_control.providers.deployment import common as provider_deployment_common
 from comfy_control.providers.deployment import (
     deploy_provider,
@@ -25,6 +25,7 @@ from comfy_control.providers.deployment.common import (
     configured_environment,
 )
 from comfy_control.providers.modal import ModalAdapter, provider_action
+from comfy_control.providers.runpod import RunPodPodAdapter
 
 ROOT = Path(__file__).parents[1]
 
@@ -194,6 +195,63 @@ async def test_runpod_pod_options_exclude_serverless_mig_types(monkeypatch):
         )
 
     assert options == []
+
+
+@pytest.mark.asyncio
+async def test_runpod_replaces_stranded_pod_with_cheapest_compatible_gpu(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/graphql":
+            return runpod_gpu_response(
+                [
+                    {
+                        "community": {
+                            "stockStatus": "High",
+                            "uninterruptablePrice": 0.6,
+                        },
+                        "displayName": "NVIDIA L40S",
+                        "id": "L40S",
+                        "memoryInGb": 48,
+                        "secure": {
+                            "stockStatus": "Medium",
+                            "uninterruptablePrice": 0.8,
+                        },
+                    },
+                    {
+                        "community": {
+                            "stockStatus": "High",
+                            "uninterruptablePrice": 0.4,
+                        },
+                        "displayName": "NVIDIA RTX 4090",
+                        "id": "RTX4090",
+                        "memoryInGb": 24,
+                    },
+                ]
+            )
+        payload = json.loads(request.content)
+        assert payload["cloudType"] == "COMMUNITY"
+        assert payload["gpuTypeIds"] == ["RTX4090"]
+        return httpx.Response(201, json={"id": "pod-new"})
+
+    failed_start = httpx.Response(
+        500,
+        request=httpx.Request("POST", "https://rest.runpod.io/v1/pods/pod-old/start"),
+        text="There are not enough free GPUs on the host machine to start this pod.",
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        recovery = await RunPodPodAdapter("runpod-pod").recover_start(
+            client,
+            provider("runpod-pod"),
+            preferences(),
+            settings(tmp_path),
+            "pod-old",
+            failed_start,
+        )
+
+    assert recovery == StartRecovery("pod-new", "pod-old")
 
 
 def test_worker_ui_credentials_match_control_ui_credentials(tmp_path):
