@@ -233,6 +233,7 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
             return httpx.Response(200, json={"id": "template-1"})
         assert payload["templateId"] == "template-1"
         assert "endpointType" not in payload
+        assert payload["minCudaVersion"] == "13.0"
         assert payload["workersMin"] == 0
         return httpx.Response(201, json={"id": "endpoint-1"})
 
@@ -266,6 +267,7 @@ async def test_updates_existing_runpod_serverless_template(tmp_path, monkeypatch
             assert "isServerless" not in payload
             return httpx.Response(200, json={"id": "template-1"})
         assert payload["templateId"] == "template-1"
+        assert payload["minCudaVersion"] == "13.0"
         return httpx.Response(201, json={"id": "endpoint-1"})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
@@ -325,6 +327,8 @@ async def test_deploys_and_terminates_vast_serverless(tmp_path, monkeypatch):
         if request.method == "POST" and request.url.path == "/api/v0/endptjobs/":
             return httpx.Response(200, json={"result": 7})
         if request.method == "POST" and request.url.path == "/api/v0/workergroups/":
+            payload = json.loads(request.content)
+            assert "cuda_max_good>=13.0" in payload["search_params"]
             return httpx.Response(200, json={"id": 9})
         if request.method == "GET":
             return httpx.Response(

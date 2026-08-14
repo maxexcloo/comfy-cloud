@@ -2,9 +2,10 @@ from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import yaml
 
-from comfy_control.supervisor import _comfy_arguments, _prepare_models
+from comfy_control.supervisor import _comfy_arguments, _prepare_models, run
 from comfy_control.worker_logs import capture_process_logs, entries
 
 
@@ -55,6 +56,37 @@ def test_empty_model_selection_prunes_all_managed_profiles(monkeypatch, tmp_path
     _prepare_models()
 
     assert calls == [(set(), models)]
+
+
+def test_gateway_starts_before_model_preparation(monkeypatch):
+    events = []
+
+    class Gateway:
+        def poll(self):
+            return None
+
+        def terminate(self):
+            events.append("terminate")
+
+        def wait(self, timeout=None):
+            events.append(("wait", timeout))
+
+    monkeypatch.setattr(
+        "comfy_control.supervisor._start_gateway",
+        lambda *_: events.append("gateway") or Gateway(),
+    )
+    monkeypatch.setattr(
+        "comfy_control.supervisor._prepare_models",
+        lambda: events.append("models") or (_ for _ in ()).throw(RuntimeError("stop")),
+    )
+
+    with pytest.raises(RuntimeError, match="stop"):
+        run("serverless")
+
+    assert events[:3] == ["gateway", "models", "terminate"]
+    assert events[3][0] == "wait"
+    assert events[3][1] == pytest.approx(10)
+    assert events[4] == ("wait", None)
 
 
 def test_comfyui_output_is_captured_as_worker_logs(monkeypatch, tmp_path):

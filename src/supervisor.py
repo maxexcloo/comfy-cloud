@@ -82,21 +82,10 @@ def _stop_processes(processes: tuple[subprocess.Popen, ...]) -> None:
         process.wait()
 
 
-def run(
-    deployment_type: DeploymentType, host: str = "0.0.0.0", port: int = 8000
-) -> None:
-    comfy_dir = Path(os.getenv("COMFYUI_DIR", "/opt/ComfyUI"))
-    _prepare_models()
-    comfy = subprocess.Popen(
-        [sys.executable, "main.py", *_comfy_arguments(comfy_dir)],
-        bufsize=1,
-        cwd=comfy_dir,
-        stderr=subprocess.STDOUT,
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    log_thread: threading.Thread = capture_process_logs(comfy, sys.stdout)
-    gateway = subprocess.Popen(
+def _start_gateway(
+    deployment_type: DeploymentType, host: str, port: int
+) -> subprocess.Popen:
+    return subprocess.Popen(
         [
             sys.executable,
             "-m",
@@ -109,6 +98,27 @@ def run(
             str(port),
         ]
     )
+
+
+def run(
+    deployment_type: DeploymentType, host: str = "0.0.0.0", port: int = 8000
+) -> None:
+    comfy_dir = Path(os.getenv("COMFYUI_DIR", "/opt/ComfyUI"))
+    gateway = _start_gateway(deployment_type, host, port)
+    try:
+        _prepare_models()
+        comfy = subprocess.Popen(
+            [sys.executable, "main.py", *_comfy_arguments(comfy_dir)],
+            bufsize=1,
+            cwd=comfy_dir,
+            stderr=subprocess.STDOUT,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+    except BaseException:
+        _stop_processes((gateway,))
+        raise
+    log_thread: threading.Thread = capture_process_logs(comfy, sys.stdout)
 
     processes = (gateway, comfy)
     stopping = False

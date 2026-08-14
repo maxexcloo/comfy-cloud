@@ -170,6 +170,7 @@ async def deploy_serverless(
         "gpuCount": 1,
         "gpuTypeIds": gpu_types,
         "idleTimeout": min(max(provider.idle_seconds or 60, 1), 3600),
+        "minCudaVersion": "13.0",
         "name": provider.management.name,  # type: ignore[union-attr]
         "scalerType": "QUEUE_DELAY",
         "scalerValue": 4,

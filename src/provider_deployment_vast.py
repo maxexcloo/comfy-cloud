@@ -186,7 +186,8 @@ async def deploy_serverless(
             "max_workers": preferences.vast_maximum_workers,
             "search_params": (
                 "verified=true rentable=true rented=false num_gpus=1 "
-                f"gpu_ram>={preferences.vast_minimum_gpu_memory_gb * 1000}"
+                f"gpu_ram>={preferences.vast_minimum_gpu_memory_gb * 1000} "
+                "cuda_max_good>=13.0"
             ),
             "template_hash": str(template["hash_id"]),
             "test_workers": 1,
