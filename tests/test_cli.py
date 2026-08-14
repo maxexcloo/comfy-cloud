@@ -20,7 +20,6 @@ def test_runtime_images_use_the_packaged_commands():
         'CMD ["comfy-control", "control"]' in (ROOT / "Dockerfile.control").read_text()
     )
     assert "build-essential" in worker
-    assert "FROM nvidia/cuda:13.0." in worker
-    assert "python3-dev" in worker
+    assert "FROM python:3.12.12-slim-bookworm" in worker
     assert 'CMD ["comfy-control", "pod"]' in worker
     assert 'uv pip install --python "${VIRTUAL_ENV}/bin/python" pip' in worker

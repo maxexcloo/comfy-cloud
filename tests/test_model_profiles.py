@@ -11,6 +11,19 @@ def test_control_image_includes_model_profiles():
     assert "COPY profiles ./profiles" in dockerfile
 
 
+def test_worker_image_uses_one_pinned_cuda_runtime():
+    dockerfile = (ROOT / "Dockerfile.worker").read_text()
+    constraints = (ROOT / "deploy/worker/constraints.txt").read_text().splitlines()
+
+    assert dockerfile.startswith("FROM python:3.12.12-slim-bookworm\n")
+    assert "nvidia/cuda" not in dockerfile
+    assert constraints == [
+        "torch==2.13.0",
+        "torchaudio==2.11.0",
+        "torchvision==0.28.0",
+    ]
+
+
 def test_model_profile_details_and_combined_vram_requirement():
     details = profile_details("flux-2-klein-9b")
 
