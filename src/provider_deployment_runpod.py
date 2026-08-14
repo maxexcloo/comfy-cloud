@@ -62,6 +62,8 @@ async def deployment_options(
         if not isinstance(item, dict) or not item.get("id"):
             continue
         identifier = str(item["id"])
+        if cloud_variants and " MIG " in f" {identifier.upper()} ":
+            continue
         common = {
             "label": str(item.get("displayName") or identifier),
             "memory_gb": item.get("memoryInGb"),

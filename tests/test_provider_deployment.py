@@ -169,6 +169,33 @@ async def test_runpod_pod_options_use_live_cloud_stock(monkeypatch):
     assert [option["available"] for option in options] == [True, False]
 
 
+@pytest.mark.asyncio
+async def test_runpod_pod_options_exclude_serverless_mig_types(monkeypatch):
+    monkeypatch.setenv("RUNPOD_API_KEY", "runpod-key")
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return runpod_gpu_response(
+            [
+                {
+                    "displayName": "PRO 6000 MIG 24GB",
+                    "id": "NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 1g.24gb",
+                    "memoryInGb": 24,
+                    "secure": {
+                        "stockStatus": "High",
+                        "uninterruptablePrice": 0.59,
+                    },
+                }
+            ]
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        options = await deployment_options(
+            client, provider("runpod-pod"), preferences()
+        )
+
+    assert options == []
+
+
 def test_worker_ui_credentials_match_control_ui_credentials(tmp_path):
     environment = configured_environment(
         {}, provider("runpod-pod"), preferences(), settings(tmp_path)
@@ -480,15 +507,12 @@ async def test_vast_pod_requires_worker_compatible_gpu(tmp_path, monkeypatch):
             assert payload["compute_cap"] == {"gte": 750}
             assert payload["cuda_max_good"] == {"gte": 13.0}
             assert payload["gpu_ram"] == {"gte": 24000}
+            assert payload["id"] == {"eq": 123}
+            assert payload["limit"] == 1
             assert payload["reliability"] == {"gte": 0.99}
             return httpx.Response(
                 200,
-                json={
-                    "offers": [
-                        {"dph_total": 0.3, "id": 122},
-                        {"dph_total": 0.4, "id": 123},
-                    ]
-                },
+                json={"offers": [{"dph_total": 0.4, "id": 123}]},
             )
         assert request.url.path == "/api/v0/asks/123/"
         assert payload["target_state"] == "running"

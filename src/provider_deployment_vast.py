@@ -106,18 +106,25 @@ async def deploy_pod(
     environment = configured_environment(
         specification.get("env"), provider, preferences, settings
     )
+    search_filters: dict[str, object] = {
+        **offer_filters(minimum_vram),
+        "allocated_storage": specification.get("disk_space", 100),
+        "direct_port_count": {"gte": 1},
+        "limit": 20,
+        "order": [["dph_total", "asc"]],
+    }
+    if selection is not None and selection.option_id:
+        try:
+            offer_id = int(selection.option_id)
+        except ValueError as exc:
+            raise RuntimeError("selected Vast offer id is invalid") from exc
+        search_filters.update({"id": {"eq": offer_id}, "limit": 1})
     search = await checked_request(
         client,
         "POST",
         "https://console.vast.ai/api/v0/bundles/",
         headers=headers(preferences),
-        json={
-            **offer_filters(minimum_vram),
-            "allocated_storage": specification.get("disk_space", 100),
-            "direct_port_count": {"gte": 1},
-            "limit": 20,
-            "order": [["dph_total", "asc"]],
-        },
+        json=search_filters,
     )
     payload = search.json()
     offers = payload.get("offers", []) if isinstance(payload, dict) else []
