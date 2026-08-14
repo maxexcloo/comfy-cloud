@@ -7,7 +7,7 @@ from comfy_control.control_config import Provider
 from comfy_control.control_preferences import ControlPreferences
 from comfy_control.provider_adapters import provider_adapter, provider_panel_url
 from comfy_control.provider_runpod import RunPodServerlessAdapter
-from comfy_control.provider_vast import VastServerlessAdapter
+from comfy_control.provider_vast import VastPodAdapter, VastServerlessAdapter
 
 
 @pytest.mark.parametrize(
@@ -161,8 +161,49 @@ async def test_vast_usage_reports_credit_and_month_spend():
         },
         {"label": "Month Spend", "unit": "USD", "value": 3.25},
     ]
-    assert requests[1].url.params["limit"] == "500"
-    assert "day" in json.loads(requests[1].url.params["select_filters"])
+    charge_request = next(
+        request for request in requests if request.url.path == "/api/v0/charges/"
+    )
+    assert charge_request.url.params["limit"] == "500"
+    assert "day" in json.loads(charge_request.url.params["select_filters"])
+
+
+@pytest.mark.asyncio
+async def test_vast_pod_can_be_discovered_while_ports_are_pending():
+    def respond(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "instances": [
+                    {
+                        "actual_status": "loading",
+                        "id": 123,
+                        "label": "comfy-control",
+                        "ports": {},
+                        "public_ipaddr": "192.0.2.1",
+                    }
+                ]
+            },
+        )
+
+    provider = Provider.model_validate(
+        {
+            "api_key": "worker-key",
+            "id": "vast-pod",
+            "management": {"kind": "vast-pod", "name": "comfy-control"},
+        }
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        discovery = await VastPodAdapter("vast-pod").discover(
+            client,
+            provider,
+            ControlPreferences(vast_api_key="vast-key"),
+            "123",
+            route=False,
+        )
+
+    assert discovery.base_url is None
+    assert discovery.resource_id == "123"
 
 
 @pytest.mark.parametrize(

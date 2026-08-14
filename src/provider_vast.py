@@ -34,7 +34,7 @@ async def vast_usage(
     account, charges = await asyncio.gather(
         client.get("https://console.vast.ai/api/v0/users/current/", headers=headers),
         client.get(
-            "https://console.vast.ai/api/v0/charges",
+            "https://console.vast.ai/api/v0/charges/",
             headers=headers,
             params={
                 "limit": 500,
@@ -143,16 +143,11 @@ class VastPodAdapter(VastAdapter):
         mapping = (
             ports.get(f"{management.port}/tcp") if isinstance(ports, dict) else None
         )
-        if (
-            not isinstance(mapping, list)
-            or not mapping
-            or not isinstance(mapping[0], dict)
-        ):
-            raise RuntimeError(
-                f"Vast.ai provider has no public mapping for port {management.port}"
-            )
-        port = required_mapping_value(mapping[0], "HostPort")
-        return Discovery(f"http://{address}:{port}", resource, identifier)
+        base_url = None
+        if isinstance(mapping, list) and mapping and isinstance(mapping[0], dict):
+            port = required_mapping_value(mapping[0], "HostPort")
+            base_url = f"http://{address}:{port}"
+        return Discovery(base_url, resource, identifier)
 
     def status(self, resource: dict[str, object]) -> tuple[str, dict[str, object]]:
         return str(resource.get("actual_status", "unknown")).lower(), selected_fields(
