@@ -84,6 +84,15 @@ class ProviderAdapter(Protocol):
         route: bool,
     ) -> Discovery: ...
 
+    async def execute_serverless(
+        self,
+        client: httpx.AsyncClient,
+        provider: Provider,
+        preferences: ControlPreferences,
+        spec: dict[str, object],
+        files: list[tuple[str, tuple[str, bytes, str]]],
+    ) -> list[tuple[bytes, str, str]] | None: ...
+
     async def live_status(
         self, provider: Provider
     ) -> tuple[str, dict[str, object]]: ...
@@ -97,6 +106,8 @@ class ProviderAdapter(Protocol):
         resource_id: str,
         response: httpx.Response,
     ) -> StartRecovery | None: ...
+
+    def route_confirms_ready(self) -> bool: ...
 
     def panel_url(
         self, provider: Provider, details: dict[str, object], base_url: str | None
@@ -159,6 +170,17 @@ class BaseAdapter:
     ) -> Discovery:
         raise RuntimeError(f"provider discovery is not implemented: {self.kind}")
 
+    async def execute_serverless(
+        self,
+        client: httpx.AsyncClient,
+        provider: Provider,
+        preferences: ControlPreferences,
+        spec: dict[str, object],
+        files: list[tuple[str, tuple[str, bytes, str]]],
+    ) -> list[tuple[bytes, str, str]] | None:
+        del client, provider, preferences, spec, files
+        return None
+
     async def live_status(self, provider: Provider) -> tuple[str, dict[str, object]]:
         raise RuntimeError(f"live provider status is not implemented: {self.kind}")
 
@@ -173,6 +195,9 @@ class BaseAdapter:
     ) -> StartRecovery | None:
         del client, provider, preferences, settings, resource_id, response
         return None
+
+    def route_confirms_ready(self) -> bool:
+        return False
 
     def panel_url(
         self, provider: Provider, details: dict[str, object], base_url: str | None

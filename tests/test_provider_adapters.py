@@ -216,6 +216,70 @@ async def test_vast_usage_keeps_credit_when_charges_are_unavailable():
 
 
 @pytest.mark.asyncio
+async def test_vast_serverless_routes_authenticated_execution():
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.host == "run.vast.ai":
+            return httpx.Response(
+                200,
+                json={
+                    "cost": 100,
+                    "endpoint": "comfy-control",
+                    "reqnum": 17,
+                    "request_idx": 4,
+                    "signature": "signed",
+                    "url": "https://worker.example",
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "result": {
+                    "execution_id": "image-1",
+                    "outputs": [
+                        {
+                            "content": "aW1hZ2U=",
+                            "content_type": "image/png",
+                            "filename": "output.png",
+                        }
+                    ],
+                }
+            },
+        )
+
+    provider = Provider.model_validate(
+        {
+            "api_key": "worker-key",
+            "id": "vast",
+            "management": {"kind": "vast", "name": "comfy-control"},
+        }
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        outputs = await VastServerlessAdapter("vast").execute_serverless(
+            client,
+            provider,
+            ControlPreferences(vast_api_key="vast-key"),
+            {
+                "execution_id": "image-1",
+                "model": "flux/text-to-image",
+                "operation": "image_generation",
+                "parameters": {"prompt": "A wombat"},
+            },
+            [("image", ("input.png", b"input", "image/png"))],
+        )
+
+    worker_request = requests[1]
+    worker_payload = json.loads(worker_request.content)
+    assert worker_request.headers["authorization"] == "Bearer vast-key"
+    assert worker_request.url.params["api_key"] == "vast-key"
+    assert worker_payload["auth_data"]["signature"] == "signed"
+    assert worker_payload["payload"]["files"][0]["content"] == "aW5wdXQ="
+    assert outputs == [(b"image", "image/png", "output.png")]
+
+
+@pytest.mark.asyncio
 async def test_vast_pod_can_be_discovered_while_ports_are_pending():
     def respond(_: httpx.Request) -> httpx.Response:
         return httpx.Response(

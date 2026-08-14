@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -177,6 +178,85 @@ class VastPodAdapter(VastAdapter):
 
 
 class VastServerlessAdapter(VastAdapter):
+    async def execute_serverless(
+        self,
+        client: httpx.AsyncClient,
+        provider: Provider,
+        preferences: ControlPreferences,
+        spec: dict[str, object],
+        files: list[tuple[str, tuple[str, bytes, str]]],
+    ) -> list[tuple[bytes, str, str]] | None:
+        management = provider.management
+        assert management is not None
+        request_index = 0
+        deadline = asyncio.get_running_loop().time() + provider.request_timeout
+        route: dict[str, object] = {}
+        while asyncio.get_running_loop().time() < deadline:
+            route_response = await client.post(
+                "https://run.vast.ai/route/",
+                headers=vast_headers(preferences),
+                json={
+                    "cost": 100,
+                    "endpoint": management.name,
+                    "request_idx": request_index,
+                },
+            )
+            route_response.raise_for_status()
+            value = route_response.json()
+            if not isinstance(value, dict):
+                raise TypeError("Vast.ai route response is invalid")
+            route = value
+            if route.get("url"):
+                break
+            request_index = int(route.get("request_idx") or request_index)
+            await asyncio.sleep(2)
+        worker_url = route.get("url")
+        if not isinstance(worker_url, str) or not worker_url:
+            raise TimeoutError("Vast.ai Serverless did not provide a ready worker")
+        token = required_preference("VAST_API_KEY", preferences)
+        response = await client.post(
+            f"{worker_url.rstrip('/')}/internal/executions",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "auth_data": route,
+                "payload": {
+                    "files": [
+                        {
+                            "content": base64.b64encode(content).decode(),
+                            "content_type": content_type,
+                            "field": field,
+                            "filename": filename,
+                        }
+                        for field, (filename, content, content_type) in files
+                    ],
+                    "spec": spec,
+                },
+            },
+            params={"api_key": token},
+            timeout=provider.request_timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        result = payload.get("result") if isinstance(payload, dict) else None
+        outputs = result.get("outputs") if isinstance(result, dict) else None
+        if not isinstance(outputs, list):
+            raise TypeError("Vast.ai worker returned an invalid execution result")
+        decoded = []
+        for output in outputs:
+            if not isinstance(output, dict):
+                raise TypeError("Vast.ai worker returned an invalid output")
+            try:
+                decoded.append(
+                    (
+                        base64.b64decode(str(output["content"]), validate=True),
+                        str(output["content_type"]),
+                        str(output["filename"]),
+                    )
+                )
+            except (KeyError, ValueError) as exc:
+                raise RuntimeError("Vast.ai worker returned an invalid output") from exc
+        return decoded
+
     async def discover(
         self,
         client: httpx.AsyncClient,
@@ -212,6 +292,9 @@ class VastServerlessAdapter(VastAdapter):
                 "/"
             )
         return Discovery(base_url, resource, identifier)
+
+    def route_confirms_ready(self) -> bool:
+        return True
 
     def status(self, resource: dict[str, object]) -> tuple[str, dict[str, object]]:
         return str(resource.get("endpoint_state", "unknown")).lower(), selected_fields(

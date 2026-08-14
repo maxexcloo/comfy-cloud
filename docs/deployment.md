@@ -94,7 +94,7 @@ state and generated media are owned by the controller. The worker image defaults
 `comfy-control pod`; override the container
 command with `comfy-control serverless` when the ComfyUI frontend should not be
 exposed. Vast.ai Serverless uses `comfy-control vast-serverless` for its request
-envelope.
+envelope and supported PyWorker readiness and load reporting.
 
 The dashboard displays RunPod credit, Vast.ai credit and spend, Modal billing-cycle
 spend, SaladCloud replica quota and CLI Proxy API usage. SaladCloud monetary credit

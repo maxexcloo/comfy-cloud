@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 
 import yaml
@@ -112,12 +111,7 @@ def serverless(args: argparse.Namespace) -> None:
 def vast_serverless(_: argparse.Namespace) -> None:
     from comfy_control.worker import vast_gateway
 
-    gateway = subprocess.Popen(["comfy-control", "serverless"])
-    try:
-        vast_gateway.main()
-    finally:
-        gateway.terminate()
-        gateway.wait(timeout=30)
+    vast_gateway.main()
 
 
 def control(args: argparse.Namespace) -> None:

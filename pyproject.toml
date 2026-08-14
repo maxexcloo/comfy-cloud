@@ -10,7 +10,7 @@ name = "comfy-control"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "cryptography>=50,<51",
+  "cryptography>=49,<51",
   "fastapi>=0.115,<1",
   "httpx>=0.27,<1",
   "jinja2>=3.1,<4",
@@ -27,13 +27,18 @@ dependencies = [
 build = ["huggingface-hub>=0.28,<2"]
 modal = ["modal>=1.5.3,<2"]
 test = ["aiohttp>=3.11,<4", "pytest>=8,<10", "pytest-asyncio>=0.24,<2"]
-vast = ["aiohttp>=3.11,<4"]
+vast = [
+  "vastai @ git+https://github.com/vast-ai/vast-cli.git@f7171feb403fd037d2d9b9dcc379aebed80311a7",
+]
 
 [project.scripts]
 comfy-control = "comfy_control.cli:main"
 
 [tool.hatch.build.targets.wheel]
 only-include = ["comfy_control"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.version]
 path = "comfy_control/__init__.py"

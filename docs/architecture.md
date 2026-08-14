@@ -133,8 +133,9 @@ content.
 seconds; `GENERATION_TIMEOUT` bounds a complete workflow and defaults to 900
 seconds.
 
-`comfy-control vast-serverless` adds Vast.ai's required request-envelope ingress
-in front of the normal Serverless worker.
+`comfy-control vast-serverless` runs Vast.ai's supported PyWorker in front of the
+normal Serverless worker. PyWorker verifies routed requests, benchmarks the backend,
+reports load and readiness, and embeds generated outputs in the Serverless response.
 
 Control and worker publish their live OpenAPI documents at `/openapi.json` and
 interactive documentation at `/docs`. Controller operations are under `/ops`,

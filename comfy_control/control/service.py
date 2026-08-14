@@ -972,12 +972,16 @@ class Controller:
     async def check_ready(self, runtime: ProviderRuntime) -> bool:
         try:
             await self.refresh_endpoint(runtime)
-            response = await runtime.client.get(
-                self.worker_url(runtime, runtime.config.health_path),
-                headers=self.worker_headers(runtime),
-                timeout=10,
-            )
-            runtime.ready = response.is_success
+            adapter = provider_adapter(runtime.config)
+            if adapter is not None and adapter.route_confirms_ready():
+                runtime.ready = runtime.base_url is not None
+            else:
+                response = await runtime.client.get(
+                    self.worker_url(runtime, runtime.config.health_path),
+                    headers=self.worker_headers(runtime),
+                    timeout=10,
+                )
+                runtime.ready = response.is_success
         except ProviderNotDeployed:
             self.store.clear_provider_resource(runtime.config.id)
             runtime.base_url = None
@@ -1263,18 +1267,27 @@ class Controller:
             await self.ensure_ready(runtime, execution_id[:16])
             await self.refresh_endpoint(runtime)
             runtime.state = "busy"
-            spec = json.dumps(
-                {
-                    "execution_id": execution_id,
-                    "model": target.model,
-                    "operation": operation,
-                    "parameters": parameters,
-                },
-                separators=(",", ":"),
-            )
+            spec = {
+                "execution_id": execution_id,
+                "model": target.model,
+                "operation": operation,
+                "parameters": parameters,
+            }
+            adapter = provider_adapter(runtime.config)
+            if adapter is not None:
+                serverless_outputs = await adapter.execute_serverless(
+                    self.lifecycle_client,
+                    runtime.config,
+                    self.preferences,
+                    spec,
+                    files or [],
+                )
+                if serverless_outputs is not None:
+                    runtime.ready = True
+                    return serverless_outputs
             response = await runtime.client.post(
                 self.worker_url(runtime, "/internal/executions"),
-                data={"spec": spec},
+                data={"spec": json.dumps(spec, separators=(",", ":"))},
                 files=files or [],
                 headers=self.worker_headers(runtime, execution_id[:16]),
             )
