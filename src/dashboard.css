@@ -129,6 +129,10 @@ code {
   width: min(94vw, 640px) !important;
 }
 
+.media-action-dialog .modal-content {
+  background: var(--tblr-bg-surface);
+}
+
 .detail-grid {
   display: grid;
   gap: 0.7rem;
