@@ -15,6 +15,7 @@ from comfy_control.control.app import create_app
 from comfy_control.control.config import ControlFile, ControlSettings
 from comfy_control.control.dashboard.routes import (
     provider_fields,
+    resource_specification,
     usage_with_resource_cost,
 )
 from comfy_control.control.dashboard.routes import (
@@ -99,6 +100,46 @@ def test_provider_error_message_includes_safe_structured_detail() -> None:
             httpx.HTTPStatusError("bad request", request=request, response=response)
         )
         == "provider API returned HTTP 400: readiness_probe.http.scheme: Field is required"
+    )
+
+
+@pytest.mark.parametrize(
+    ("provider_id", "provider_type", "details", "expected"),
+    [
+        (
+            "runpod-pod",
+            "pod",
+            {"gpuCount": 1, "gpuTypeId": "NVIDIA A40", "vcpuCount": 16},
+            "NVIDIA A40 · 16 vCPU",
+        ),
+        (
+            "runpod",
+            "serverless",
+            {"gpuTypeId": "NVIDIA A40", "workersMax": 3},
+            "NVIDIA A40 · Up To 3 Workers",
+        ),
+        (
+            "vast-pod",
+            "pod",
+            {"gpu_name": "RTX 4090", "gpu_ram": 49140, "num_gpus": 1},
+            "RTX 4090 · 49.1 GB",
+        ),
+    ],
+)
+def test_resource_specification_is_concise(
+    provider_id: str,
+    provider_type: str,
+    details: dict[str, object],
+    expected: str,
+) -> None:
+    assert (
+        resource_specification(
+            provider_id,
+            provider_type,
+            {"details": details},
+            ControlPreferences(),
+        )
+        == expected
     )
 
 
@@ -1360,6 +1401,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert 'data-bs-theme="dark"' in providers.text
     assert 'data-time-zone="Australia/Sydney"' in providers.text
     assert "data-provider-refresh" in providers.text
+    assert "data-provider-resource" in providers.text
     assert "table-bordered" in providers.text
     assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text
@@ -1423,6 +1465,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert "closeDialogOnBackdrop(deployDialog)" in javascript.text
     assert "logBody.scrollTop = logBody.scrollHeight" in javascript.text
     assert 'following ? "Following" : "Paused"' in javascript.text
+    assert '"[data-provider-resource]"' in javascript.text
     assert "[...data.entries]" in javascript.text
     assert "event.preventDefault()" in javascript.text
     assert log_stream.media_type == "text/event-stream"

@@ -39,7 +39,7 @@
           {% if provider.configured %}<div class="small"><a data-log-provider="{{ provider.id }}" data-log-url="/providers/{{ provider.id }}/logs" href="/providers/{{ provider.id }}/logs">Logs</a></div>{% endif %}
         </td>
         <td data-provider-usage>{{ ui.usage(provider.usage) }}</td>
-        <td><span class="font-monospace text-secondary">{{ provider.resource_id or "—" }}</span></td>
+        <td data-provider-resource><span class="font-monospace text-secondary">{{ provider.resource_id or "—" }}</span>{% if provider.resource_specification %}<div class="small text-secondary">{{ provider.resource_specification }}</div>{% endif %}</td>
         <td>
           <div class="d-flex flex-wrap gap-1">
             {% if provider.settings %}<button class="btn btn-outline-secondary btn-sm" data-provider-settings="{{ provider.id }}" type="button">Settings</button>{% endif %}

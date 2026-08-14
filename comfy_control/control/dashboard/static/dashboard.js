@@ -166,6 +166,7 @@ if (providerRefresh) {
       for (const source of refreshed.querySelectorAll("#provider-rows > tr")) {
         const target = document.getElementById(source.id);
         for (const selector of [
+          "[data-provider-resource]",
           "[data-provider-status]",
           "[data-provider-usage]",
         ]) {

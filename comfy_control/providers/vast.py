@@ -172,6 +172,7 @@ class VastPodAdapter(VastAdapter):
             "cur_state",
             "dph_total",
             "gpu_name",
+            "gpu_ram",
             "gpu_util",
             "num_gpus",
         )

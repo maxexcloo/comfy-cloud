@@ -20,7 +20,7 @@ from comfy_control.control.dashboard.rendering import (
     render_dashboard,
 )
 from comfy_control.control.http import error
-from comfy_control.control.preferences import ConfigurationConflict
+from comfy_control.control.preferences import ConfigurationConflict, ControlPreferences
 from comfy_control.providers.deployment.common import DeploymentSelection
 from comfy_control.providers.registry import provider_panel_url
 from comfy_control.providers.telemetry import first_number
@@ -171,6 +171,39 @@ def usage_with_resource_cost(
     return {**usage, "metrics": metrics, "status": "ok"}
 
 
+def resource_specification(
+    provider_id: str,
+    provider_type: str,
+    status: dict[str, object],
+    preferences: ControlPreferences,
+) -> str:
+    details = status.get("details")
+    values = details if isinstance(details, dict) else {}
+    gpu = values.get("gpuTypeId") or values.get("gpuTypeIds") or values.get("gpu_name")
+    if provider_id == "modal":
+        gpu = preferences.modal_gpu
+    elif provider_id == "salad" and not gpu:
+        gpu = preferences.salad_gpu_classes
+    if isinstance(gpu, list):
+        gpu = " / ".join(str(value) for value in gpu)
+    gpu_count = first_number(values, "gpuCount", "num_gpus") or 1
+    parts = []
+    if gpu:
+        prefix = f"{int(gpu_count)}× " if gpu_count > 1 else ""
+        parts.append(f"{prefix}{gpu}")
+    memory = first_number(values, "gpuMemoryInGb", "gpu_ram")
+    if memory is not None:
+        memory_gb = memory / 1000 if memory > 1000 else memory
+        parts.append(f"{memory_gb:.1f} GB")
+    processors = first_number(values, "vcpuCount")
+    if processors is not None:
+        parts.append(f"{int(processors)} vCPU")
+    workers = first_number(values, "workersMax", "max_workers")
+    if workers is not None and provider_type == "serverless":
+        parts.append(f"Up To {int(workers)} Workers")
+    return " · ".join(parts)
+
+
 def provider_fields(
     description: dict[str, object], provider_id: str
 ) -> list[dict[str, object]]:
@@ -245,6 +278,12 @@ async def providers(request: Request) -> Response:
             "panel_url": statuses[runtime.config.id]["panel_url"],
             "platform": runtime.config.platform or runtime.config.id,
             "resource_id": controller.resource_id(runtime.config.id),
+            "resource_specification": resource_specification(
+                runtime.config.id,
+                runtime.config.type,
+                statuses[runtime.config.id],
+                controller.preferences,
+            ),
             "settings": provider_fields(description, runtime.config.id),
             "state": runtime.state,
             "type": runtime.config.type,
@@ -261,6 +300,7 @@ async def providers(request: Request) -> Response:
             "panel_url": None,
             "platform": provider["platform"],
             "resource_id": None,
+            "resource_specification": "",
             "settings": provider_fields(description, str(provider["id"])),
             "state": "unconfigured",
             "type": provider["type"],
