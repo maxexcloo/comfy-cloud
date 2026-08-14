@@ -1732,6 +1732,7 @@ providers:
             "/ops/providers/worker/actions/deploy",
             headers={"x-comfy-control-action": "worker/deploy"},
         )
+        app.state.controller.providers["worker"].active_requests = 1
         terminated = await client.post(
             "/ops/providers/worker/actions/terminate",
             headers={"x-comfy-control-action": "worker/terminate"},

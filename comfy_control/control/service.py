@@ -531,9 +531,12 @@ class Controller:
         ][:maximum]
         runtime = self.providers[provider]
         worker_error: str | None = None
+        adapter = provider_adapter(runtime.config)
         try:
             if runtime.base_url is None:
-                await self.refresh_endpoint(runtime)
+                await self.refresh_endpoint(runtime, route=False)
+            if runtime.base_url is None:
+                raise RuntimeError("provider has no ready worker")
             response = await runtime.client.get(
                 self.worker_url(runtime, "/internal/logs"),
                 headers=self.worker_headers(runtime),
@@ -551,6 +554,8 @@ class Controller:
                 )
         except Exception as exc:  # noqa: BLE001 - provider diagnostics boundary
             worker_error = exception_message(exc)
+            if adapter is not None:
+                worker_error = adapter.worker_log_error(worker_error)
         entries.sort(key=lambda entry: int(entry.get("created_at", 0)), reverse=True)
         return {
             "entries": redacted(entries[:maximum]),
@@ -930,12 +935,10 @@ class Controller:
             ) from exc
         if action_name == "start":
             await self.ensure_ready(runtime, request_id)
+            runtime.last_used = time.monotonic()
             return {"action": action_name, "provider": provider, "state": runtime.state}
         async with runtime.lock:
-            if (
-                action_name in {"delete", "destroy", "stop", "terminate"}
-                and runtime.active_requests
-            ):
+            if action_name == "stop" and runtime.active_requests:
                 raise RuntimeError("provider has active requests")
             if action_name == "stop":
                 runtime.state = "stopping"

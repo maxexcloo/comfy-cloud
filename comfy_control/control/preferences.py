@@ -49,6 +49,7 @@ class ControlPreferences(BaseModel):
         "runpod_data_centres": ("RUNPOD_DATA_CENTRES",),
         "runpod_gpu_types": ("RUNPOD_GPU_TYPES",),
         "runpod_maximum_workers": ("RUNPOD_MAXIMUM_WORKERS",),
+        "runpod_network_volume_id": ("RUNPOD_NETWORK_VOLUME_ID",),
         "salad_api_key": ("SALAD_API_KEY",),
         "salad_gpu_classes": ("SALAD_GPU_CLASSES",),
         "salad_organisation": ("SALAD_ORGANISATION",),
@@ -153,6 +154,10 @@ class ControlPreferences(BaseModel):
             "section": "Deployment",
             "type": "number",
         },
+        "runpod_network_volume_id": {
+            "label": "RunPod network volume ID",
+            "section": "Deployment",
+        },
         "salad_gpu_classes": {
             "label": "SaladCloud GPU classes",
             "section": "Deployment",
@@ -232,6 +237,7 @@ class ControlPreferences(BaseModel):
     runpod_data_centres: list[str] = Field(default_factory=list)
     runpod_gpu_types: list[str] = Field(default_factory=list)
     runpod_maximum_workers: int = 1
+    runpod_network_volume_id: str = ""
     salad_gpu_classes: list[str] = Field(default_factory=list)
     vast_maximum_workers: int = 1
     vast_minimum_gpu_memory_gb: int = 24
@@ -354,6 +360,7 @@ class ControlPreferences(BaseModel):
             runpod_data_centres=values("RUNPOD_DATA_CENTRES"),
             runpod_gpu_types=values("RUNPOD_GPU_TYPES"),
             runpod_maximum_workers=int(os.getenv("RUNPOD_MAXIMUM_WORKERS", "1")),
+            runpod_network_volume_id=os.getenv("RUNPOD_NETWORK_VOLUME_ID", ""),
             salad_api_key=os.getenv("SALAD_API_KEY", ""),
             salad_gpu_classes=values("SALAD_GPU_CLASSES"),
             salad_organisation=os.getenv("SALAD_ORGANISATION", ""),
@@ -398,6 +405,7 @@ class ControlPreferences(BaseModel):
             "RUNPOD_DATA_CENTRES": ",".join(self.runpod_data_centres),
             "RUNPOD_GPU_TYPES": ",".join(self.runpod_gpu_types),
             "RUNPOD_MAXIMUM_WORKERS": str(self.runpod_maximum_workers),
+            "RUNPOD_NETWORK_VOLUME_ID": self.runpod_network_volume_id,
             "SALAD_API_KEY": self.salad_api_key,
             "SALAD_GPU_CLASSES": ",".join(self.salad_gpu_classes),
             "SALAD_ORGANISATION": self.salad_organisation,

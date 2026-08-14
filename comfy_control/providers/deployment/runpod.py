@@ -136,6 +136,9 @@ async def deploy_pod(
     )
     payload["name"] = provider.management.name  # type: ignore[union-attr]
     payload["imageName"] = preferences.worker_image
+    if preferences.runpod_network_volume_id:
+        payload["networkVolumeId"] = preferences.runpod_network_volume_id
+        payload.pop("volumeInGb", None)
     if isinstance(payload.get("ports"), str):
         payload["ports"] = [
             item.strip() for item in payload["ports"].split(",") if item.strip()
@@ -237,6 +240,8 @@ async def deploy_serverless(
     template["env"] = configured_environment(
         template.get("env"), provider, preferences, settings
     )
+    if preferences.runpod_network_volume_id:
+        template["env"]["MODELS_DIR"] = "/runpod-volume"
     template["imageName"] = preferences.worker_image
     template["isPublic"] = False
     template["isServerless"] = True
@@ -333,6 +338,8 @@ async def deploy_serverless(
         "workersMax": preferences.runpod_maximum_workers,
         "workersMin": 0,
     }
+    if preferences.runpod_network_volume_id:
+        endpoint["networkVolumeId"] = preferences.runpod_network_volume_id
     if data_centres := environment.get("RUNPOD_DATA_CENTRES"):
         endpoint["dataCenterIds"] = [
             item.strip() for item in data_centres.split(",") if item.strip()

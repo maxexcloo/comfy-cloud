@@ -178,6 +178,11 @@ class VastPodAdapter(VastAdapter):
 
 
 class VastServerlessAdapter(VastAdapter):
+    def worker_log_error(self, error: str) -> str:
+        if "no ready worker" in error.casefold():
+            return "Waiting for Vast serverless worker assignment"
+        return error
+
     async def execute_serverless(
         self,
         client: httpx.AsyncClient,

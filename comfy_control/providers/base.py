@@ -137,6 +137,8 @@ class ProviderAdapter(Protocol):
         self, provider: Provider, preferences: ControlPreferences
     ) -> dict[str, str]: ...
 
+    def worker_log_error(self, error: str) -> str: ...
+
 
 @dataclass(frozen=True)
 class BaseAdapter:
@@ -209,6 +211,9 @@ class BaseAdapter:
 
     def status(self, resource: dict[str, object]) -> tuple[str, dict[str, object]]:
         return "unknown", resource
+
+    def worker_log_error(self, error: str) -> str:
+        return error
 
     async def terminate(
         self,

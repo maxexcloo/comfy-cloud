@@ -77,14 +77,18 @@ async def test_deploys_runpod_pod_from_credentials(tmp_path, monkeypatch):
         assert payload["cloudType"] == "COMMUNITY"
         assert payload["computeType"] == "GPU"
         assert payload["gpuTypeIds"] == ["L40S"]
+        assert payload["networkVolumeId"] == "network-volume-1"
         assert payload["ports"] == ["8000/http"]
+        assert "volumeInGb" not in payload
         return httpx.Response(201, json={"id": "pod-1"})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         response = await deploy_provider(
             client,
             provider("runpod-pod"),
-            preferences(),
+            preferences().model_copy(
+                update={"runpod_network_volume_id": "network-volume-1"}
+            ),
             settings(tmp_path),
             selection=DeploymentSelection(
                 option_id="community:L40S", variant="community"
@@ -422,12 +426,13 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
         if request.url.path == "/v1/templates":
             assert payload["containerDiskInGb"] == 100
             assert payload["dockerStartCmd"] == ["comfy-control", "serverless"]
-            assert payload["env"]["MODELS_DIR"] == "/models"
+            assert payload["env"]["MODELS_DIR"] == "/runpod-volume"
             assert payload["isServerless"] is True
             return httpx.Response(200, json={"id": "template-1"})
         assert payload["templateId"] == "template-1"
         assert "endpointType" not in payload
         assert payload["minCudaVersion"] == "13.0"
+        assert payload["networkVolumeId"] == "network-volume-1"
         assert payload["workersMin"] == 0
         return httpx.Response(201, json={"id": "endpoint-1"})
 
@@ -435,7 +440,9 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
         response = await deploy_provider(
             client,
             provider("runpod"),
-            preferences(),
+            preferences().model_copy(
+                update={"runpod_network_volume_id": "network-volume-1"}
+            ),
             settings(tmp_path),
         )
 

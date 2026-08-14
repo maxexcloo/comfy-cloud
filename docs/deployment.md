@@ -63,8 +63,11 @@ Control creates the cheapest available compatible replacement from the configure
 GPU classes. It keeps the old Pod until the replacement is healthy, then removes
 the old resource. A failed replacement is removed and the old resource identifier
 is restored. RunPod Pod volumes are local to their Pods, so model files are prepared
-again on a replacement. RunPod network volumes are portable, but the managed
-deployment does not attach one automatically.
+again on a replacement. Set `RUNPOD_NETWORK_VOLUME_ID` or the RunPod **Network
+Volume ID** setting to attach portable model storage to both Pod and Serverless
+deployments. Pods mount it at `/opt/ComfyUI/models`; Serverless workers use RunPod's
+`/runpod-volume` mount. A network volume restricts capacity to its data centre, so
+choose GPU and data-centre preferences that have stock in the same location.
 
 Configure provider credentials, `HF_TOKEN`, model profiles and GPU preferences
 through Settings. The packaged controller locks its worker image to the matching
@@ -89,6 +92,11 @@ or container group. Terminate deletes its compute resource; provider-local disks
 deleted with that resource. Generated media is copied to the controller's persistent
 `/data` volume before idle shutdown and does not depend on provider storage.
 
+Terminate is an explicit forced lifecycle action. It can delete provider compute
+while a request is stuck so billing can be stopped; the interrupted request fails
+normally when its provider connection closes. Stop remains guarded while requests
+are active because it is intended as a recoverable idle transition.
+
 Use persistent storage for model weights where the provider supports it. Video job
 state and generated media are owned by the controller. The worker image defaults to
 `comfy-control pod`; override the container
@@ -105,6 +113,39 @@ Grok allowances from CLI Proxy API's authenticated account data. CLI Proxy API v
 removed the legacy aggregate usage route, while its replacement is a destructive
 collector queue and must not be polled by a dashboard. Keep
 `usage-statistics-enabled` set to `true` for CLI Proxy API's own telemetry.
+
+## Sizing and scale behaviour
+
+A bounded live comparison on 14 August 2026 used Flux 2 Klein 9B, Krea 2 Turbo and
+Real-ESRGAN on the same current worker image. These figures are observations rather
+than provider guarantees:
+
+| Provider           | Compute                         |              First ready image |                                Ready generation | Ready 2× upscale |
+| ------------------ | ------------------------------- | -----------------------------: | ----------------------------------------------: | ---------------: |
+| RunPod Pod         | A40 48 GB, USD 0.44/hour        |                    492 seconds | Flux 4 seconds; Krea 63 seconds on first switch |      6–9 seconds |
+| RunPod Serverless  | A40 48 GB, scale to zero        | More than 7 minutes; cancelled |                                     Not reached |      Not reached |
+| Vast.ai Pod        | RTX A6000 48 GB, USD 0.478/hour |                    315 seconds |            Flux 6–10 seconds; Krea 9–15 seconds |      5–6 seconds |
+| Vast.ai Serverless | Dynamic verified 48 GB worker   | More than 6 minutes; cancelled |                                     Not reached |      Not reached |
+
+The dominant interactive cost was image and model population, not GPU inference.
+A RunPod Pod host-capacity replacement took about 389 seconds and lost its local
+model cache. Prefer these operating modes:
+
+1. For interactive work, keep one 48 GB Pod warm for a short burst window and use a
+   portable model volume where supported. An A40 or A6000 is sufficient; paying for
+   an H100 does not solve model-download latency.
+2. For sporadic batch work, scale from zero only after splitting worker pools by
+   model package or attaching pre-populated shared storage. The current all-model
+   ephemeral Serverless worker is not suitable for interactive requests.
+3. Generate final images natively at 768×1024 or 1024×1024. In the live comparison,
+   native Flux 1024 took 6.6 seconds versus 6.5 seconds at 768, while producing more
+   natural detail. Use Real-ESRGAN for accepted legacy or low-resolution images;
+   its sharper reconstruction can look over-processed on faces and skin.
+
+RunPod load-balancer endpoints do not expose the worker log API. Comfy Control labels
+that limitation in the log modal and continues to stream controller lifecycle
+events. Vast.ai Serverless reports that it is waiting for worker assignment until a
+routable PyWorker exists; opening logs does not reserve a worker.
 
 ## Model Preparation
 

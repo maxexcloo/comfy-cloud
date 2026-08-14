@@ -86,6 +86,25 @@ def test_runpod_status_exposes_counts_without_worker_secrets():
     assert "must-not-leak" not in str(details)
 
 
+@pytest.mark.parametrize(
+    ("adapter", "error", "message"),
+    [
+        (
+            RunPodServerlessAdapter("runpod"),
+            "not allowed for QB API, load balancer endpoint",
+            "Worker logs are unavailable for RunPod load-balancer endpoints",
+        ),
+        (
+            VastServerlessAdapter("vast"),
+            "provider has no ready worker",
+            "Waiting for Vast serverless worker assignment",
+        ),
+    ],
+)
+def test_serverless_adapters_explain_worker_log_availability(adapter, error, message):
+    assert adapter.worker_log_error(error) == message
+
+
 def test_runpod_serverless_separates_gateway_and_worker_authentication():
     provider = Provider.model_validate(
         {

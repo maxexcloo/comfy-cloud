@@ -147,6 +147,11 @@ class RunPodPodAdapter(RunPodAdapter):
 class RunPodServerlessAdapter(RunPodAdapter):
     serverless = True
 
+    def worker_log_error(self, error: str) -> str:
+        if "not allowed for qb api" in error.casefold():
+            return "Worker logs are unavailable for RunPod load-balancer endpoints"
+        return error
+
     def worker_headers(
         self, provider: Provider, preferences: ControlPreferences
     ) -> dict[str, str]:
