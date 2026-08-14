@@ -11,6 +11,13 @@ def test_control_image_includes_model_profiles():
     assert "COPY profiles ./profiles" in dockerfile
 
 
+def test_control_and_worker_images_use_compatible_python():
+    control = (ROOT / "Dockerfile.control").read_text().splitlines()[0]
+    worker = (ROOT / "Dockerfile.worker").read_text().splitlines()[0]
+
+    assert control == worker == "FROM python:3.12.12-slim-bookworm"
+
+
 def test_worker_image_uses_one_pinned_cuda_runtime():
     dockerfile = (ROOT / "Dockerfile.worker").read_text()
     constraints = (ROOT / "deploy/worker/constraints.txt").read_text().splitlines()
