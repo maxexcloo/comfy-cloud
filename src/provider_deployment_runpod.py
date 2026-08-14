@@ -14,6 +14,7 @@ from .provider_deployment_common import (
     configured_environment,
     deployment_asset,
     required_preference,
+    worker_model_profiles,
 )
 
 ENDPOINT_GPUS = [
@@ -244,7 +245,7 @@ async def deploy_serverless(
     ]
     if selection is not None and selection.option_id:
         gpu_types = [selection.option_id]
-    minimum_vram = required_vram_gb(preferences.model_profiles)
+    minimum_vram = required_vram_gb(worker_model_profiles(provider, preferences))
     options = await deployment_options(client, preferences)
     matching_options = {
         str(key): option

@@ -5,7 +5,7 @@ import httpx
 from .control_config import ControlSettings, Provider
 from .control_preferences import ControlPreferences
 from .model_profiles import required_vram_gb
-from .provider_deployment_common import DeploymentSelection
+from .provider_deployment_common import DeploymentSelection, worker_model_profiles
 from .provider_deployment_runpod import (
     deploy_pod as deploy_runpod_pod,
 )
@@ -63,10 +63,10 @@ async def deployment_options(
     elif management.kind == "salad":
         options = await salad_deployment_options(client, provider, preferences)
     elif management.kind in {"vast", "vast-pod"}:
-        options = await vast_deployment_options(client, preferences)
+        options = await vast_deployment_options(client, provider, preferences)
     else:
         return []
-    minimum_memory = required_vram_gb(preferences.model_profiles)
+    minimum_memory = required_vram_gb(worker_model_profiles(provider, preferences))
     prepared = []
     for option in options:
         memory = option.get("memory_gb")

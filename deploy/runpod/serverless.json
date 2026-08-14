@@ -4,6 +4,7 @@
   "endpointType": "load-balancer",
   "ports": "8000/http",
   "env": [
+    { "key": "HEALTH_CHECK_PATH", "value": "/ping" },
     { "key": "MODELS_DIR", "value": "/models" },
     { "key": "PORT", "value": "8000" },
     { "key": "PORT_HEALTH", "value": "8000" }

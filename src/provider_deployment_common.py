@@ -41,11 +41,23 @@ def deployment_asset(*parts: str) -> dict[str, Any]:
     return value
 
 
-def worker_model_profiles(preferences: ControlPreferences) -> str:
-    profiles = list(preferences.model_profiles)
+def worker_model_profiles(
+    provider: Provider, preferences: ControlPreferences
+) -> list[str]:
+    selected = {
+        choice.model
+        for choices in preferences.routes.values()
+        for choice in choices
+        if choice.provider in {provider.id, *provider.aliases}
+    }
+    profiles = [
+        profile
+        for profile in preferences.model_profiles
+        if not preferences.routes or profile in selected
+    ]
     if any(profile in {"flux-2-klein-9b", "krea-2-turbo"} for profile in profiles):
         profiles.append("image-upscale")
-    return ",".join(dict.fromkeys(profiles))
+    return list(dict.fromkeys(profiles))
 
 
 def worker_environment(
@@ -70,7 +82,9 @@ def worker_environment(
     ):
         if (value := configured.get(name)) or name == "MODEL_PROFILES":
             environment[name] = str(value or "")
-    environment["MODEL_PROFILES"] = worker_model_profiles(preferences)
+    environment["MODEL_PROFILES"] = ",".join(
+        worker_model_profiles(provider, preferences)
+    )
     return environment
 
 

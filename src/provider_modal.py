@@ -55,7 +55,9 @@ def provider_action(
     environment["API_KEY"] = preferences.worker_api_key
     environment["CONTROL_UI_PASSWORD"] = settings.ui_password
     environment["CONTROL_UI_USERNAME"] = settings.ui_username
-    environment["MODEL_PROFILES"] = worker_model_profiles(preferences)
+    environment["MODEL_PROFILES"] = ",".join(
+        worker_model_profiles(provider, preferences)
+    )
     module.build_app(environment).deploy(name=management.name)
     return action_response("deployed")
 

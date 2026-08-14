@@ -15,6 +15,7 @@ from .provider_deployment_common import (
     docker_flags,
     required_preference,
     response_json,
+    worker_model_profiles,
 )
 
 MINIMUM_COMPUTE_CAPABILITY = 750
@@ -43,11 +44,13 @@ def headers(preferences: ControlPreferences) -> dict[str, str]:
 
 
 async def deployment_options(
-    client: httpx.AsyncClient, preferences: ControlPreferences
+    client: httpx.AsyncClient,
+    provider: Provider,
+    preferences: ControlPreferences,
 ) -> list[dict[str, object]]:
     minimum_vram = max(
         preferences.vast_minimum_gpu_memory_gb,
-        required_vram_gb(preferences.model_profiles),
+        required_vram_gb(worker_model_profiles(provider, preferences)),
     )
     response = await checked_request(
         client,
@@ -97,7 +100,7 @@ async def deploy_pod(
 ) -> httpx.Response:
     minimum_vram = max(
         preferences.vast_minimum_gpu_memory_gb,
-        required_vram_gb(preferences.model_profiles),
+        required_vram_gb(worker_model_profiles(provider, preferences)),
     )
     specification = deployment_asset("vast", "pod.json")
     environment = configured_environment(
@@ -153,7 +156,10 @@ async def deploy_pod(
         json={
             "cancel_unavail": True,
             "disk": specification.get("disk_space", 100),
-            "env": docker_flags(environment, management.port),
+            "env": {
+                **environment,
+                f"-p {management.port}:{management.port}": "1",
+            },
             "image": preferences.worker_image,
             "label": management.name,
             "target_state": "running",
@@ -172,7 +178,7 @@ async def deploy_serverless(
     del selection
     minimum_vram = max(
         preferences.vast_minimum_gpu_memory_gb,
-        required_vram_gb(preferences.model_profiles),
+        required_vram_gb(worker_model_profiles(provider, preferences)),
     )
     specification = deployment_asset("vast", "serverless.json")
     environment = configured_environment(

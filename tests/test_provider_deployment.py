@@ -13,7 +13,7 @@ from comfy_control.control_config import (
     Provider,
     ProviderManagement,
 )
-from comfy_control.control_preferences import ControlPreferences
+from comfy_control.control_preferences import ControlPreferences, RoutePreference
 from comfy_control.provider_adapter import ProviderNotDeployed
 from comfy_control.provider_deployment import (
     deploy_provider,
@@ -176,6 +176,33 @@ def test_worker_ui_credentials_match_control_ui_credentials(tmp_path):
 
     assert environment["CONTROL_UI_PASSWORD"] == "ui-password"
     assert environment["CONTROL_UI_USERNAME"] == "comfy"
+
+
+def test_worker_receives_only_models_routed_to_its_provider(tmp_path):
+    selected = preferences().model_copy(
+        update={
+            "model_profiles": ["flux-2-klein-9b", "krea-2-turbo"],
+            "routes": {
+                "images": [
+                    RoutePreference(model="flux-2-klein-9b", provider="runpod-pod"),
+                    RoutePreference(model="krea-2-turbo", provider="modal"),
+                ]
+            },
+        }
+    )
+
+    environment = configured_environment(
+        {}, provider("runpod-pod"), selected, settings(tmp_path)
+    )
+
+    assert environment["MODEL_PROFILES"] == "flux-2-klein-9b,image-upscale"
+
+
+def test_runpod_serverless_uses_initialising_health_check():
+    specification = json.loads((ROOT / "deploy/runpod/serverless.json").read_text())
+
+    environment = {item["key"]: item["value"] for item in specification["env"]}
+    assert environment["HEALTH_CHECK_PATH"] == "/ping"
 
 
 def test_modal_termination_uses_supported_cli(tmp_path, monkeypatch):
@@ -465,6 +492,8 @@ async def test_vast_pod_requires_worker_compatible_gpu(tmp_path, monkeypatch):
             )
         assert request.url.path == "/api/v0/asks/123/"
         assert payload["target_state"] == "running"
+        assert payload["env"]["-p 8000:8000"] == "1"
+        assert payload["env"]["API_KEY"] == "worker-key"
         return httpx.Response(200, json={"new_contract": 456, "success": True})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
