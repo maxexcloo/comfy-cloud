@@ -523,7 +523,7 @@ async def test_vast_pod_requires_worker_compatible_gpu(tmp_path, monkeypatch):
             assert payload["compute_cap"] == {"gte": 750}
             assert payload["cuda_max_good"] == {"gte": 13.0}
             assert payload["gpu_ram"] == {"gte": 24000}
-            assert payload["id"] == {"eq": 123}
+            assert payload["ask_contract_id"] == {"eq": 123}
             assert payload["limit"] == 1
             assert payload["reliability"] == {"gte": 0.99}
             return httpx.Response(

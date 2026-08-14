@@ -127,7 +127,7 @@ async def deploy_pod(
             offer_id = int(selection.option_id)
         except ValueError as exc:
             raise RuntimeError("selected Vast offer id is invalid") from exc
-        search_filters.update({"id": {"eq": offer_id}, "limit": 1})
+        search_filters.update({"ask_contract_id": {"eq": offer_id}, "limit": 1})
     search = await checked_request(
         client,
         "POST",
