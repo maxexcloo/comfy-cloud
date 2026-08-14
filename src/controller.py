@@ -467,7 +467,7 @@ class Controller:
             if management is None:
                 response = await runtime.client.get(
                     self.worker_url(runtime, runtime.config.health_path),
-                    headers={"Authorization": f"Bearer {runtime.config.api_key}"},
+                    headers=self.worker_headers(runtime),
                     timeout=4,
                 )
                 runtime.ready = response.is_success
@@ -533,7 +533,7 @@ class Controller:
                 await self.refresh_endpoint(runtime)
             response = await runtime.client.get(
                 self.worker_url(runtime, "/internal/logs"),
-                headers={"Authorization": f"Bearer {runtime.config.api_key}"},
+                headers=self.worker_headers(runtime),
                 params={"limit": maximum},
                 timeout=5,
             )
@@ -874,6 +874,19 @@ class Controller:
             return base_url.rstrip("/")
         return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
+    def worker_headers(
+        self, runtime: ProviderRuntime, request_id: str | None = None
+    ) -> dict[str, str]:
+        adapter = provider_adapter(runtime.config)
+        headers = (
+            adapter.worker_headers(runtime.config, self.preferences)
+            if adapter is not None
+            else {"Authorization": f"Bearer {runtime.config.api_key}"}
+        )
+        if request_id:
+            headers["x-request-id"] = request_id
+        return headers
+
     def available_actions(self, provider: str) -> dict[str, ProviderAction]:
         runtime = self.providers[provider]
         return available_provider_actions(
@@ -960,7 +973,7 @@ class Controller:
             await self.refresh_endpoint(runtime)
             response = await runtime.client.get(
                 self.worker_url(runtime, runtime.config.health_path),
-                headers={"Authorization": f"Bearer {runtime.config.api_key}"},
+                headers=self.worker_headers(runtime),
                 timeout=10,
             )
             runtime.ready = response.is_success
@@ -1149,11 +1162,7 @@ class Controller:
                 method,
                 self.worker_url(runtime, path),
                 content=body,
-                headers=headers
-                | {
-                    "Authorization": f"Bearer {runtime.config.api_key}",
-                    "x-request-id": request_id,
-                },
+                headers=headers | self.worker_headers(runtime, request_id),
             )
             runtime.ready = response.status_code not in {502, 503, 504}
             return response
@@ -1192,10 +1201,7 @@ class Controller:
                 self.worker_url(runtime, "/internal/executions"),
                 data={"spec": spec},
                 files=files or [],
-                headers={
-                    "Authorization": f"Bearer {runtime.config.api_key}",
-                    "x-request-id": execution_id[:16],
-                },
+                headers=self.worker_headers(runtime, execution_id[:16]),
             )
             response.raise_for_status()
             value = response.json()
@@ -1216,7 +1222,7 @@ class Controller:
                     )
                 output = await runtime.client.get(
                     url,
-                    headers={"Authorization": f"Bearer {runtime.config.api_key}"},
+                    headers=self.worker_headers(runtime),
                 )
                 output.raise_for_status()
                 outputs.append(

@@ -86,6 +86,28 @@ def test_runpod_status_exposes_counts_without_worker_secrets():
     assert "must-not-leak" not in str(details)
 
 
+def test_runpod_serverless_separates_gateway_and_worker_authentication():
+    provider = Provider.model_validate(
+        {
+            "api_key": "worker-key",
+            "id": "runpod",
+            "management": {
+                "kind": "runpod",
+                "name": "comfy-control",
+            },
+        }
+    )
+
+    headers = RunPodServerlessAdapter("runpod").worker_headers(
+        provider, ControlPreferences(runpod_api_key="runpod-key")
+    )
+
+    assert headers == {
+        "Authorization": "Bearer runpod-key",
+        "x-comfy-control-api-key": "worker-key",
+    }
+
+
 @pytest.mark.asyncio
 async def test_runpod_usage_reports_account_spend():
     request = None

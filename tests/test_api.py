@@ -72,8 +72,16 @@ async def test_internal_info_requires_auth_and_lists_models():
         response = await client.get(
             "/internal/info", headers={"Authorization": "Bearer test-key"}
         )
+        forwarded = await client.get(
+            "/internal/info",
+            headers={
+                "Authorization": "Bearer gateway-key",
+                "x-comfy-control-api-key": "test-key",
+            },
+        )
 
     assert denied.status_code == 401
+    assert forwarded.status_code == 200
     assert response.json()["ready"] is True
     assert "flux-2-klein-9b/text-to-image" in response.json()["models"]
 

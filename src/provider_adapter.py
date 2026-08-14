@@ -104,6 +104,10 @@ class ProviderAdapter(Protocol):
         history_usage: Callable[[str], dict[str, int]],
     ) -> list[dict[str, object]]: ...
 
+    def worker_headers(
+        self, provider: Provider, preferences: ControlPreferences
+    ) -> dict[str, str]: ...
+
 
 @dataclass(frozen=True)
 class BaseAdapter:
@@ -175,3 +179,9 @@ class BaseAdapter:
         response = await client.get(probe.url, headers=probe.headers)
         response.raise_for_status()
         return normalise_usage(probe.kind, response.json())
+
+    def worker_headers(
+        self, provider: Provider, preferences: ControlPreferences
+    ) -> dict[str, str]:
+        del preferences
+        return {"Authorization": f"Bearer {provider.api_key}"}

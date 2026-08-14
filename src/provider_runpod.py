@@ -125,6 +125,16 @@ class RunPodPodAdapter(RunPodAdapter):
 class RunPodServerlessAdapter(RunPodAdapter):
     serverless = True
 
+    def worker_headers(
+        self, provider: Provider, preferences: ControlPreferences
+    ) -> dict[str, str]:
+        return {
+            "Authorization": (
+                f"Bearer {required_preference('RUNPOD_API_KEY', preferences)}"
+            ),
+            "x-comfy-control-api-key": provider.api_key,
+        }
+
     def status(self, resource: dict[str, object]) -> tuple[str, dict[str, object]]:
         workers = resource.get("workers")
         states: dict[str, int] = {}
