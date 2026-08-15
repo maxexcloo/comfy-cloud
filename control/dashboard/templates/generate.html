@@ -1,7 +1,7 @@
 {% extends "dashboard_base.html" %} {% block content %}
 <header class="studio-heading">
   <div><h1>Generate</h1><p>Pick an exact model, describe the result, and let routing choose the provider.</p></div>
-  <a class="btn btn-outline-secondary" href="/providers">Providers</a>
+  <a class="btn" data-variant="outline" href="/providers">Providers</a>
 </header>
 {% if models %}
 <form class="studio-layout" hx-post="/generate" hx-target="#generation-result" hx-swap="innerHTML" hx-indicator="#generation-progress" method="post">
@@ -9,9 +9,9 @@
   {% if prefill.asset_id %}<input name="source_asset_id" type="hidden" value="{{ prefill.asset_id }}" />{% endif %}
   {% if prefill.asset_id %}<aside class="card source-prefill">
     {% if prefill.content_type.startswith("video/") %}<video muted preload="metadata" src="/media/{{ prefill.asset_id }}/content"></video>{% else %}<img alt="Source media" src="/media/{{ prefill.asset_id }}/content" />{% endif %}
-    <div><small class="text-secondary">Using source media</small><strong>{{ prefill.filename }}</strong><span class="text-secondary">The new result will be linked to this item.</span></div>
-    <button class="btn btn-outline-secondary btn-sm" data-media-id="{{ prefill.asset_id }}" type="button">View</button>
-    <a class="btn btn-outline-secondary btn-sm" href="/generate">Remove</a>
+    <div><small class="text-muted-foreground">Using source media</small><strong>{{ prefill.filename }}</strong><span class="text-muted-foreground">The new result will be linked to this item.</span></div>
+    <button class="btn" data-variant="outline" data-size="sm" data-media-id="{{ prefill.asset_id }}" type="button">View</button>
+    <a class="btn" data-variant="outline" data-size="sm" href="/generate">Remove</a>
   </aside>{% endif %}
   <section aria-labelledby="model-heading">
     <div class="studio-section-heading"><div><span class="studio-step">1</span><h2 id="model-heading">Model</h2></div><span class="studio-hint">Warm image target: under 20 seconds</span></div>
@@ -22,18 +22,18 @@
       </label>{% endfor %}
     </div>
   </section>
-  <section class="card card-body prompt-panel" aria-labelledby="prompt-heading">
+  <section class="card p-6 prompt-panel" aria-labelledby="prompt-heading">
     <div class="studio-section-heading"><div><span class="studio-step">2</span><h2 id="prompt-heading">Prompt and options</h2></div></div>
-    <label class="form-label"><span class="visually-hidden">Prompt</span><textarea class="form-control" autofocus name="prompt" placeholder="Describe what you want to create…" required rows="6">{{ prefill.prompt or "" }}</textarea></label>
+    <label class="field"><span class="sr-only">Prompt</span><textarea class="textarea" autofocus name="prompt" placeholder="Describe what you want to create…" required rows="6">{{ prefill.prompt or "" }}</textarea></label>
     <div class="studio-controls">
-      <label class="form-label">Provider<select class="form-select" name="provider"><option value="">Automatic · best value</option>{% for provider in providers %}<option value="{{ provider }}" {% if prefill.provider == provider %}selected{% endif %}>{{ provider }}</option>{% endfor %}</select></label>
-      <label class="form-label" data-image-option>Image size<select class="form-select" name="size">{% for value, label in [("1024x1024", "Square · 1024"), ("1344x768", "Landscape · 1344×768"), ("768x1344", "Portrait · 768×1344")] %}<option value="{{ value }}" {% if prefill.size == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-      <label class="form-label" data-image-option>Outputs<select class="form-select" name="n">{% for value in range(1, 5) %}<option value="{{ value }}" {% if prefill.n | default(1) | int == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+      <label class="field">Provider<select class="select w-full" name="provider"><option value="">Automatic · best value</option>{% for provider in providers %}<option value="{{ provider }}" {% if prefill.provider == provider %}selected{% endif %}>{{ provider }}</option>{% endfor %}</select></label>
+      <label class="field" data-image-option>Image size<select class="select w-full" name="size">{% for value, label in [("1024x1024", "Square · 1024"), ("1344x768", "Landscape · 1344×768"), ("768x1344", "Portrait · 768×1344")] %}<option value="{{ value }}" {% if prefill.size == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="field" data-image-option>Outputs<select class="select w-full" name="n">{% for value in range(1, 5) %}<option value="{{ value }}" {% if prefill.n | default(1) | int == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
     </div>
-    <details class="advanced-options"><summary>Advanced</summary><label class="form-label advanced-seed">Seed<input class="form-control" min="0" name="seed" placeholder="Random" type="number" value="{{ prefill.seed }}" /></label><p class="text-secondary">An explicit seed and the same settings reproduce a generation.</p></details>
-    <div class="studio-submit"><span class="htmx-indicator" id="generation-progress">Submitting…</span><button class="btn btn-primary btn-lg" type="submit">Generate</button></div>
+    <details class="advanced-options"><summary>Advanced</summary><label class="field advanced-seed">Seed<input class="input" min="0" name="seed" placeholder="Random" type="number" value="{{ prefill.seed }}" /></label><p class="text-muted-foreground">An explicit seed and the same settings reproduce a generation.</p></details>
+    <div class="studio-submit"><span class="htmx-indicator" id="generation-progress">Submitting…</span><button class="btn" data-size="lg" type="submit">Generate</button></div>
   </section>
 </form>
 <section aria-live="polite" id="generation-result"></section>
-{% else %}<div class="card card-body studio-empty"><h2>No generation models available</h2><p>Install FLUX.2 Klein 9B, Krea 2 Turbo, or MiniMax Hailuo 2.3, or configure CLI Proxy API for Grok.</p><a class="btn btn-primary" href="/settings">Configure Models</a></div>{% endif %}
+{% else %}<div class="card p-6 studio-empty"><h2>No Generation Models Available</h2><p>Install FLUX.2 Klein 9B, Krea 2 Turbo, or MiniMax Hailuo 2.3, or configure CLI Proxy API for Grok.</p><a class="btn" href="/settings">Configure Models</a></div>{% endif %}
 {% endblock %}

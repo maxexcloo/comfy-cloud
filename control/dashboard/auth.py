@@ -74,18 +74,16 @@ def secure_cookie(request: Request) -> bool:
 
 def login_html(settings: ControlSettings, invalid: bool = False) -> str:
     message = (
-        '<p class="error" role="alert">Incorrect username or password.</p>'
+        '<div class="alert" data-variant="destructive" role="alert">'
+        "<section>Incorrect username or password.</section></div>"
         if invalid
         else ""
     )
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>Comfy Control</title><style>
-:root{{color-scheme:dark;font:15px system-ui;background:#101418;color:#e8edf2}}
-body{{display:grid;margin:0;min-height:100vh;place-items:center}}main{{background:#181e24;border:1px solid #2c3640;border-radius:10px;padding:2rem;width:min(320px,calc(100vw - 4rem))}}
-h1{{font-size:1.5rem;margin-top:0}}label{{display:grid;gap:.35rem;margin:1rem 0}}input{{background:#101418;border:1px solid #42576b;border-radius:5px;color:#e8edf2;padding:.65rem}}
-button{{background:#263442;border:1px solid #42576b;border-radius:5px;color:#e8edf2;padding:.65rem;width:100%;cursor:pointer}}.error{{color:#ff7b72}}
-</style></head><body><main><h1>Comfy Control</h1>{message}<form method="post" action="/login">
-<label>Username<input name="username" value="{escape(settings.ui_username)}" autocomplete="username" required></label>
-<label>Password<input name="password" type="password" autocomplete="current-password" required autofocus></label>
-<button type="submit">Sign In</button></form></main></body></html>"""
+<html class="dark" lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Comfy Control</title><link href="https://cdn.jsdelivr.net/npm/basecoat-css@1.0.2/dist/basecoat.cdn.min.css" rel="stylesheet"></head>
+<body class="grid min-h-screen place-items-center p-4"><main class="card w-full max-w-sm">
+<header><h1>Comfy Control</h1></header><section>{message}<form class="grid gap-4" method="post" action="/login">
+<label class="field">Username<input class="input" name="username" value="{escape(settings.ui_username)}" autocomplete="username" required></label>
+<label class="field">Password<input class="input" name="password" type="password" autocomplete="current-password" required autofocus></label>
+<button class="btn w-full" type="submit">Sign In</button></form></section></main></body></html>"""

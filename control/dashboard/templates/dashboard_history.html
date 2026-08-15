@@ -3,28 +3,28 @@
 <div class="mb-3 page-header">
   <div>
     <h2 class="page-title">History</h2>
-    <div class="text-secondary">
+    <div class="text-muted-foreground">
       Generation requests, attempts, and outputs.
     </div>
   </div>
 </div>
-<form class="card card-body filters shadow-sm" data-live-filter method="get">
+<form class="card p-4 filters shadow-sm" data-live-filter method="get">
   <input name="sort" type="hidden" value="{{ sort }}" /><input
     name="direction"
     type="hidden"
     value="{{ sort_direction }}"
   />
-  <label class="form-label search"
+  <label class="field search"
     >Search<input
-      class="form-control form-control-sm"
+      class="input"
       name="q"
       value="{{ filters.q }}"
       placeholder="Prompt, model, provider, or request ID"
   /></label>
   {% for name, values in [("operation", operations), ("provider", providers),
-  ("model", models), ("status", statuses)] %}<label class="form-label"
+  ("model", models), ("status", statuses)] %}<label class="field"
     >{{ name | title }}<select
-      class="form-select form-select-sm"
+      class="select w-full"
       name="{{ name }}"
     >
       <option value="">All</option>
@@ -40,15 +40,15 @@
     </select></label
   >{% endfor %}
   <div class="filter-actions">
-    <a class="btn btn-outline-secondary btn-sm" href="/history" role="button"
+    <a class="btn" data-variant="outline" data-size="sm" href="/history" role="button"
       >Clear Filters</a
     >
   </div>
 </form>
 <section class="card shadow-sm" aria-label="History">
-  <div class="table-responsive">
+  <div class="table-container">
     <table
-      class="table table-bordered table-hover table-striped align-middle mb-0"
+      class="table"
     >
       <thead>
         <tr>
@@ -80,7 +80,7 @@
           <td>{{ ui.badge(item.status) }}</td>
           <td>
             {% if item.media %}<button
-              class="btn btn-outline-primary btn-sm"
+              class="btn" data-variant="outline" data-size="sm"
               data-media-id="{{
           item.media[0].asset_id }}"
               type="button"

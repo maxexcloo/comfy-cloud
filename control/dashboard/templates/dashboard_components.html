@@ -4,28 +4,16 @@
   ><span class="status-indicator" aria-hidden="true"></span>{{ value.replace("_", " ").replace("-", " ") }}</span
 >
 {%- endmacro %} {% macro pagination(data) -%}
-<nav aria-label="Pagination">
-  <ul class="pagination justify-content-center my-3">
-    <li class="page-item{% if data.page <= 1 %} disabled{% endif %}">
-      <a
-        class="page-link"
-        {% if data.page > 1 %}href="?page={{ data.page - 1 }}{{ data.query_suffix }}"{% else %}aria-disabled="true"{% endif %}
-        >Previous</a
-      >
-    </li>
+<nav class="my-4 flex items-center justify-center gap-1" aria-label="Pagination">
+  <a class="btn" data-size="sm" data-variant="ghost" {% if data.page > 1 %}href="?page={{ data.page - 1 }}{{ data.query_suffix }}"{% else %}aria-disabled="true" tabindex="-1"{% endif %}>Previous</a>
+  <ol class="flex items-center gap-1">
     {% for number in data.links %}{% if number %}
-    <li class="page-item{% if number == data.page %} active{% endif %}">
-      <a class="page-link" {% if number == data.page %}aria-current="page"{% endif %} href="?page={{ number }}{{ data.query_suffix }}">{{ number }}</a>
+    <li>
+      <a class="btn" data-size="icon" data-variant="{% if number == data.page %}outline{% else %}ghost{% endif %}" {% if number == data.page %}aria-current="page"{% endif %} href="?page={{ number }}{{ data.query_suffix }}">{{ number }}</a>
     </li>
-    {% else %}<li class="disabled page-item"><span class="page-link">…</span></li>{% endif %}{% endfor %}
-    <li class="page-item{% if data.page >= data.pages %} disabled{% endif %}">
-      <a
-        class="page-link"
-        {% if data.page < data.pages %}href="?page={{ data.page + 1 }}{{ data.query_suffix }}"{% else %}aria-disabled="true"{% endif %}
-        >Next</a
-      >
-    </li>
-  </ul>
+    {% else %}<li><span class="flex size-9 items-center justify-center" aria-hidden="true">…</span></li>{% endif %}{% endfor %}
+  </ol>
+  <a class="btn" data-size="sm" data-variant="ghost" {% if data.page < data.pages %}href="?page={{ data.page + 1 }}{{ data.query_suffix }}"{% else %}aria-disabled="true" tabindex="-1"{% endif %}>Next</a>
 </nav>
 {%- endmacro %} {% macro sortable_header(label, name, links, current, direction)
 -%}
@@ -40,15 +28,15 @@
 </th>
 {%- endmacro %} {% macro usage(data) -%} {% if data.status == "ok" and
 data.metrics %}
-<div class="small usage-list">
+<div class="text-sm usage-list">
   <div class="usage-progress">
   {% for metric in data.metrics %}{% if metric.unit == "%" %}
-    <div class="progress" role="progressbar" aria-label="{{ metric.label }}" aria-valuenow="{{ metric.value }}" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar" style="width: {{ metric.value }}%"></div></div>
-  {% elif metric.unit == "USD" and metric.maximum %}<div class="progress" role="progressbar" aria-label="{{ metric.label }}" aria-valuenow="{{ metric.value }}" aria-valuemin="0" aria-valuemax="{{ metric.maximum }}"><div class="progress-bar" style="width: {{ 100 * metric.value / metric.maximum }}%"></div></div>{% endif %}{% endfor %}
+    <div class="progress" role="progressbar" aria-label="{{ metric.label }}" aria-valuenow="{{ metric.value }}" aria-valuemin="0" aria-valuemax="100"><span style="width: {{ metric.value }}%"></span></div>
+  {% elif metric.unit == "USD" and metric.maximum %}<div class="progress" role="progressbar" aria-label="{{ metric.label }}" aria-valuenow="{{ metric.value }}" aria-valuemin="0" aria-valuemax="{{ metric.maximum }}"><span style="width: {{ 100 * metric.value / metric.maximum }}%"></span></div>{% endif %}{% endfor %}
   </div>
   <div class="usage-values">
   {% for metric in data.metrics %}<span
-      class="align-items-baseline d-flex gap-2 justify-content-between"
+      class="items-baseline flex gap-2 justify-between"
       ><small>{{ metric.label }}{% if metric.detail %} · {{ metric.detail }}{% endif %}</small
       ><strong>{% if metric.unit == "USD" %}${{ "%.2f" | format(metric.value) }}{% elif metric.unit == "USD/hour" %}${{ "%.2f" | format(metric.value) }}/hr{% elif metric.unit == "%" %}{{ metric.value }}%{% else %}{{ metric.value }}{% endif %}</strong></span>{% endfor %}
   </div>

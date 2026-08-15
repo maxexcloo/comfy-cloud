@@ -3,24 +3,24 @@
 <div class="mb-3 page-header">
   <div>
     <h2 class="page-title">Events</h2>
-    <div class="text-secondary">Controller and provider activity.</div>
+    <div class="text-muted-foreground">Controller and provider activity.</div>
   </div>
 </div>
-<form class="card card-body filters shadow-sm" data-live-filter method="get">
+<form class="card p-4 filters shadow-sm" data-live-filter method="get">
   <input name="sort" type="hidden" value="{{ sort }}" /><input
     name="direction"
     type="hidden"
     value="{{ sort_direction }}"
   />
-  <label class="form-label search"
+  <label class="field search"
     >Search<input
-      class="form-control form-control-sm"
+      class="input"
       name="q"
       value="{{ filters.q }}"
       placeholder="Message, provider, or request ID"
   /></label>
-  <label class="form-label"
-    >Level<select class="form-select form-select-sm" name="level">
+  <label class="field"
+    >Level<select class="select w-full" name="level">
       <option value="">All</option>
       {% for value in levels %}
       <option
@@ -32,8 +32,8 @@
       {% endfor %}
     </select></label
   >
-  <label class="form-label"
-    >Provider<select class="form-select form-select-sm" name="provider">
+  <label class="field"
+    >Provider<select class="select w-full" name="provider">
       <option value="">All</option>
       {% for value in providers %}
       <option
@@ -46,15 +46,15 @@
     </select></label
   >
   <div class="filter-actions">
-    <a class="btn btn-outline-secondary btn-sm" href="/events" role="button"
+    <a class="btn" data-variant="outline" data-size="sm" href="/events" role="button"
       >Clear Filters</a
     >
   </div>
 </form>
 <section class="card shadow-sm" aria-label="Events">
-  <div class="table-responsive">
+  <div class="table-container">
     <table
-      class="table table-bordered table-hover table-striped align-middle mb-0"
+      class="table"
     >
       <thead>
         <tr>
@@ -70,7 +70,7 @@
       <tbody>
         {% for item in events["items"] %}
         <tr>
-          <td class="text-nowrap">
+          <td class="whitespace-nowrap">
             <time data-timestamp="{{ item.created_at }}"
               >{{ item.created_at }}</time
             >
@@ -81,10 +81,10 @@
               >{{ item.provider }}</a
             >{% else %}—{% endif %}
           </td>
-          <td class="text-nowrap">
+          <td class="whitespace-nowrap">
             {% if item.request_id %}<a
               href="/history?q={{ item.request_id | urlencode }}"
-              ><span class="font-monospace">{{ item.request_id }}</span></a
+              ><span class="font-mono">{{ item.request_id }}</span></a
             >{% else %}—{% endif %}
           </td>
           <td>{{ item.message }}</td>

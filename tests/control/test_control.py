@@ -1394,13 +1394,13 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert "Compute, spend, and deployment controls." in providers.text
     assert 'class="skip-link"' in providers.text
     assert "@tabler/core" not in providers.text
-    assert "bootstrap@5.3.8" in providers.text
+    assert "basecoat-css@1.0.2" in providers.text
     assert 'href="/assets/dashboard.css?current"' in providers.text
-    assert '<html data-bs-theme="dark"' in providers.text
+    assert '<html class="dark"' in providers.text
     assert 'data-time-zone="Australia/Sydney"' in providers.text
     assert 'hx-get="/providers?telemetry=true"' in providers.text
     assert 'class="provider-grid"' in providers.text
-    assert 'class="card h-100 provider-card"' in providers.text
+    assert 'class="card h-full provider-card"' in providers.text
     assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text
     assert "Not deployed" in providers.text
@@ -1416,7 +1416,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert 'aria-sort="descending"' in events.text
     assert "Unrelated Event" not in events.text
     assert f"/history?q={history_id}" in events.text
-    assert '<span class="font-monospace">image-wombat</span>' in events.text
+    assert '<span class="font-mono">image-wombat</span>' in events.text
     assert history.text.count(history_id) >= 1
     assert "Apply Filters" not in history.text
     assert "data-live-filter" in history.text

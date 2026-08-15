@@ -1,4 +1,4 @@
-/* Comfy Control layout on top of Bootstrap. */
+/* App-specific layout on top of Basecoat. */
 .page-body {
   padding-block: 1.25rem 3rem;
 }
@@ -34,19 +34,19 @@
 }
 
 .status-success {
-  color: var(--bs-success-text-emphasis);
+  color: #4ade80;
 }
 
 .status-danger {
-  color: var(--bs-danger-text-emphasis);
+  color: var(--color-destructive);
 }
 
 .status-warning {
-  color: var(--bs-warning-text-emphasis);
+  color: #fbbf24;
 }
 
 .status-neutral {
-  color: var(--bs-secondary-color);
+  color: var(--color-muted-foreground);
 }
 
 /* Generation */
@@ -65,7 +65,7 @@
 }
 
 .studio-heading p {
-  color: var(--bs-secondary-color);
+  color: var(--color-muted-foreground);
   margin: 0;
   max-width: 720px;
 }
@@ -92,7 +92,7 @@
 
 .studio-step {
   align-items: center;
-  background: var(--bs-tertiary-bg);
+  background: var(--color-muted);
   border-radius: 50%;
   display: inline-flex;
   font-size: 0.75rem;
@@ -104,7 +104,7 @@
 .studio-hint,
 .model-card-body > span:not(.model-kind),
 .prompt-panel details p {
-  color: var(--bs-secondary-color);
+  color: var(--color-muted-foreground);
 }
 
 .model-grid {
@@ -140,17 +140,18 @@
 }
 
 .model-card input:checked + .model-card-body {
-  border-color: var(--bs-primary);
-  box-shadow: 0 0 0 0.2rem rgb(var(--bs-primary-rgb) / 25%);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 0.2rem
+    color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
 
 .model-card input:focus-visible + .model-card-body {
-  outline: 2px solid var(--bs-primary);
+  outline: 2px solid var(--color-primary);
   outline-offset: 3px;
 }
 
 .model-kind {
-  color: var(--bs-primary-text-emphasis);
+  color: var(--color-primary);
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -158,7 +159,7 @@
 }
 
 .model-speed {
-  color: var(--bs-success-text-emphasis);
+  color: #4ade80;
 }
 
 .prompt-panel textarea {
@@ -174,7 +175,7 @@
 }
 
 .prompt-panel details {
-  border-top: var(--bs-border-width) solid var(--bs-border-color);
+  border-top: 1px solid var(--color-border);
   margin-top: 1.25rem;
   padding-top: 1rem;
 }
@@ -204,7 +205,7 @@
 .source-prefill video {
   aspect-ratio: 1;
   background: #000;
-  border-radius: var(--bs-border-radius);
+  border-radius: var(--radius-md);
   object-fit: contain;
   width: 72px;
 }
@@ -228,7 +229,7 @@
 
 .status-dot {
   animation: studio-pulse 1.5s infinite;
-  background: var(--bs-primary);
+  background: var(--color-primary);
   border-radius: 50%;
   display: inline-block;
   height: 0.65rem;
@@ -237,7 +238,7 @@
 
 .status-dot.complete {
   animation: none;
-  background: var(--bs-success);
+  background: #22c55e;
 }
 
 .phase-track {
@@ -248,15 +249,15 @@
 }
 
 .phase-track span {
-  border-top: 3px solid var(--bs-border-color);
-  color: var(--bs-secondary-color);
+  border-top: 3px solid var(--color-border);
+  color: var(--color-muted-foreground);
   font-size: 0.8rem;
   padding-top: 0.45rem;
 }
 
 .phase-track span.active {
-  border-color: var(--bs-primary);
-  color: var(--bs-body-color);
+  border-color: var(--color-primary);
+  color: var(--color-foreground);
 }
 
 .generation-output-grid {
@@ -267,7 +268,7 @@
 }
 
 .generation-output-grid :is(img, video) {
-  border-radius: var(--bs-border-radius);
+  border-radius: var(--radius-md);
   max-height: 70vh;
   object-fit: contain;
   width: 100%;
@@ -313,9 +314,9 @@
 
 .filter-chip {
   align-items: center;
-  background: var(--bs-tertiary-bg);
-  border: var(--bs-border-width) solid var(--bs-border-color);
-  border-radius: var(--bs-border-radius);
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   display: flex;
   gap: 0.25rem;
   padding: 0.25rem 0.35rem 0.25rem 0.7rem;
@@ -338,7 +339,7 @@
 }
 
 .provider-card-body h2 {
-  color: var(--bs-secondary-color);
+  color: var(--color-muted-foreground);
   font-size: 0.75rem;
   margin-bottom: 0.65rem;
   text-transform: uppercase;
@@ -387,7 +388,7 @@
 }
 
 .settings-category-body {
-  border-top: var(--bs-border-width) solid var(--bs-border-color);
+  border-top: 1px solid var(--color-border);
   display: grid;
   gap: 1.25rem;
   padding: 1rem;
@@ -425,10 +426,9 @@
   align-items: center;
   display: grid;
   gap: 0.5rem;
-  grid-template-columns: auto minmax(150px, 1fr) minmax(
-      180px,
-      1fr
-    ) auto auto auto;
+  grid-template-columns:
+    auto minmax(150px, 1fr) minmax(180px, 1fr)
+    auto auto auto;
 }
 
 .route-handle {
@@ -436,9 +436,9 @@
 }
 
 .settings-save-bar {
-  background: var(--bs-body-bg);
-  border: var(--bs-border-width) solid var(--bs-border-color);
-  border-radius: var(--bs-border-radius);
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   bottom: 1rem;
   display: flex;
   justify-content: space-between;
@@ -448,46 +448,20 @@
   z-index: 10;
 }
 
-/* Native dialogs using Bootstrap modal components. */
+/* Dialog overflow and app content sizing; the shell is Basecoat's dialog. */
 body:has(dialog[open]) {
   overflow: hidden;
 }
 
-dialog {
-  background: transparent;
-  border: 0;
-  max-height: 100vh;
-  max-width: 100vw;
-  overflow: hidden;
-  padding: 0;
-}
-
-dialog .modal-dialog {
-  margin: 1.75rem auto;
-  width: min(94vw, 1000px);
-}
-
-dialog .modal-content {
-  max-height: calc(100vh - 3.5rem);
-  overflow: hidden;
-}
-
-dialog :is(.dialog-body, .modal-body) {
+.dialog-body {
+  max-height: 70vh;
   min-height: 0;
   overflow: auto;
-}
-
-dialog::backdrop {
-  background: rgb(0 0 0 / 70%);
 }
 
 .dialog-body pre {
   margin: 0;
   white-space: pre-wrap;
-}
-
-.media-action-dialog {
-  width: min(94vw, 640px) !important;
 }
 
 /* Media */
@@ -547,6 +521,22 @@ dialog::backdrop {
   margin-bottom: 0.35rem;
 }
 
+.parameter-filter-controls {
+  align-items: end;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+}
+
+.table :is(th, td) {
+  text-align: left;
+  vertical-align: middle;
+}
+
+.table th {
+  padding-block: 0.5rem;
+}
+
 .filter-chips {
   display: flex;
   flex-wrap: wrap;
@@ -564,7 +554,7 @@ dialog::backdrop {
 }
 
 .media-card {
-  color: var(--bs-body-color);
+  color: var(--color-foreground);
   display: grid;
   grid-template-rows: auto 1fr;
   overflow: hidden;
@@ -575,11 +565,12 @@ dialog::backdrop {
 
 .media-card:hover,
 .media-card.media-selected {
-  border-color: var(--bs-primary);
+  border-color: var(--color-primary);
 }
 
 .media-card.media-selected {
-  box-shadow: 0 0 0 0.2rem rgb(var(--bs-primary-rgb) / 30%);
+  box-shadow: 0 0 0 0.2rem
+    color-mix(in srgb, var(--color-primary) 30%, transparent);
 }
 
 .media-thumb {
@@ -598,8 +589,8 @@ dialog::backdrop {
 
 .media-role {
   background: rgb(0 0 0 / 75%);
-  border: var(--bs-border-width) solid var(--bs-border-color);
-  border-radius: var(--bs-border-radius-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   bottom: 0.6rem;
   font-size: 0.75rem;
   left: 0.6rem;
@@ -622,7 +613,7 @@ dialog::backdrop {
 }
 
 .media-summary-footer {
-  border-top: var(--bs-border-width) solid var(--bs-border-color);
+  border-top: 1px solid var(--color-border);
   margin-top: 0.4rem;
   overflow-wrap: anywhere;
   padding-top: 0.55rem;
@@ -690,6 +681,7 @@ dialog::backdrop {
   .studio-controls,
   .media-filter-grid,
   .media-search-primary,
+  .parameter-filter-controls,
   .provider-grid,
   .route-target {
     grid-template-columns: 1fr;

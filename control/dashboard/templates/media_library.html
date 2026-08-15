@@ -1,40 +1,40 @@
 {% extends "dashboard_base.html" %} {% import "dashboard_components.html" as ui %} {% block content %}
 <div class="mb-3 page-header">
-  <div><h1 class="page-title">Media</h1><p class="text-secondary">Search outputs, inspect settings, and reuse earlier generations.</p></div>
+  <div><h1 class="page-title">Media</h1><p class="text-muted-foreground">Search outputs, inspect settings, and reuse earlier generations.</p></div>
 </div>
-<form class="card card-body media-search" id="media-search" action="/media/search" data-live-filter method="post">
+<form class="card p-4 media-search" id="media-search" action="/media/search" data-live-filter method="post">
   <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
   <div class="media-search-primary">
-    <label class="form-label media-search-query">Search<input class="form-control" autofocus name="q" placeholder="Prompt, model, provider, or parameter" value="{{ query }}" /></label>
-    <label class="form-label">Sort<select class="form-select" data-current="{{ sort }}" name="sort">
+    <label class="field media-search-query">Search<input class="input" autofocus name="q" placeholder="Prompt, model, provider, or parameter" value="{{ query }}" /></label>
+    <label class="field">Sort<select class="select w-full" data-current="{{ sort }}" name="sort">
       {% for value, label in [("relevance", "Relevance"), ("newest", "Newest"), ("oldest", "Oldest"), ("model", "Model"), ("provider", "Provider"), ("content_type", "Media type")] %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
       <optgroup label="Parameter">{% for value in facets.parameters %}<option value="parameter:{{ value }}">{{ value }}</option>{% endfor %}</optgroup>
     </select></label>
     <details class="media-filter-menu" {% if active_filters or include_inputs or selections.values() | select | list %}open{% endif %}>
-      <summary class="btn btn-outline-secondary">Filters{% if active_filters %} ({{ active_filters | length }}){% endif %}</summary>
+      <summary class="btn" data-variant="outline">Filters{% if active_filters %} ({{ active_filters | length }}){% endif %}</summary>
       <div class="card media-filter-panel">
         <div class="media-filter-grid">
-          {% for name in ["model", "provider", "operation", "status"] %}<label class="form-label">{{ name | title }}<select class="form-select" data-current="{{ selections[name] }}" name="{{ name }}"><option value="">All</option>{% for value in facets[name] %}<option value="{{ value }}">{% if name in ["model", "provider"] %}{{ value }}{% else %}{{ value.replace("_", " ") | title }}{% endif %}</option>{% endfor %}</select></label>{% endfor %}
+          {% for name in ["model", "provider", "operation", "status"] %}<label class="field">{{ name | title }}<select class="select w-full" data-current="{{ selections[name] }}" name="{{ name }}"><option value="">All</option>{% for value in facets[name] %}<option value="{{ value }}">{% if name in ["model", "provider"] %}{{ value }}{% else %}{{ value.replace("_", " ") | title }}{% endif %}</option>{% endfor %}</select></label>{% endfor %}
         </div>
-        <label class="form-check"><input class="form-check-input" data-current="{{ include_inputs }}" name="include_inputs" type="checkbox" value="true" /><span class="form-check-label">Include source media</span></label>
-        <fieldset class="parameter-filter"><legend>Parameter filter</legend><div class="input-group">
-          <select class="form-select" id="filter-path" aria-label="Parameter"><option value="">Choose parameter</option>{% for value in facets.parameters %}<option value="{{ value }}">{{ value }}</option>{% endfor %}</select>
-          <select class="form-select" id="filter-operator" aria-label="Operator"><option value="equals">Equals</option><option value="contains">Contains</option><option value="greater_than">Greater than</option><option value="less_than">Less than</option><option value="not_equals">Does not equal</option></select>
-          <input class="form-control" id="filter-value" aria-label="Value" placeholder="Value" />
-          <button class="btn btn-outline-secondary" id="add-filter" type="button">Add</button>
+        <label class="field" data-orientation="horizontal"><input data-current="{{ include_inputs }}" name="include_inputs" type="checkbox" value="true" /><span class="font-normal">Include Source Media</span></label>
+        <fieldset class="parameter-filter"><legend>Parameter Filter</legend><div class="parameter-filter-controls">
+          <select class="select w-full" id="filter-path" aria-label="Parameter"><option value="">Choose parameter</option>{% for value in facets.parameters %}<option value="{{ value }}">{{ value }}</option>{% endfor %}</select>
+          <select class="select w-full" id="filter-operator" aria-label="Operator"><option value="equals">Equals</option><option value="contains">Contains</option><option value="greater_than">Greater than</option><option value="less_than">Less than</option><option value="not_equals">Does not equal</option></select>
+          <input class="input" id="filter-value" aria-label="Value" placeholder="Value" />
+          <button class="btn" data-variant="outline" id="add-filter" type="button">Add</button>
         </div></fieldset>
       </div>
     </details>
-    <a class="btn btn-outline-secondary media-clear" href="/media" role="button">Clear Filters</a>
+    <a class="btn media-clear" data-variant="outline" href="/media" role="button">Clear Filters</a>
   </div>
-  <div class="filter-chips" id="filter-chips">{% for value in active_filters %}<span class="filter-chip"><input name="filter" type="hidden" value="{{ value }}" />{{ value.replace("|", " ").replace("_", " ") }}<button class="btn btn-link btn-sm" aria-label="Remove filter" data-remove-filter type="button">×</button></span>{% endfor %}</div>
+  <div class="filter-chips" id="filter-chips">{% for value in active_filters %}<span class="filter-chip"><input name="filter" type="hidden" value="{{ value }}" />{{ value.replace("|", " ").replace("_", " ") }}<button class="btn" data-variant="link" data-size="sm" aria-label="Remove filter" data-remove-filter type="button">×</button></span>{% endfor %}</div>
 </form>
 <section id="media-results" data-media-page="{{ media.page }}" data-media-pages="{{ media.pages }}">
   <div class="media-grid">
     {% for item in media["items"] %}<button class="card media-card" aria-label="Open {{ item.model }} media details" data-media-id="{{ item.asset_id }}" type="button">
       <span class="media-thumb">{% if item.content_type.startswith("video/") %}<video muted preload="metadata" src="/media/{{ item.asset_id }}/content"></video>{% else %}<img alt="" loading="lazy" src="/media/{{ item.asset_id }}/content" />{% endif %}<span class="media-role">{{ item.role }}</span></span>
-      <span class="card-body media-summary"><span class="media-summary-main"><strong><code>{{ item.provider_model or item.model }}</code></strong><small>{{ item.operation.replace("_", " ") }} · {{ item.provider or "No provider" }}</small><span class="prompt-clamp">{{ item.prompt or "No prompt" }}</span></span><small class="media-summary-footer"><time data-timestamp="{{ item.created_at }}">{{ item.created_at }}</time><span>{{ item.filename }}</span></small></span>
-    </button>{% else %}<section class="card card-body empty-state"><h2>No media found</h2><p>Adjust the search or filters and try again.</p></section>{% endfor %}
+      <span class="media-summary p-4"><span class="media-summary-main"><strong><code>{{ item.provider_model or item.model }}</code></strong><small>{{ item.operation.replace("_", " ") | title }} · {{ item.provider or "No provider" }}</small><span class="prompt-clamp">{{ item.prompt or "No prompt" }}</span></span><small class="media-summary-footer"><time data-timestamp="{{ item.created_at }}">{{ item.created_at }}</time><span>{{ item.filename }}</span></small></span>
+    </button>{% else %}<section class="card empty-state"><section><h2>No Media Found</h2><p>Adjust the search or filters and try again.</p></section></section>{% endfor %}
   </div>
   {{ ui.pagination(media) }}
 </section>

@@ -1,17 +1,17 @@
-<header class="bg-body border-bottom sticky-top">
-  <div class="container-xl d-flex align-items-center gap-3 py-2">
-    <span class="navbar-brand flex-shrink-0 fw-semibold m-0">Comfy Control</span>
-    <nav class="d-flex flex-grow-1 overflow-x-auto" aria-label="Primary Navigation">
-      <ul class="nav flex-nowrap">
+<header class="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
+  <div class="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-2">
+    <span class="shrink-0 font-semibold">Comfy Control</span>
+    <nav class="flex grow overflow-x-auto" aria-label="Primary Navigation">
+      <ul class="flex items-center gap-1">
         {% for name, label, path in [("generate", "Generate", "/generate"),
         ("media", "Media", "/media"), ("history", "History", "/history"),
         ("events", "Events", "/events"), ("providers", "Providers", "/providers")] %}
-        <li class="nav-item"><a class="nav-link{% if page == name %} active{% endif %}" {% if page == name %}aria-current="page"{% endif %} href="{{ path }}">{{ label }}</a></li>
+        <li><a class="btn" data-variant="{% if page == name %}secondary{% else %}ghost{% endif %}" data-size="sm" {% if page == name %}aria-current="page"{% endif %} href="{{ path }}">{{ label }}</a></li>
         {% endfor %}
       </ul>
-      <ul class="nav flex-nowrap ms-auto">
-        <li class="nav-item"><a class="nav-link{% if page == 'settings' %} active{% endif %}" {% if page == "settings" %}aria-current="page"{% endif %} href="/settings">Settings</a></li>
-        <li class="nav-item"><form action="/logout" method="post"><button class="nav-link" type="submit">Logout</button></form></li>
+      <ul class="ms-auto flex items-center gap-1">
+        <li><a class="btn" data-variant="{% if page == 'settings' %}secondary{% else %}ghost{% endif %}" data-size="sm" {% if page == "settings" %}aria-current="page"{% endif %} href="/settings">Settings</a></li>
+        <li><form action="/logout" method="post"><button class="btn" data-variant="ghost" data-size="sm" type="submit">Logout</button></form></li>
       </ul>
     </nav>
   </div>

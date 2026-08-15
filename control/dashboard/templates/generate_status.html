@@ -6,9 +6,9 @@
   {% endif %}
 >
   {% if job.status == "failed" %}
-  <div class="alert alert-danger">
-    <strong>Generation failed</strong>
-    <p>{{ job.error or "The provider did not complete the request." }}</p>
+  <div class="alert" data-variant="destructive">
+    <h2>Generation Failed</h2>
+    <section>{{ job.error or "The provider did not complete the request." }}</section>
   </div>
   {% elif job.status == "completed" %}
   <div class="generation-status-heading">

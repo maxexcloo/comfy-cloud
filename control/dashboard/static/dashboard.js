@@ -337,7 +337,9 @@ if (addFilter) {
     input.value = `${path}|${operator}|${value}`;
     chip.append(input, `${path} ${operator.replaceAll("_", " ")} ${value} `);
     const remove = document.createElement("button");
-    remove.className = "btn btn-link btn-sm";
+    remove.className = "btn";
+    remove.dataset.variant = "link";
+    remove.dataset.size = "sm";
     remove.type = "button";
     remove.dataset.removeFilter = "";
     remove.textContent = "×";
@@ -363,10 +365,10 @@ const element = (tag, className, text) => {
 };
 
 const labelledValue = (label, value) => {
-  const item = element("div", "card card-body");
+  const item = element("div", "card p-3");
   item.append(
-    element("small", "d-block text-secondary", label),
-    element("strong", "d-block", value || "—"),
+    element("small", "block text-muted-foreground", label),
+    element("strong", "block", value || "—"),
   );
   return item;
 };
@@ -449,12 +451,12 @@ if (mediaDialog) {
     );
     document.getElementById("media-action-title").textContent = label;
     actionSubmit.textContent = label;
-    actionError.classList.add("d-none");
+    actionError.classList.add("hidden");
     actionError.textContent = "";
     for (const field of actionDialog.querySelectorAll("[data-edit-field]"))
-      field.classList.toggle("d-none", !editing);
+      field.classList.toggle("hidden", !editing);
     for (const field of actionDialog.querySelectorAll("[data-upscale-field]"))
-      field.classList.toggle("d-none", editing);
+      field.classList.toggle("hidden", editing);
     document.getElementById("media-action-prompt").required = editing;
     actionModel.replaceChildren();
     for (const model of activeItem.actions[action]) {
@@ -478,7 +480,7 @@ if (mediaDialog) {
     const action = activeMediaAction === "image_edit" ? "edit" : "upscale";
     actionSubmit.disabled = true;
     actionSubmit.setAttribute("aria-busy", "true");
-    actionError.classList.add("d-none");
+    actionError.classList.add("hidden");
     try {
       const response = await fetch(`/media/${activeAssetId}/${action}`, {
         body: form,
@@ -492,7 +494,7 @@ if (mediaDialog) {
       await openMedia(result.asset_id);
     } catch (error) {
       actionError.textContent = error.message;
-      actionError.classList.remove("d-none");
+      actionError.classList.remove("hidden");
     } finally {
       actionSubmit.disabled = false;
       actionSubmit.removeAttribute("aria-busy");
@@ -526,7 +528,7 @@ if (mediaDialog) {
     if (request !== openRequest) return;
     if (!response.ok) {
       detailRoot.replaceChildren(
-        element("p", "text-danger", "Media could not be loaded."),
+        element("p", "text-destructive", "Media could not be loaded."),
       );
       return;
     }
@@ -566,44 +568,40 @@ if (mediaDialog) {
     facts.append(...factItems);
     const body = document.createDocumentFragment();
     if (mediaNotice) {
-      body.append(element("div", "alert alert-success", mediaNotice));
+      const notice = element("div", "alert");
+      notice.append(element("section", "", mediaNotice));
+      body.append(notice);
       mediaNotice = undefined;
     }
     body.append(preview);
     const reuseActions = element("div", "media-detail-actions");
-    const regenerate = element(
-      "a",
-      "btn btn-primary btn-sm",
-      "Use in Generate",
-    );
+    const regenerate = element("a", "btn", "Use in Generate");
+    regenerate.dataset.size = "sm";
     regenerate.href = `/generate?source=${encodeURIComponent(item.id)}`;
     reuseActions.append(regenerate);
     body.append(reuseActions);
     if (item.content_type.startsWith("image/")) {
       const actions = element(
         "div",
-        "align-items-center d-flex flex-wrap gap-2 justify-content-between my-3",
+        "flex flex-wrap items-center justify-between gap-2 my-3",
       );
-      const actionButtons = element("div", "d-flex flex-wrap gap-2");
+      const actionButtons = element("div", "flex flex-wrap gap-2");
       for (const [operation, label] of [
         ["image_edit", "Edit Image"],
         ["image_upscale", "Upscale Image"],
       ]) {
         if (!item.actions[operation]?.length) continue;
-        const button = element(
-          "button",
-          operation === "image_upscale"
-            ? "btn btn-primary btn-sm"
-            : "btn btn-outline-primary btn-sm",
-          label,
-        );
+        const button = element("button", "btn", label);
+        button.dataset.size = "sm";
+        button.dataset.variant =
+          operation === "image_upscale" ? "primary" : "outline";
         button.dataset.mediaAction = operation;
         button.type = "button";
         actionButtons.append(button);
       }
       if (actionButtons.childElementCount) {
         actions.append(
-          element("strong", "text-secondary", "Image actions"),
+          element("strong", "text-muted-foreground", "Image Actions"),
           actionButtons,
         );
         body.append(actions);
@@ -611,11 +609,8 @@ if (mediaDialog) {
     }
     body.append(facts);
     for (const generation of item.uses) {
-      const section = element("section", "card card-body detail-section");
-      const heading = element(
-        "div",
-        "align-items-center d-flex justify-content-between",
-      );
+      const section = element("section", "card p-4 detail-section");
+      const heading = element("div", "flex items-center justify-between");
       const operation = titleText(generation.operation);
       heading.append(
         element(
@@ -628,7 +623,7 @@ if (mediaDialog) {
       );
       const historyLink = element("a", "", "View History");
       historyLink.href = `/history?q=${encodeURIComponent(generation.history_id)}`;
-      const links = element("div", "d-flex gap-2");
+      const links = element("div", "flex gap-2");
       if (generation.source_url) {
         const sourceLink = element("a", "", "View Source");
         sourceLink.href = generation.source_url;
@@ -661,16 +656,18 @@ if (mediaDialog) {
       ...item.lineage.derivatives.map((entry) => ["Derivative", entry]),
     ];
     if (related.length) {
-      const section = element("section", "card card-body detail-section");
-      section.append(element("h3", "", "Related media"));
-      const list = element("div", "d-flex flex-wrap gap-2");
+      const section = element("section", "card p-4 detail-section");
+      section.append(element("h3", "", "Related Media"));
+      const list = element("div", "flex flex-wrap gap-2");
       for (const [relationship, entry] of related) {
         const button = element(
           "button",
-          "btn btn-outline-secondary btn-sm related-item",
+          "btn related-item",
           `${relationship}: ${entry.filename || `Media ${entry.id}`}`,
         );
         button.type = "button";
+        button.dataset.variant = "outline";
+        button.dataset.size = "sm";
         button.dataset.mediaId = entry.id;
         list.append(button);
       }

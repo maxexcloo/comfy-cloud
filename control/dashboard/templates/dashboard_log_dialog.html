@@ -1,18 +1,16 @@
-<dialog id="log-dialog" aria-labelledby="log-title">
-  <div class="modal-dialog modal-dialog-scrollable modal-xl">
-    <div class="modal-content">
-      <header class="dialog-head gap-3 modal-header">
-        <h2 class="modal-title" id="log-title">Provider logs</h2>
-        <div class="align-items-center d-flex gap-2">
+<dialog class="dialog" id="log-dialog" aria-labelledby="log-title">
+  <div class="sm:max-w-5xl">
+      <header class="dialog-head gap-3">
+        <h2 id="log-title">Provider Logs</h2>
+        <div class="items-center flex gap-2">
           <small id="log-follow-state" role="status">Following</small>
-          <button class="btn btn-secondary btn-sm" data-close type="button">
+          <button class="btn" data-variant="secondary" data-size="sm" data-close type="button">
             Close
           </button>
         </div>
       </header>
-      <div class="dialog-body modal-body">
+      <section class="dialog-body">
         <pre id="log-output" aria-live="polite">Connecting…</pre>
-      </div>
-    </div>
+      </section>
   </div>
 </dialog>
