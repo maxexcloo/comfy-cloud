@@ -1,0 +1,85 @@
+{% macro badge(value) -%}
+<span
+  class="badge {% if value in ['completed', 'ready', 'running'] %}bg-green-lt{% elif value in ['error', 'failed', 'unavailable'] %}bg-red-lt{% elif value in ['warning', 'pending'] %}bg-yellow-lt{% else %}bg-secondary-lt{% endif %}"
+  >{{ value.replace("_", " ").replace("-", " ") | title }}</span
+>
+{%- endmacro %} {% macro pagination(data) -%}
+<nav aria-label="Pagination">
+  <ul class="justify-content-center pagination">
+    {% if data.page > 1 %}
+    <li class="page-item">
+      <a
+        class="page-link"
+        href="?page={{ data.page - 1 }}{{ data.query_suffix }}"
+        >Previous</a
+      >
+    </li>
+    {% endif %}
+    <li class="disabled page-item">
+      <span class="page-link">Page {{ data.page }} Of {{ data.pages }}</span>
+    </li>
+    {% if data.page < data.pages %}
+    <li class="page-item">
+      <a
+        class="page-link"
+        href="?page={{ data.page + 1 }}{{ data.query_suffix }}"
+        >Next</a
+      >
+    </li>
+    {% endif %}
+  </ul>
+</nav>
+{%- endmacro %} {% macro sortable_header(label, name, links, current, direction)
+-%}
+<th
+  aria-sort="{% if current == name %}{{ 'ascending' if direction == 'asc' else 'descending' }}{% else %}none{% endif %}"
+>
+  <a class="sort-link" href="{{ links[name] }}"
+    >{{ label }}{% if current == name %}<span aria-hidden="true"
+      >{{ '↑' if direction == 'asc' else '↓' }}</span
+    >{% endif %}</a
+  >
+</th>
+{%- endmacro %} {% macro usage(data) -%} {% if data.status == "ok" and
+data.metrics %}
+<div class="small usage-list">
+  {% for metric in data.metrics %} {% if metric.unit == "%" %}
+  <div class="usage-meter">
+    <progress class="progress progress-sm" max="100" value="{{ metric.value }}">
+      {{ metric.value }}%
+    </progress>
+    <div class="align-items-baseline d-flex gap-2 justify-content-between">
+      <small
+        >{{ metric.label | title }}{% if metric.detail %} · {{ metric.detail
+        }}{% endif %}</small
+      ><strong>{{ metric.value }}%</strong>
+    </div>
+  </div>
+  {% elif metric.unit == "USD" %}
+  <div class="usage-meter">
+    {% if metric.maximum %}<progress
+      class="progress progress-sm"
+      max="{{ metric.maximum }}"
+      value="{{ metric.value }}"
+    >
+      ${{ "%.2f" | format(metric.value) }}</progress
+    >{% endif %}<span
+      class="align-items-baseline d-flex gap-2 justify-content-between"
+      ><small>{{ metric.label | title }}</small
+      ><strong>${{ "%.2f" | format(metric.value) }}</strong></span
+    >
+  </div>
+  {% elif metric.unit == "USD/hour" %}
+  <span class="align-items-baseline d-flex gap-2 justify-content-between"
+    ><small>{{ metric.label | title }}</small
+    ><strong>${{ "%.2f" | format(metric.value) }}/Hr</strong></span
+  >
+  {% else %}
+  <span class="align-items-baseline d-flex gap-2 justify-content-between"
+    ><small>{{ metric.label | title }}</small
+    ><strong>{{ metric.value }}</strong></span
+  >
+  {% endif %} {% endfor %}
+</div>
+{% else %}<small>{{ data.status.replace("_", " ") | title }}</small>{% endif %}
+{%- endmacro %}

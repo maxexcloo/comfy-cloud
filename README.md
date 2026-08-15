@@ -2,14 +2,15 @@
 
 Comfy Control is an authenticated OpenAI-compatible control plane for ComfyUI. It
 routes image and video requests across Pod and Serverless deployments, controls
-provider lifecycles, reports usage and credit, and falls back to CLI Proxy API.
-Public model IDs use configured provider fallback. Passing a qualified
+provider lifecycles, and reports usage and credit. Public model IDs use configured
+provider fallback only for the same exact model. CLI Proxy API models are explicit;
+Comfy Control never silently replaces a requested model with Grok. Passing a qualified
 `provider/model` ID pins that provider; configured aliases such as `cliproxy` and
 `runpod` are accepted.
 
 ```text
 OpenAI-compatible client -> Comfy Control -> ComfyUI workers
-                                      `-> CLI Proxy API (fallback)
+                                      `-> CLI Proxy API (explicit Grok models)
 ```
 
 The lightweight `control` image runs the control plane. The CUDA-enabled `worker`
@@ -41,18 +42,21 @@ docker compose ps
 Comfy Control listens on `http://localhost:28081`. Compose builds and starts only
 the lightweight control plane. The control plane manages independently deployed
 worker images.
-Sign in and use **Settings** to configure provider credentials, deployment limits,
-model profiles, routing and worker authentication. Saved settings are applied
+Sign in to the model-first **Generate** studio. Use **Settings** to configure
+provider credentials, deployment limits, model profiles, routing and worker
+authentication. Saved settings are applied
 without restarting the control plane.
 
 ## Repository Layout
 
-- `catalogue/`: workflows, manifests and pinned model-source profiles.
-- `comfy_control/`: implementation split into catalogue, control, provider and
-  worker packages.
-- `deploy/`: provider-specific Comfy Control deployment assets.
+- `catalogue/`: catalogue package, workflows, manifests and model profiles.
+- `command/`: command-line entry point.
+- `control/`: control-plane package and image build.
+- `deploy/`: provider-owned deployment entry points.
 - `docs/`: architecture, catalogue, development and deployment guidance.
-- `tests/`: behavioural and repository tests.
+- `providers/`: provider adapters and deployment request builders.
+- `tests/`: behavioural tests grouped by runtime boundary.
+- `worker/`: worker package, image build and upstream dependency constraints.
 
 ## Develop
 

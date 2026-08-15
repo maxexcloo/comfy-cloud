@@ -1,5 +1,11 @@
 name: minimax-h3
+description: Native 768p text-to-video and image-to-video generation.
+capabilities: [image_to_video, text_to_video]
+hourly_cost_limit: 2
+idle_seconds: 0
 minimum_vram_gb: 80
+recommended_vram_gb: 80
+service_class: batch
 sources:
   - type: huggingface
     repo: Comfy-Org/MiniMax-H3

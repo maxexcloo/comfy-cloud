@@ -1,0 +1,156 @@
+<!doctype html>
+<html class="dark" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width" name="viewport" />
+    <title>
+      {% block title %}{{ page | title }}{% endblock %} · Comfy Control
+    </title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/basecoat-css@1.0.2/dist/basecoat.cdn.min.css"
+      rel="stylesheet"
+    />
+    <link href="/assets/dashboard.css?current" rel="stylesheet" />
+  </head>
+  <body data-time-zone="{{ time_zone }}">
+    <a class="skip-link" href="#content">Skip To Content</a>
+    <div class="page">
+      {% include "dashboard_navigation.html" %}
+      <div class="page-wrapper">
+        <main class="page-body" id="content">
+          <div class="container-xl">
+            {% if message %}
+            <div class="alert alert-success" role="status">{{ message }}</div>
+            {% endif %} {% block content %}{% endblock %}
+          </div>
+        </main>
+      </div>
+    </div>
+    {% block dialogs %}{% endblock %}
+    <dialog id="media-dialog" aria-labelledby="media-title">
+      <div class="modal-dialog modal-dialog-scrollable modal-xl">
+        <div class="modal-content">
+          <header
+            class="dialog-head gap-3 justify-content-between modal-header w-100"
+          >
+            <div>
+              <small id="media-kind">Media</small>
+              <h2 id="media-title">Media Details</h2>
+            </div>
+            <div class="align-items-center d-flex gap-2">
+              <button
+                class="btn btn-outline-secondary btn-sm"
+                data-previous-media
+                title="Previous Media (Left Arrow)"
+                type="button"
+              >
+                Previous
+              </button>
+              <button
+                class="btn btn-outline-secondary btn-sm"
+                data-next-media
+                title="Next Media (Right Arrow)"
+                type="button"
+              >
+                Next
+              </button>
+              <button class="btn btn-secondary btn-sm" data-close type="button">
+                Close
+              </button>
+            </div>
+          </header>
+          <div class="dialog-body modal-body" id="media-detail">
+            <p>Loading…</p>
+          </div>
+        </div>
+      </div>
+    </dialog>
+    <dialog
+      aria-labelledby="media-action-title"
+      data-csrf-token="{{ csrf_token }}"
+      id="media-action-dialog"
+    >
+      <div class="media-action-dialog modal-dialog">
+        <form class="modal-content" id="media-action-form">
+          <header
+            class="dialog-head justify-content-between modal-header w-100"
+          >
+            <div>
+              <small id="media-action-kind">Media Action</small>
+              <h2 id="media-action-title">Edit Image</h2>
+            </div>
+            <button class="btn btn-secondary btn-sm" data-close type="button">
+              Close
+            </button>
+          </header>
+          <div class="dialog-body modal-body">
+            <label class="form-label"
+              >Model<select
+                class="form-select"
+                id="media-action-model"
+                name="model"
+                required
+              ></select
+            ></label>
+            <label class="form-label"
+              >Provider<select
+                class="form-select"
+                id="media-action-provider"
+                name="provider"
+              >
+                <option value="">Automatic</option>
+              </select></label
+            >
+            <label class="form-label" data-edit-field
+              >Prompt<textarea
+                class="form-control"
+                id="media-action-prompt"
+                name="prompt"
+                placeholder="Describe The Changes"
+                rows="4"
+              ></textarea>
+            </label>
+            <label class="form-label" data-upscale-field
+              >Scale<select
+                class="form-select"
+                id="media-action-scale"
+                name="scale"
+              >
+                <option value="2">2×</option>
+                <option value="3">3×</option>
+                <option value="4">4×</option></select
+              ><small class="form-hint" id="media-upscale-summary"></small
+            ></label>
+            <div class="alert alert-info" data-upscale-field>
+              RealESRGAN restores detail with a native 4× AI upscale. Smaller
+              outputs are downsampled after enhancement.
+            </div>
+            <div
+              class="alert alert-danger d-none"
+              id="media-action-error"
+              role="alert"
+            ></div>
+          </div>
+          <footer class="modal-footer">
+            <button class="btn btn-outline-secondary" data-close type="button">
+              Cancel
+            </button>
+            <button
+              class="btn btn-primary"
+              id="media-action-submit"
+              type="submit"
+            >
+              Edit Image
+            </button>
+          </footer>
+        </form>
+      </div>
+    </dialog>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/basecoat-css@1.0.2/dist/js/all.min.js"
+      defer
+    ></script>
+    <script src="/assets/dashboard.js?current"></script>
+  </body>
+</html>

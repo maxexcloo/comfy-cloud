@@ -1,8 +1,0 @@
-{
-  "containerDiskInGb": 30,
-  "dockerArgs": "",
-  "ports": "8000/http",
-  "volumeInGb": 100,
-  "volumeMountPath": "/opt/ComfyUI/models",
-  "env": []
-}

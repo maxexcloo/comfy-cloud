@@ -1,0 +1,55 @@
+<article
+  class="generation-status"
+  {% if job.status not in ["completed", "failed"] %}hx-get="/generate/status/{{ job.id }}"
+  hx-trigger="load delay:1s"
+  hx-swap="outerHTML"
+  {% endif %}
+>
+  {% if job.status == "failed" %}
+  <div class="alert alert-danger">
+    <strong>Generation failed</strong>
+    <p>{{ job.error or "The provider did not complete the request." }}</p>
+  </div>
+  {% elif job.status == "completed" %}
+  <div class="generation-status-heading">
+    <div>
+      <span class="status-dot complete"></span><strong>Complete</strong>
+    </div>
+    <a href="/media?filter=history_id|equals|{{ job.history_id }}"
+      >Open in Library</a
+    >
+  </div>
+  <div class="generation-output-grid">
+    {% for output in job.outputs or [] %} {% if job.kind == "video" %}<video
+      controls
+      src="/media/{{ output.asset_id }}/content"
+    ></video
+    >{% else %}<img
+      alt="Generated output"
+      src="/media/{{ output.asset_id }}/content"
+    />{% endif %} {% endfor %}
+  </div>
+  {% else %} {% set phase = history.phases[-1].phase if history and
+  history.phases else job.status %}
+  <div class="generation-status-heading">
+    <div>
+      <span class="status-dot"></span
+      ><strong>{{ phase | replace("_", " ") | title }}</strong>
+    </div>
+    <span>Job {{ job.history_id or job.id }}</span>
+  </div>
+  <div class="phase-track">
+    {% for name, label in [("queued", "Queued"), ("waiting_for_capacity",
+    "Capacity"), ("running", "Generating"), ("archiving", "Saving")] %}
+    <span
+      class="{% if history and history.phases | selectattr('phase', 'equalto', name) | list %}active{% endif %}"
+      >{{ label }}</span
+    >
+    {% endfor %}
+  </div>
+  <p>
+    Cold capacity can take longer. Once warm, image generations target under 20
+    seconds.
+  </p>
+  {% endif %}
+</article>

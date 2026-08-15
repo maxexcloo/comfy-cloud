@@ -4,7 +4,7 @@ services:
   comfy-control:
     build:
       context: .
-      dockerfile: Dockerfile.control
+      dockerfile: control/Dockerfile
     env_file:
       - path: .env
         required: false

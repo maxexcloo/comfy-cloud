@@ -1,5 +1,0 @@
-{
-  "disk_space": 100,
-  "env": { "VAST_WORKER_PORT": "9000" },
-  "ports": [9000]
-}

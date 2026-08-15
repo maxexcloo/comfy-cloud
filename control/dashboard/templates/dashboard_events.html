@@ -1,0 +1,102 @@
+{% extends "dashboard_base.html" %} {% import "dashboard_components.html" as ui
+%} {% block content %}
+<div class="mb-3 page-header">
+  <div>
+    <h2 class="page-title">Events</h2>
+    <div class="text-secondary">Controller and provider activity.</div>
+  </div>
+</div>
+<form class="card card-body filters shadow-sm" data-live-filter method="get">
+  <input name="sort" type="hidden" value="{{ sort }}" /><input
+    name="direction"
+    type="hidden"
+    value="{{ sort_direction }}"
+  />
+  <label class="form-label search"
+    >Search<input
+      class="form-control form-control-sm"
+      name="q"
+      value="{{ filters.q }}"
+      placeholder="Message, Provider, Or Request ID"
+  /></label>
+  <label class="form-label"
+    >Level<select class="form-select form-select-sm" name="level">
+      <option value="">All Levels</option>
+      {% for value in levels %}
+      <option
+        value="{{ value }}"
+        {% if filters.level == value %}selected{% endif %}
+      >
+        {{ value | title }}
+      </option>
+      {% endfor %}
+    </select></label
+  >
+  <label class="form-label"
+    >Provider<select class="form-select form-select-sm" name="provider">
+      <option value="">All Providers</option>
+      {% for value in providers %}
+      <option
+        value="{{ value }}"
+        {% if filters.provider == value %}selected{% endif %}
+      >
+        {{ value }}
+      </option>
+      {% endfor %}
+    </select></label
+  >
+  <div class="align-items-end d-flex">
+    <a class="btn btn-outline-secondary btn-sm" href="/events" role="button"
+      >Clear</a
+    >
+  </div>
+</form>
+<section class="card shadow-sm" aria-label="Events">
+  <div class="table-responsive">
+    <table
+      class="card-table table table-bordered table-hover table-striped table-vcenter"
+    >
+      <thead>
+        <tr>
+          {{ ui.sortable_header("Date", "created_at", sort_links, sort,
+          sort_direction) }} {{ ui.sortable_header("Level", "level", sort_links,
+          sort, sort_direction) }} {{ ui.sortable_header("Provider", "provider",
+          sort_links, sort, sort_direction) }} {{ ui.sortable_header("Request",
+          "request_id", sort_links, sort, sort_direction) }} {{
+          ui.sortable_header("Message", "message", sort_links, sort,
+          sort_direction) }}
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in events["items"] %}
+        <tr>
+          <td class="text-nowrap">
+            <time data-timestamp="{{ item.created_at }}"
+              >{{ item.created_at }}</time
+            >
+          </td>
+          <td>{{ ui.badge(item.level) }}</td>
+          <td>
+            {% if item.provider %}<a href="/providers#{{ item.provider }}"
+              >{{ item.provider }}</a
+            >{% else %}—{% endif %}
+          </td>
+          <td class="text-nowrap">
+            {% if item.request_id %}<a
+              href="/history?q={{ item.request_id | urlencode }}"
+              ><span class="font-monospace">{{ item.request_id }}</span></a
+            >{% else %}—{% endif %}
+          </td>
+          <td>{{ item.message }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5">No Events Match These Filters.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ ui.pagination(events) }}
+</section>
+{% endblock %}

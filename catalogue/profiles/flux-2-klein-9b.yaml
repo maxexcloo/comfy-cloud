@@ -1,5 +1,14 @@
 name: flux-2-klein-9b
+description: High-quality image generation and editing.
+capabilities: [image_edit, image_generation]
+hourly_cost_limit: 0.6
+idle_seconds: 900
 minimum_vram_gb: 24
+recommended_vram_gb: 32
+service_class: interactive
+benchmarks:
+  - { provider: runpod-pod, gpu: A40, p95_seconds: 10 }
+  - { provider: vast-pod, gpu: RTX A6000, p95_seconds: 10 }
 sources:
   - type: huggingface
     repo: black-forest-labs/FLUX.2-klein-9b-fp8

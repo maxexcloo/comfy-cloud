@@ -1,0 +1,29 @@
+{% extends "dashboard_base.html" %} {% import "dashboard_settings_fields.html"
+as ui %} {% block content %}
+<div class="mb-3 page-header">
+  <div>
+    <h2 class="page-title">Settings</h2>
+    <div class="text-secondary">Control and worker configuration.</div>
+  </div>
+</div>
+<form action="/settings" method="post">
+  <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
+  <input name="revision" type="hidden" value="{{ settings.revision }}" />
+  {% for category, groups in settings.categories.items() %}
+  <article class="card mb-3 settings-category shadow-sm">
+    <header class="card-header">
+      <h2 class="card-title">{{ category }}</h2>
+    </header>
+    <div class="card-body g-3 row">
+      {% for group, fields in groups.items() %}
+      <fieldset class="col-12">
+        <legend>{{ group }}</legend>
+        {{ ui.fields(fields) }}
+      </fieldset>
+      {% endfor %}
+    </div>
+  </article>
+  {% endfor %}
+  <button class="btn btn-primary">Save Settings</button>
+</form>
+{% endblock %}

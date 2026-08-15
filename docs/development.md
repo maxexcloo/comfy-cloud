@@ -29,14 +29,18 @@ The container workflow separately builds and smoke-tests the Comfy Control image
 - Keep external field names unchanged; use Australian English for project-owned
   prose and identifiers.
 - Keep pinned weight sources in `catalogue/profiles/`.
-- Keep portable API behaviour in the root `comfy_control/` package, within the
-  narrowest `catalogue`, `control`, `providers` or `worker` subpackage.
-- Keep provider-specific deployment assets in `deploy/`.
+- Keep catalogue behaviour and data together in `catalogue/`.
+- Keep command-line entry points in `command/`.
+- Keep control-plane code and its image build in `control/`.
+- Keep provider-owned deployment entry points in `deploy/`.
+- Keep provider behaviour in `providers/`.
 - Keep built-in provider capabilities, lifecycle and telemetry in the provider
   registry and adapters.
 - Keep each provider's API discovery, status and telemetry in its own
-  `comfy_control/providers/<name>.py` module.
+  `providers/<name>.py` module.
 - Keep safe user-editable preferences in `ControlPreferences` and SQLite.
+- Keep tests grouped by the same catalogue, control, provider and worker boundaries.
+- Keep worker code and its image build in `worker/`.
 - Keep OpenAI-compatible routing in the controller and canonical execution in workers.
 
 ## Command-Line Interface

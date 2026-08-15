@@ -48,9 +48,15 @@ Run `comfy-control repository-check` after catalogue or profile changes.
 
 ## Bundled Models
 
-The catalogue includes text-to-image, single-image edit and MiniMax H3 video
+The catalogue includes FLUX.2 Klein 9B and Krea 2 Turbo image generation,
+FLUX.2 Klein 9B single-image edit, and MiniMax Hailuo 2.3 video
 workflows. Reference meaning belongs in the prompt; Comfy Control does not assign
 character roles or rewrite prompts.
+
+The studio exposes model-specific public IDs (`flux-2-klein-9b`,
+`flux-2-klein-9b-edit`, `krea-2-turbo`, `minimax-h3` and `minimax-h3-image`). This
+keeps model selection exact while allowing automatic fallback between compatible
+providers. The 4B FLUX Klein variant is not installed or offered.
 
 Image edits accept `image`, `prompt`, and optional `n`, `seed`, `steps` and
 `response_format`. Their dimensions follow the uploaded image. MiniMax video
@@ -85,7 +91,11 @@ by provider, elapsed time, file size and visual result.
 ## Profiles
 
 Profiles under `catalogue/profiles/` pin weight sources independently from
-workflow logic while keeping all model catalogue data in one place.
+workflow logic while keeping all model catalogue data in one place. A profile also
+owns its stable ID, capabilities, VRAM limits, service class, idle policy, automatic
+hourly cost ceiling and packaged benchmark observations. Workflow aliases supply
+the public model IDs shown by the API and studio; consumers do not maintain parallel
+model-card or routing metadata.
 The control-plane Settings page defaults to `flux-2-klein-9b`; select one or more
 profile names there to change the models prepared on managed workers. Fetch a
 profile manually with:

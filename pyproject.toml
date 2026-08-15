@@ -4,11 +4,11 @@ requires = ["hatchling==1.32.0"]
 
 [project]
 description = "An OpenAI-compatible gateway for ComfyUI"
-dynamic = ["version"]
 license = "AGPL-3.0-only"
 name = "comfy-control"
 readme = "README.md"
 requires-python = ">=3.11"
+version = "0.1.0"
 dependencies = [
   "cryptography>=49,<51",
   "fastapi>=0.115,<1",
@@ -32,16 +32,13 @@ vast = [
 ]
 
 [project.scripts]
-comfy-control = "comfy_control.cli:main"
+comfy-control = "command.cli:main"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["comfy_control"]
+packages = ["catalogue", "command", "control", "providers", "worker"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
-
-[tool.hatch.version]
-path = "comfy_control/__init__.py"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -49,7 +46,7 @@ pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["comfy_control"]
+known-first-party = ["catalogue", "command", "control", "providers", "worker"]
 
 [tool.uv]
 override-dependencies = ["cryptography>=50,<51", "pillow>=12.3,<13"]

@@ -59,7 +59,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.role }}
           cache-to: type=gha,scope=${{ matrix.role }},mode=max,ignore-error=true
           context: .
-          file: Dockerfile.${{ matrix.role }}
+          file: ${{ matrix.role }}/Dockerfile
           labels: ${{ steps.metadata.outputs.labels }}
           load: ${{ github.event_name == 'pull_request' }}
           provenance: mode=max

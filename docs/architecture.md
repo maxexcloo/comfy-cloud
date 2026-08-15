@@ -23,11 +23,11 @@ and CLI Proxy API each own their discovery, status, lifecycle additions and tele
 separate modules behind a small common adapter contract. The controller coordinates
 adapters without containing provider API URLs or response-shape branching.
 
-The root `comfy_control/` package follows those runtime boundaries. Catalogue
-loading and model preparation, control-plane behaviour, provider integrations and
-worker execution live in separate subpackages. Dashboard, inference, operation and
-provider-deployment implementations are further split within their owning package;
-filenames do not encode their parent package.
+The root `control/` and `worker/` packages own their respective runtime behaviour
+and image builds. Catalogue loading, command-line entry points and provider
+integrations live in `catalogue/`, `command/` and `providers/`. Dashboard,
+inference, operation and provider-deployment implementations are further split
+within their owning package; filenames do not encode their parent package.
 
 ## Configuration
 
@@ -49,7 +49,9 @@ every start. Environment-controlled fields are marked as locked in the settings 
 and dashboard and cannot be changed there. Removing an environment variable reveals
 the previously stored value.
 
-The packaged Python registry defines provider capabilities, public models and safe
+Catalogue profile YAML defines workload requirements, cost ceilings and service
+classes; workflow manifest aliases define exact public model IDs. The packaged
+Python registry combines that catalogue with provider capabilities and safe
 control-plane requests. SQLite stores ordered provider-and-model route targets and
 operator preferences, while the UI exposes only known typed values. Route children
 inherit the Images or Videos order and skip a selected package when it does not
@@ -63,8 +65,9 @@ Automation can read or atomically replace both route families through `GET` or
 ## Request Flow
 
 1. The control plane authenticates the request and selects configured targets.
-   Public model IDs use ordered fallback. A qualified `provider/model` ID pins one
-   provider and disables fallback for that request; provider aliases are accepted.
+   Exact public model IDs use ordered compatible-provider fallback. A qualified
+   `provider/model` ID pins one provider and disables fallback for that request;
+   provider aliases are accepted.
 2. It starts a stopped provider when lifecycle controls are configured.
 3. The worker checks the requested catalogue model against installed files and
    registered ComfyUI node types.
@@ -73,9 +76,9 @@ Automation can read or atomically replace both route families through `GET` or
    `/internal/executions` endpoint. Workers do not expose the public API.
 6. The request is admitted to the bounded queue.
 7. GPU execution is serialised and submitted to local ComfyUI.
-8. On a retriable failure, the control plane tries the next target and eventually
-   CLI Proxy API with `grok-imagine-image-quality` for images and edits, or
-   `grok-imagine-video-1.5` for video.
+8. On a retriable failure, the control plane tries the next provider configured for
+   that exact model. Grok image and video models remain available only through their
+   explicit public IDs; they are never silent substitutes.
 9. Results return as base64 or an authenticated URL.
 
 A timed-out workflow is removed from the ComfyUI queue or interrupted when already
@@ -101,8 +104,9 @@ provides confirmed lifecycle controls, sanitised control logs, direct
 provider-console links and a bounded image-generation test request. It opens images
 and videos in a keyboard-accessible popup viewer after sign-in. History and events
 are searched, filtered, counted and paginated directly in SQLite. The server-rendered
-interface uses a shared Jinja layout, focused page templates and one small local CSS
-and JavaScript layer. History, jobs, provider resources and generated media remain
+interface uses a shared Jinja layout, Basecoat components and HTMX interactions.
+The default Generate page is model-first; operational detail remains compartmentalised
+under Deployments, Activity and Settings. History, jobs, provider resources and generated media remain
 in the persistent `data` volume; controller events are also persisted there and
 bounded to the latest 2,000 records. Provider actions record their start, success or
 failure, and display live controller logs in a closeable dialog.
@@ -112,6 +116,9 @@ downloaded with private-network protection and bounded size; controller media UR
 and base64 data URLs can also be used as video inputs. Completed outputs are copied
 from the worker before its compute can be released. Controller-owned history and
 media remain available in the `data` volume until that volume is explicitly pruned.
+Generate-page submissions are durable SQLite requests rather than in-memory browser
+jobs. A controller restart records interrupted work explicitly and retains its
+status for the interface.
 
 ## Runtime Modes
 
@@ -128,7 +135,9 @@ rate limits and deployment selection in an external trusted gateway. Health and
 metrics endpoints intentionally remain unauthenticated and expose no generated
 content.
 
-`GENERATION_QUEUE_LIMIT` defaults to `8`; `MAXIMUM_REQUEST_MIB` defaults to `100`.
+`GENERATION_QUEUE_LIMIT` defaults to `2`: one active interactive generation and one
+queued generation. Video jobs use a single durable FIFO runner. `MAXIMUM_REQUEST_MIB`
+defaults to `100`.
 `COMFYUI_REQUEST_TIMEOUT` bounds individual ComfyUI calls and defaults to 60
 seconds; `GENERATION_TIMEOUT` bounds a complete workflow and defaults to 900
 seconds.

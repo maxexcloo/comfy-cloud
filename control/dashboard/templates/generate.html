@@ -1,0 +1,122 @@
+{% extends "dashboard_base.html" %} {% block title %}Generate{% endblock %} {%
+block content %}
+<section class="studio-heading">
+  <div>
+    <span class="studio-eyebrow">Generation studio</span>
+    <h1>Create without managing infrastructure</h1>
+    <p>
+      Choose the model you actually want. Automatic routing selects the
+      best-value compatible GPU and keeps the exact model.
+    </p>
+  </div>
+  <a class="btn btn-outline-secondary" href="/providers">View deployments</a>
+</section>
+
+{% if models %}
+<form
+  class="studio-layout"
+  hx-post="/generate"
+  hx-target="#generation-result"
+  hx-swap="innerHTML"
+  hx-indicator="#generation-progress"
+  method="post"
+>
+  <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
+  <section aria-labelledby="model-heading">
+    <div class="studio-section-heading">
+      <div>
+        <span class="studio-step">1</span>
+        <h2 id="model-heading">Choose a model</h2>
+      </div>
+      <span class="studio-hint">Warm image target: under 20 seconds</span>
+    </div>
+    <div class="model-grid">
+      {% for model in models %}
+      <label class="model-card">
+        <input
+          {% if loop.first %}checked{% endif %}
+          name="model"
+          required
+          type="radio"
+          value="{{ model.id }}"
+        />
+        <span class="model-card-body">
+          <span class="model-kind">{{ model.kind }}</span>
+          <strong><code>{{ model.id }}</code></strong>
+          <span>{{ model.description }}</span>
+          <span class="model-speed">{{ model.speed }}</span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="prompt-panel" aria-labelledby="prompt-heading">
+    <div class="studio-section-heading">
+      <div>
+        <span class="studio-step">2</span>
+        <h2 id="prompt-heading">Describe the result</h2>
+      </div>
+    </div>
+    <textarea
+      autofocus
+      name="prompt"
+      placeholder="A quiet brutalist house in the Australian bush at blue hour, cinematic light…"
+      required
+      rows="7"
+    ></textarea>
+    <div class="studio-controls">
+      <label
+        >Provider
+        <select name="provider">
+          <option value="">Automatic · best value</option>
+          {% for provider in providers %}
+          <option value="{{ provider }}">{{ provider }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label
+        >Image size
+        <select name="size">
+          <option value="1024x1024">Square · 1024</option>
+          <option value="1344x768">Landscape · 1344×768</option>
+          <option value="768x1344">Portrait · 768×1344</option>
+        </select>
+      </label>
+      <label
+        >Outputs
+        <select name="n">
+          <option>1</option>
+          <option>2</option>
+          <option>3</option>
+          <option>4</option>
+        </select>
+      </label>
+    </div>
+    <details>
+      <summary>Advanced</summary>
+      <label class="advanced-seed"
+        >Seed <input min="0" name="seed" placeholder="Random" type="number"
+      /></label>
+      <p>
+        The same explicit seed and settings reproduce a generation. Leaving it
+        blank creates and records a random seed.
+      </p>
+    </details>
+    <div class="studio-submit">
+      <span class="htmx-indicator" id="generation-progress">Submitting…</span>
+      <button class="btn btn-primary btn-lg" type="submit">Generate</button>
+    </div>
+  </section>
+</form>
+<section aria-live="polite" id="generation-result"></section>
+{% else %}
+<div class="empty studio-empty">
+  <h2>No generation models are installed</h2>
+  <p>
+    Install FLUX.2 Klein 9B, Krea 2 Turbo, or MiniMax Hailuo 2.3 in Settings,
+    then deploy a compatible provider.
+  </p>
+  <a class="btn btn-primary" href="/settings">Configure models</a>
+</div>
+{% endif %} {% endblock %}

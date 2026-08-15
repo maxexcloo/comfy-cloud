@@ -48,8 +48,10 @@ dashboard viewer. There is no automatic retention deletion.
 
 ## Providers
 
-Definitions under `deploy/` run the worker image on Modal, RunPod, SaladCloud and
-Vast.ai. RunPod and Vast.ai contain separate Pod and Serverless definitions.
+The controller builds RunPod, SaladCloud and Vast.ai requests from the selected
+model policy and current provider capacity. Only Modal requires a provider-owned
+deployment entry point under `deploy/`; shared worker runtime defaults live with
+the provider deployment code rather than in copied JSON templates.
 
 Managed providers are credential-driven. Unconfigured providers remain visible and
 link to Settings. When no named resource exists, the dashboard shows `Not deployed`
@@ -78,6 +80,28 @@ discovers a suitable current GPU class for SaladCloud. RunPod and Vast.ai select
 suitable available GPU capacity through their APIs. GPU classes, regions, worker
 counts and minimum Vast.ai GPU memory are optional preferences rather than
 prerequisites.
+
+Automatic capacity selection applies workload policy before price ordering. FLUX.2
+Klein 9B requires 24 GB VRAM (32 GB recommended), while Krea 2 Turbo requires and
+recommends 48 GB. Both use an image capacity ceiling of USD 0.60/hour. MiniMax
+Hailuo 2.3 requires 80 GB VRAM and
+has a USD 2.00/hour ceiling. Known benchmarked combinations rank ahead of unverified
+ones; when no proven option is available, compatible unverified capacity is allowed
+and labelled experimental. A manually selected GPU may exceed the automatic spend
+ceiling, but the choice remains visible rather than silently changed.
+
+These requirements live in the catalogue profiles and are
+shared by deployment filtering, the API and the interface.
+
+Automatic cross-provider routing uses Modal first while current metered monthly
+usage remains below its USD 30 included allowance. Once that allowance is consumed,
+providers with known compatible prices are ordered by hourly cost. Unknown prices
+remain usable after known offers rather than being assigned an invented estimate.
+
+Image workers remain warm for 15 minutes after their last use. Readiness means both
+ComfyUI and the configured image model have completed a real warm-up generation, so
+the interface distinguishes cold capacity waiting from warm inference. Cold starts
+are reported honestly and are not included in the under-20-second warm image target.
 
 Optional provider and worker environment variables override their corresponding
 SQLite settings on every start. The dashboard marks those fields as controlled by
