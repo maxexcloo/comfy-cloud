@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from command.cli import create_parser
+from control.cli import create_parser
 
 ROOT = Path(__file__).parents[1]
 

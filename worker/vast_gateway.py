@@ -109,7 +109,7 @@ async def backend_lifecycle():
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
-            "command.cli",
+            "control.cli",
             "serverless",
             stderr=asyncio.subprocess.STDOUT,
             stdout=log,

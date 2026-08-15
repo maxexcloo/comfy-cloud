@@ -30,8 +30,8 @@ The container workflow separately builds and smoke-tests the Comfy Control image
   prose and identifiers.
 - Keep pinned weight sources in `catalogue/profiles/`.
 - Keep catalogue behaviour and data together in `catalogue/`.
-- Keep command-line entry points in `command/`.
-- Keep control-plane code and its image build in `control/`.
+- Keep control-plane code, command-line entry points and its image build in
+  `control/`.
 - Keep provider-owned deployment entry points in `deploy/`.
 - Keep provider behaviour in `providers/`.
 - Keep built-in provider capabilities, lifecycle and telemetry in the provider

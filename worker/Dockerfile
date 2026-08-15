@@ -37,7 +37,6 @@ RUN git init /opt/ComfyUI \
 WORKDIR /opt/comfy-control
 COPY pyproject.toml uv.lock README.md ./
 COPY catalogue ./catalogue
-COPY command ./command
 COPY control ./control
 COPY providers ./providers
 COPY worker ./worker

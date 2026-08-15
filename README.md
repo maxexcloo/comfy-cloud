@@ -50,8 +50,7 @@ without restarting the control plane.
 ## Repository Layout
 
 - `catalogue/`: catalogue package, workflows, manifests and model profiles.
-- `command/`: command-line entry point.
-- `control/`: control-plane package and image build.
+- `control/`: control-plane package, CLI and image build.
 - `deploy/`: provider-owned deployment entry points.
 - `docs/`: architecture, catalogue, development and deployment guidance.
 - `providers/`: provider adapters and deployment request builders.

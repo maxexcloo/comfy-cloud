@@ -12,7 +12,6 @@ RUN uv venv "${VIRTUAL_ENV}"
 WORKDIR /opt/comfy-control
 COPY pyproject.toml uv.lock README.md ./
 COPY catalogue ./catalogue
-COPY command ./command
 COPY control ./control
 COPY providers ./providers
 COPY worker ./worker

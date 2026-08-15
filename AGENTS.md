@@ -2,8 +2,8 @@
 
 ## Structure
 
-- Keep code in root `catalogue/`, `command/`, `control/`, `providers/` and
-  `worker/` packages; keep each runtime's image build with its package.
+- Keep code in root `catalogue/`, `control/`, `providers/` and `worker/` packages;
+  keep each runtime's image build with its package.
 - Keep detailed operational documentation in `docs/`; keep `README.md` focused on
   purpose, architecture and the shortest working setup.
 - Keep only `AGENTS.md` and `README.md` as root Markdown files; put other project

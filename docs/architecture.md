@@ -24,10 +24,10 @@ separate modules behind a small common adapter contract. The controller coordina
 adapters without containing provider API URLs or response-shape branching.
 
 The root `control/` and `worker/` packages own their respective runtime behaviour
-and image builds. Catalogue loading, command-line entry points and provider
-integrations live in `catalogue/`, `command/` and `providers/`. Dashboard,
-inference, operation and provider-deployment implementations are further split
-within their owning package; filenames do not encode their parent package.
+and image builds. Catalogue loading lives in `catalogue/`, command-line entry points
+in `control/`, and provider integrations in `providers/`. Dashboard, inference,
+operation and provider-deployment implementations are further split within their
+owning package; filenames do not encode their parent package.
 
 ## Configuration
 
