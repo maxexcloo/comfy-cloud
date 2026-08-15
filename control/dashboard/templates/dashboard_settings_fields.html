@@ -1,7 +1,7 @@
 {% macro route_target(target, providers, models, installed_models) -%}
 <div class="route-target" data-route-target>
   <button
-    class="btn btn-ghost-secondary btn-icon btn-sm route-handle"
+    class="btn btn-outline-secondary btn-sm route-handle"
     aria-label="Drag to reorder"
     data-route-drag
     draggable="true"
@@ -41,7 +41,7 @@
     {% endfor %}
   </select>
   <button
-    class="btn btn-ghost-secondary btn-icon btn-sm"
+    class="btn btn-outline-secondary btn-sm"
     aria-label="Move up"
     data-route-up
     title="Move up"
@@ -50,7 +50,7 @@
     ↑
   </button>
   <button
-    class="btn btn-ghost-secondary btn-icon btn-sm"
+    class="btn btn-outline-secondary btn-sm"
     aria-label="Move down"
     data-route-down
     title="Move down"
@@ -59,7 +59,7 @@
     ↓
   </button>
   <button
-    class="btn btn-ghost-danger btn-icon btn-sm"
+    class="btn btn-outline-danger btn-sm"
     aria-label="Remove provider"
     data-route-remove
     title="Remove provider"
@@ -93,7 +93,7 @@
             data-route-add
             type="button"
           >
-            Add provider
+            Add Provider
           </button>
         </fieldset>
         {% endfor %}

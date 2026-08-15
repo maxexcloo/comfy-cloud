@@ -1,11 +1,13 @@
 <!doctype html>
-<html class="dark" lang="en">
+<html data-bs-theme="dark" lang="en">
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width" name="viewport" />
     <title>Comfy Control</title>
     <link
-      href="https://cdn.jsdelivr.net/npm/basecoat-css@1.0.2/dist/basecoat.cdn.min.css"
+      crossorigin="anonymous"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
       rel="stylesheet"
     />
     <link href="/assets/dashboard.css?current" rel="stylesheet" />
@@ -33,13 +35,13 @@
           >
             <div>
               <small id="media-kind">Media</small>
-              <h2 id="media-title">Media Details</h2>
+              <h2 id="media-title">Media details</h2>
             </div>
             <div class="align-items-center d-flex gap-2">
               <button
                 class="btn btn-outline-secondary btn-sm"
                 data-previous-media
-                title="Previous Media (Left Arrow)"
+                title="Previous media (left arrow)"
                 type="button"
               >
                 Previous
@@ -47,7 +49,7 @@
               <button
                 class="btn btn-outline-secondary btn-sm"
                 data-next-media
-                title="Next Media (Right Arrow)"
+                title="Next media (right arrow)"
                 type="button"
               >
                 Next
@@ -74,7 +76,7 @@
             class="dialog-head justify-content-between modal-header w-100"
           >
             <div>
-              <small id="media-action-kind">Media Action</small>
+              <small id="media-action-kind">Media action</small>
               <h2 id="media-action-title">Edit Image</h2>
             </div>
             <button class="btn btn-secondary btn-sm" data-close type="button">
@@ -104,7 +106,7 @@
                 class="form-control"
                 id="media-action-prompt"
                 name="prompt"
-                placeholder="Describe The Changes"
+                placeholder="Describe the changes"
                 rows="4"
               ></textarea>
             </label>
@@ -117,7 +119,7 @@
                 <option value="2">2×</option>
                 <option value="3">3×</option>
                 <option value="4">4×</option></select
-              ><small class="form-hint" id="media-upscale-summary"></small
+              ><small class="form-text" id="media-upscale-summary"></small
             ></label>
             <div class="alert alert-info" data-upscale-field>
               RealESRGAN restores detail with a native 4× AI upscale. Smaller
@@ -145,10 +147,6 @@
       </div>
     </dialog>
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js"></script>
-    <script
-      src="https://cdn.jsdelivr.net/npm/basecoat-css@1.0.2/dist/js/all.min.js"
-      defer
-    ></script>
     <script src="/assets/dashboard.js?current"></script>
   </body>
 </html>

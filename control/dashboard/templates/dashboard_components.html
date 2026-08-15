@@ -1,11 +1,11 @@
 {% macro badge(value) -%}
 <span
-  class="badge status-badge {% if value in ['completed', 'ready', 'running'] %}status-success{% elif value in ['error', 'failed', 'unavailable'] %}status-danger{% elif value in ['warning', 'pending'] %}status-warning{% else %}status-neutral{% endif %}"
-  >{{ value.replace("_", " ").replace("-", " ") | title }}</span
+  class="status-label {% if value in ['completed', 'ready', 'running'] %}status-success{% elif value in ['error', 'failed', 'unavailable'] %}status-danger{% elif value in ['warning', 'pending'] %}status-warning{% else %}status-neutral{% endif %}"
+  ><span class="status-indicator" aria-hidden="true"></span>{{ value.replace("_", " ").replace("-", " ") }}</span
 >
 {%- endmacro %} {% macro pagination(data) -%}
 <nav aria-label="Pagination">
-  <ul class="pagination pagination-shell">
+  <ul class="pagination justify-content-center my-3">
     <li class="page-item{% if data.page <= 1 %} disabled{% endif %}">
       <a
         class="page-link"
@@ -43,15 +43,8 @@ data.metrics %}
 <div class="small usage-list">
   <div class="usage-progress">
   {% for metric in data.metrics %}{% if metric.unit == "%" %}
-    <progress class="progress progress-sm" max="100" value="{{ metric.value }}">
-      {{ metric.value }}%
-    </progress>
-  {% elif metric.unit == "USD" and metric.maximum %}<progress
-      class="progress progress-sm"
-      max="{{ metric.maximum }}"
-      value="{{ metric.value }}"
-    >
-      ${{ "%.2f" | format(metric.value) }}</progress>{% endif %}{% endfor %}
+    <div class="progress" role="progressbar" aria-label="{{ metric.label }}" aria-valuenow="{{ metric.value }}" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar" style="width: {{ metric.value }}%"></div></div>
+  {% elif metric.unit == "USD" and metric.maximum %}<div class="progress" role="progressbar" aria-label="{{ metric.label }}" aria-valuenow="{{ metric.value }}" aria-valuemin="0" aria-valuemax="{{ metric.maximum }}"><div class="progress-bar" style="width: {{ 100 * metric.value / metric.maximum }}%"></div></div>{% endif %}{% endfor %}
   </div>
   <div class="usage-values">
   {% for metric in data.metrics %}<span

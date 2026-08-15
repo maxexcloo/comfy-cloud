@@ -25,14 +25,14 @@
         </div></fieldset>
       </div>
     </details>
-    <a class="btn btn-outline-secondary media-clear" href="/media" role="button">Clear filters</a>
+    <a class="btn btn-outline-secondary media-clear" href="/media" role="button">Clear Filters</a>
   </div>
-  <div class="filter-chips" id="filter-chips">{% for value in active_filters %}<span class="filter-chip"><input name="filter" type="hidden" value="{{ value }}" />{{ value.replace("|", " ").replace("_", " ") }}<button class="btn btn-ghost-secondary btn-sm" aria-label="Remove filter" data-remove-filter type="button">×</button></span>{% endfor %}</div>
+  <div class="filter-chips" id="filter-chips">{% for value in active_filters %}<span class="filter-chip"><input name="filter" type="hidden" value="{{ value }}" />{{ value.replace("|", " ").replace("_", " ") }}<button class="btn btn-link btn-sm" aria-label="Remove filter" data-remove-filter type="button">×</button></span>{% endfor %}</div>
 </form>
 <section id="media-results" data-media-page="{{ media.page }}" data-media-pages="{{ media.pages }}">
   <div class="media-grid">
     {% for item in media["items"] %}<button class="card media-card" aria-label="Open {{ item.model }} media details" data-media-id="{{ item.asset_id }}" type="button">
-      <span class="media-thumb">{% if item.content_type.startswith("video/") %}<video muted preload="metadata" src="/media/{{ item.asset_id }}/content"></video>{% else %}<img alt="" loading="lazy" src="/media/{{ item.asset_id }}/content" />{% endif %}<span class="badge media-role">{{ item.role }}</span></span>
+      <span class="media-thumb">{% if item.content_type.startswith("video/") %}<video muted preload="metadata" src="/media/{{ item.asset_id }}/content"></video>{% else %}<img alt="" loading="lazy" src="/media/{{ item.asset_id }}/content" />{% endif %}<span class="media-role">{{ item.role }}</span></span>
       <span class="card-body media-summary"><span class="media-summary-main"><strong><code>{{ item.provider_model or item.model }}</code></strong><small>{{ item.operation.replace("_", " ") }} · {{ item.provider or "No provider" }}</small><span class="prompt-clamp">{{ item.prompt or "No prompt" }}</span></span><small class="media-summary-footer"><time data-timestamp="{{ item.created_at }}">{{ item.created_at }}</time><span>{{ item.filename }}</span></small></span>
     </button>{% else %}<section class="card card-body empty-state"><h2>No media found</h2><p>Adjust the search or filters and try again.</p></section>{% endfor %}
   </div>

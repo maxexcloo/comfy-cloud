@@ -4,7 +4,7 @@
   <input name="revision" type="hidden" value="{{ settings.revision }}" />
   <header class="page-header settings-header">
     <div><h1 class="page-title">Settings</h1><p class="text-secondary">Routing, models, worker, and display preferences.</p></div>
-    <button class="btn btn-primary" type="submit">Save changes</button>
+    <button class="btn btn-primary" type="submit">Save Changes</button>
   </header>
   <div class="settings-sections">
     {% for category, groups in settings.categories.items() %}
@@ -21,6 +21,6 @@
     </details>
     {% endfor %}
   </div>
-  <footer class="settings-save-bar"><span class="text-secondary">Changes apply after saving.</span><button class="btn btn-primary" type="submit">Save changes</button></footer>
+  <footer class="settings-save-bar"><span class="text-secondary">Changes apply after saving.</span><button class="btn btn-primary" type="submit">Save Changes</button></footer>
 </form>
 {% endblock %}

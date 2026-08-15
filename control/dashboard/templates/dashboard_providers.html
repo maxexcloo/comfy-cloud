@@ -16,33 +16,33 @@
 >
   <div class="provider-grid">
     {% for provider in providers %}
-    <article class="card provider-card" id="{{ provider.id }}">
-      <header class="provider-card-header">
+    <article class="card h-100 provider-card" id="{{ provider.id }}">
+      <header class="card-header d-flex align-items-center justify-content-between gap-3">
         <div>
           {% if provider.panel_url %}<a href="{{ provider.panel_url }}" target="_blank" rel="noopener noreferrer"><strong><code>{{ provider.id }}</code></strong></a>{% else %}<strong><code>{{ provider.id }}</code></strong>{% endif %}
           <div class="small text-secondary">{{ provider.platform }} · {{ provider.type.replace("-", " ") }}</div>
         </div>
         {{ ui.badge(provider.state) }}
       </header>
-      <div class="provider-card-body">
+      <div class="card-body d-grid gap-3 provider-card-body">
         <section aria-label="Usage">
           <h2>Usage</h2>
           {{ ui.usage(provider.usage) }}
         </section>
-        <section aria-label="Resource">
+        <section class="border-top pt-3" aria-label="Resource">
           <h2>Resource</h2>
           <div class="font-monospace">{{ provider.resource_id or "Not deployed" }}</div>
           {% if provider.resource_specification %}<small class="text-secondary">{{ provider.resource_specification }}</small>{% endif %}
         </section>
       </div>
-      <footer class="provider-card-footer">
+      <footer class="card-footer d-flex align-items-center justify-content-between gap-3">
         <div class="d-flex flex-wrap gap-2">
           {% if provider.configured %}<button
             class="btn btn-outline-secondary btn-sm"
             data-log-provider="{{ provider.id }}"
             data-log-url="/providers/{{ provider.id }}/logs"
             type="button"
-          >View logs</button>{% endif %}
+          >View Logs</button>{% endif %}
           {% if provider.settings %}<button class="btn btn-outline-secondary btn-sm" data-provider-settings="{{ provider.id }}" type="button">Settings</button>{% endif %}
         </div>
         <div class="d-flex flex-wrap gap-2">
@@ -75,7 +75,7 @@ for provider in providers if provider.settings %}
         <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
         <input name="revision" type="hidden" value="{{ revision }}" />
         {{ settings_ui.fields(provider.settings) }}
-        <div class="d-flex gap-2 mt-3"><button class="btn btn-primary" type="submit">Save changes</button><button class="btn btn-outline-secondary" data-close type="button">Cancel</button></div>
+        <div class="d-flex gap-2 mt-3"><button class="btn btn-primary" type="submit">Save Changes</button><button class="btn btn-outline-secondary" data-close type="button">Cancel</button></div>
       </form>
     </div>
   </div>

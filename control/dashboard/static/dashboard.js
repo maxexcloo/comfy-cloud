@@ -196,7 +196,7 @@ if (logDialog) {
     event.preventDefault();
     if (logSource) logSource.close();
     document.getElementById("log-title").textContent =
-      `${button.dataset.logProvider} Logs`;
+      `${button.dataset.logProvider} logs`;
     following = true;
     updateLogFollowState();
     logOutput.textContent = "Connecting…";
@@ -212,12 +212,12 @@ if (logDialog) {
             `${formatDate(item.created_at)} ${item.source || "Provider"} ${item.level.toUpperCase()} ${item.message}${item.request_id ? ` [${item.request_id}]` : ""}`,
         );
       if (data.worker_error)
-        lines.push(`Worker Logs Unavailable: ${data.worker_error}`);
+        lines.push(`Worker logs unavailable: ${data.worker_error}`);
       logOutput.textContent = lines.join("\n");
       scrollLogsToBottom();
     };
     logSource.onerror = () => {
-      if (!logOutput.textContent) logOutput.textContent = "Waiting For Logs…";
+      if (!logOutput.textContent) logOutput.textContent = "Waiting for logs…";
     };
   });
   logDialog
@@ -337,7 +337,7 @@ if (addFilter) {
     input.value = `${path}|${operator}|${value}`;
     chip.append(input, `${path} ${operator.replaceAll("_", " ")} ${value} `);
     const remove = document.createElement("button");
-    remove.className = "btn btn-ghost-secondary btn-sm";
+    remove.className = "btn btn-link btn-sm";
     remove.type = "button";
     remove.dataset.removeFilter = "";
     remove.textContent = "×";
@@ -418,16 +418,7 @@ if (mediaDialog) {
   let activeMediaAction;
   let mediaNotice;
   let openRequest = 0;
-  const providerLabel = (provider) =>
-    ({
-      cliproxyapi: "CLI Proxy API",
-      modal: "Modal",
-      runpod: "RunPod",
-      "runpod-pod": "RunPod (Pod)",
-      salad: "SaladCloud",
-      vast: "Vast",
-      "vast-pod": "Vast (Pod)",
-    })[provider] || titleText(provider);
+  const providerLabel = (provider) => provider || "—";
   const updateActionProviders = () => {
     const selected = activeItem.actions[activeMediaAction].find(
       (model) => model.id === actionModel.value,
@@ -444,10 +435,10 @@ if (mediaDialog) {
     const scale = Number(actionScale.value);
     const summary = document.getElementById("media-upscale-summary");
     if (!activeItem.width || !activeItem.height) {
-      summary.textContent = `${scale * scale}× The Source Pixel Count`;
+      summary.textContent = `${scale * scale}× the source pixel count`;
       return;
     }
-    summary.textContent = `${activeItem.width} × ${activeItem.height} → ${Math.round(activeItem.width * scale)} × ${Math.round(activeItem.height * scale)} · ${scale * scale}× Pixels`;
+    summary.textContent = `${activeItem.width} × ${activeItem.height} → ${Math.round(activeItem.width * scale)} × ${Math.round(activeItem.height * scale)} · ${scale * scale}× pixels`;
   };
   const openMediaAction = (action) => {
     activeMediaAction = action;
@@ -496,7 +487,7 @@ if (mediaDialog) {
       const result = await response.json();
       if (!response.ok)
         throw new Error(result.error?.message || "The Image Action Failed");
-      mediaNotice = `${activeMediaAction === "image_edit" ? "Image Edited" : "Image Upscaled"}${result.provider ? ` With ${providerLabel(result.provider)}` : ""}`;
+      mediaNotice = `${activeMediaAction === "image_edit" ? "Image edited" : "Image upscaled"}${result.provider ? ` with ${providerLabel(result.provider)}` : ""}`;
       actionDialog.close();
       await openMedia(result.asset_id);
     } catch (error) {
@@ -535,7 +526,7 @@ if (mediaDialog) {
     if (request !== openRequest) return;
     if (!response.ok) {
       detailRoot.replaceChildren(
-        element("p", "error", "Media Could Not Be Loaded."),
+        element("p", "text-danger", "Media could not be loaded."),
       );
       return;
     }
@@ -547,15 +538,13 @@ if (mediaDialog) {
       item.content_type,
     );
     document.getElementById("media-title").textContent =
-      actualModel && !actualModel.includes("/")
-        ? titleText(actualModel)
-        : actualModel || `Media ${item.id}`;
+      actualModel || `Media ${item.id}`;
     const preview = item.content_type.startsWith("video/")
       ? element("video", "media-preview")
       : element("img", "media-preview");
     preview.src = `/media/${item.id}/content`;
     if (preview.tagName === "VIDEO") preview.controls = true;
-    else preview.alt = use.prompt || "Generated Media";
+    else preview.alt = use.prompt || "Generated media";
 
     const facts = element("div", "detail-grid");
     const factItems = [
@@ -570,7 +559,7 @@ if (mediaDialog) {
     if (Number.isFinite(use.generation_seconds))
       factItems.push(
         labelledValue(
-          "Generation Time",
+          "Generation time",
           formatDuration(use.generation_seconds),
         ),
       );
@@ -614,7 +603,7 @@ if (mediaDialog) {
       }
       if (actionButtons.childElementCount) {
         actions.append(
-          element("strong", "text-secondary", "Image Actions"),
+          element("strong", "text-secondary", "Image actions"),
           actionButtons,
         );
         body.append(actions);
@@ -633,8 +622,8 @@ if (mediaDialog) {
           "h3",
           "",
           generation.role === "input"
-            ? `Used For ${operation}`
-            : `${operation} Details`,
+            ? `Used for ${operation}`
+            : `${operation} details`,
         ),
       );
       const historyLink = element("a", "", "View History");
@@ -673,7 +662,7 @@ if (mediaDialog) {
     ];
     if (related.length) {
       const section = element("section", "card card-body detail-section");
-      section.append(element("h3", "", "Related Media"));
+      section.append(element("h3", "", "Related media"));
       const list = element("div", "d-flex flex-wrap gap-2");
       for (const [relationship, entry] of related) {
         const button = element(

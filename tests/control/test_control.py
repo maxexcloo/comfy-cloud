@@ -1390,17 +1390,17 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
         < providers.text.index('href="/providers"')
         < providers.text.index('href="/settings"')
     )
-    assert 'aria-current="page" href="/providers">Deployments' in providers.text
+    assert 'aria-current="page" href="/providers">Providers' in providers.text
     assert "Compute, spend, and deployment controls." in providers.text
     assert 'class="skip-link"' in providers.text
     assert "@tabler/core" not in providers.text
-    assert "basecoat-css@1.0.2" in providers.text
+    assert "bootstrap@5.3.8" in providers.text
     assert 'href="/assets/dashboard.css?current"' in providers.text
-    assert '<html class="dark"' in providers.text
+    assert '<html data-bs-theme="dark"' in providers.text
     assert 'data-time-zone="Australia/Sydney"' in providers.text
     assert 'hx-get="/providers?telemetry=true"' in providers.text
     assert 'class="provider-grid"' in providers.text
-    assert 'class="card provider-card"' in providers.text
+    assert 'class="card h-100 provider-card"' in providers.text
     assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text
     assert "Not deployed" in providers.text
@@ -1441,12 +1441,12 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert stylesheet.headers["cache-control"] == "no-store"
     assert "@media (max-width: 767.98px)" in stylesheet.text
     assert ".media-grid" in stylesheet.text
-    assert "--tblr-border-color: #707070" in stylesheet.text
-    assert "--tblr-link-color: #8bc5ff" in stylesheet.text
+    assert ".provider-grid" in stylesheet.text
+    assert ".status-label" in stylesheet.text
     assert javascript.headers["content-type"].startswith("text/javascript")
     assert javascript.headers["cache-control"] == "no-store"
     assert "if (!mediaDialog.open) mediaDialog.showModal()" in javascript.text
-    assert '"Generation Time"' in javascript.text
+    assert '"Generation time"' in javascript.text
     assert '["KiB", "MiB", "GiB"]' in javascript.text
     assert 'event.key === "ArrowLeft"' in javascript.text
     assert 'event.key === "ArrowRight"' in javascript.text
@@ -1454,7 +1454,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert "closeDialogOnBackdrop(mediaDialog)" in javascript.text
     assert "closeDialogOnBackdrop(logDialog)" in javascript.text
     assert 'element("a", "", "View Source")' in javascript.text
-    assert "`Used For ${operation}`" in javascript.text
+    assert "`Used for ${operation}`" in javascript.text
     assert "form.requestSubmit()" in javascript.text
     assert "closeDialogOnBackdrop(deployDialog)" in javascript.text
     assert "logBody.scrollTop = logBody.scrollHeight" in javascript.text

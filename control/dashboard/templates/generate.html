@@ -22,7 +22,7 @@
       </label>{% endfor %}
     </div>
   </section>
-  <section class="card prompt-panel" aria-labelledby="prompt-heading">
+  <section class="card card-body prompt-panel" aria-labelledby="prompt-heading">
     <div class="studio-section-heading"><div><span class="studio-step">2</span><h2 id="prompt-heading">Prompt and options</h2></div></div>
     <label class="form-label"><span class="visually-hidden">Prompt</span><textarea class="form-control" autofocus name="prompt" placeholder="Describe what you want to create…" required rows="6">{{ prefill.prompt or "" }}</textarea></label>
     <div class="studio-controls">
@@ -35,5 +35,5 @@
   </section>
 </form>
 <section aria-live="polite" id="generation-result"></section>
-{% else %}<div class="card card-body studio-empty"><h2>No generation models available</h2><p>Install FLUX.2 Klein 9B, Krea 2 Turbo, or MiniMax Hailuo 2.3, or configure CLI Proxy API for Grok.</p><a class="btn btn-primary" href="/settings">Configure models</a></div>{% endif %}
+{% else %}<div class="card card-body studio-empty"><h2>No generation models available</h2><p>Install FLUX.2 Klein 9B, Krea 2 Turbo, or MiniMax Hailuo 2.3, or configure CLI Proxy API for Grok.</p><a class="btn btn-primary" href="/settings">Configure Models</a></div>{% endif %}
 {% endblock %}

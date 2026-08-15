@@ -1,33 +1,17 @@
-<header class="app-header">
-  <div class="container-xl">
-    <a class="app-brand" href="/generate"><span>Comfy Control</span></a>
-    <nav id="primary-navigation" aria-label="Primary Navigation">
-      <ul>
+<header class="bg-body border-bottom sticky-top">
+  <div class="container-xl d-flex align-items-center gap-3 py-2">
+    <span class="navbar-brand flex-shrink-0 fw-semibold m-0">Comfy Control</span>
+    <nav class="d-flex flex-grow-1 overflow-x-auto" aria-label="Primary Navigation">
+      <ul class="nav flex-nowrap">
         {% for name, label, path in [("generate", "Generate", "/generate"),
-        ("media", "Library", "/media"), ("history", "Activity", "/history"),
-        ("providers", "Deployments", "/providers")] %}
-        <li>
-          {% if page == name %}
-          <a aria-current="page" href="{{ path }}">{{ label }}</a>
-          {% else %}
-          <a href="{{ path }}">{{ label }}</a>
-          {% endif %}
-        </li>
+        ("media", "Media", "/media"), ("history", "History", "/history"),
+        ("events", "Events", "/events"), ("providers", "Providers", "/providers")] %}
+        <li class="nav-item"><a class="nav-link{% if page == name %} active{% endif %}" {% if page == name %}aria-current="page"{% endif %} href="{{ path }}">{{ label }}</a></li>
         {% endfor %}
       </ul>
-      <ul class="app-actions">
-        <li>
-          {% if page == "settings" %}
-          <a aria-current="page" href="/settings">Settings</a>
-          {% else %}
-          <a href="/settings">Settings</a>
-          {% endif %}
-        </li>
-        <li>
-          <form action="/logout" method="post">
-            <button class="link-button" type="submit">Logout</button>
-          </form>
-        </li>
+      <ul class="nav flex-nowrap ms-auto">
+        <li class="nav-item"><a class="nav-link{% if page == 'settings' %} active{% endif %}" {% if page == "settings" %}aria-current="page"{% endif %} href="/settings">Settings</a></li>
+        <li class="nav-item"><form action="/logout" method="post"><button class="nav-link" type="submit">Logout</button></form></li>
       </ul>
     </nav>
   </div>
