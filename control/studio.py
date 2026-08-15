@@ -55,6 +55,7 @@ class StudioRunner:
         store = self.app.state.controller.store
         settings = self.app.state.settings
         payload = json.loads(request.payload_json)
+        source_asset_id = payload.pop("_source_asset_id", None)
         path = "/v1/images/generations" if request.kind == "image" else "/v1/videos"
         headers = {"Authorization": f"Bearer {settings.api_key}"}
         if request.history_id:
@@ -78,6 +79,8 @@ class StudioRunner:
             store.update_generation_request(
                 request.id, "submitted", history_id=history_id
             )
+            if history_id and isinstance(source_asset_id, int):
+                store.link_input_asset(history_id, source_asset_id, "studio_source")
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - durable task boundary

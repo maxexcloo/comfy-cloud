@@ -3,9 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width" name="viewport" />
-    <title>
-      {% block title %}{{ page | title }}{% endblock %} · Comfy Control
-    </title>
+    <title>Comfy Control</title>
     <link
       href="https://cdn.jsdelivr.net/npm/basecoat-css@1.0.2/dist/basecoat.cdn.min.css"
       rel="stylesheet"
@@ -13,7 +11,7 @@
     <link href="/assets/dashboard.css?current" rel="stylesheet" />
   </head>
   <body data-time-zone="{{ time_zone }}">
-    <a class="skip-link" href="#content">Skip To Content</a>
+    <a class="skip-link" href="#content">Skip to content</a>
     <div class="page">
       {% include "dashboard_navigation.html" %}
       <div class="page-wrapper">

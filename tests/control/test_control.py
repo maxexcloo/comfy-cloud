@@ -534,10 +534,7 @@ async def test_controller_lists_and_routes_models(tmp_path):
     assert 'class="model-grid"' in studio.text
     assert "<code>flux-2-klein-9b</code>" in studio.text
     assert dashboard.status_code == 200
-    assert (
-        'class="card-table table table-bordered table-hover table-striped table-vcenter"'
-        in dashboard.text
-    )
+    assert 'class="provider-grid"' in dashboard.text
     assert 'href="/history"' in dashboard.text
     assert 'href="/settings"' in dashboard.text
     assert 'href="/media"' in dashboard.text
@@ -806,7 +803,7 @@ async def test_environment_overrides_database_and_locks_settings(tmp_path, monke
     assert "environment-controlled" in rejected.text
     assert updated.status_code == 200
     assert "Worker Image" in page.text
-    assert "Environment Controlled" in page.text
+    assert "Environment controlled" in page.text
     assert "Controlled By Environment" not in page.text
     assert "disabled" in page.text
     assert (
@@ -1394,7 +1391,7 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
         < providers.text.index('href="/settings"')
     )
     assert 'aria-current="page" href="/providers">Deployments' in providers.text
-    assert "Compute availability and lifecycle controls." in providers.text
+    assert "Compute, spend, and deployment controls." in providers.text
     assert 'class="skip-link"' in providers.text
     assert "@tabler/core" not in providers.text
     assert "basecoat-css@1.0.2" in providers.text
@@ -1402,25 +1399,15 @@ async def test_dashboard_pages_filter_link_and_stream_current_data(tmp_path):
     assert '<html class="dark"' in providers.text
     assert 'data-time-zone="Australia/Sydney"' in providers.text
     assert 'hx-get="/providers?telemetry=true"' in providers.text
-    assert "data-provider-resource" in providers.text
-    assert "table-bordered" in providers.text
+    assert 'class="provider-grid"' in providers.text
+    assert 'class="card provider-card"' in providers.text
     assert 'src="/assets/dashboard.js?current"' in providers.text
     assert 'data-log-url="/providers/worker/logs"' in providers.text
-    assert re.search(
-        r'<span class="font-monospace text-secondary"\s*>\s*—\s*</span\s*>',
-        providers.text,
-    )
+    assert "Not deployed" in providers.text
     assert 'id="log-dialog"' in providers.text
     assert 'id="deploy-dialog"' in providers.text
     assert ">Logs</button" not in providers.text
-    assert (
-        providers.text.index("<th>Provider</th>")
-        < providers.text.index("<th>Type</th>")
-        < providers.text.index("<th>Status</th>")
-        < providers.text.index("<th>Usage</th>")
-        < providers.text.index("Resource")
-        < providers.text.index("<th>Actions</th>")
-    )
+    assert providers.text.index("Usage") < providers.text.index("Resource")
     assert 'href="http://worker"' in providers.text
     assert "Open Panel" not in providers.text
     assert events.text.count("Wombat Needle Event") == 1

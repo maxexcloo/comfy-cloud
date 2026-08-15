@@ -3,150 +3,79 @@
 %}
 <div class="mb-3 page-header">
   <div>
-    <h2 class="page-title">Providers</h2>
-    <div class="text-secondary">
-      Compute availability and lifecycle controls.
-    </div>
+    <h1 class="page-title">Providers</h1>
+    <p class="text-secondary">Compute, spend, and deployment controls.</p>
   </div>
 </div>
 <section
-  class="card shadow-sm"
   aria-label="Providers"
   hx-get="/providers?telemetry=true"
   hx-select="[aria-label='Providers']"
   hx-swap="outerHTML"
   hx-trigger="load delay:1s, every 60s"
 >
-  <div class="table-responsive">
-    <table
-      class="card-table table table-bordered table-hover table-striped table-vcenter"
-    >
-      <thead>
-        <tr>
-          <th>Provider</th>
-          <th>Type</th>
-          <th>Status</th>
-          <th>Usage</th>
-          <th
-            title="The Provider-Assigned Deployment, Endpoint, Pod, Or Instance Identifier Used For Lifecycle Actions."
-          >
-            Resource
-          </th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="provider-rows">
-        {% for provider in providers %}
-        <tr id="{{ provider.id }}">
-          <td>
-            <div class="provider-name">
-              <div>
-                {% if provider.panel_url %}<a
-                  href="{{ provider.panel_url }}"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  ><strong>{{ provider.id }}</strong></a
-                >{% else %}<strong>{{ provider.id }}</strong>{% endif %}
-                <div class="small text-secondary">{{ provider.platform }}</div>
-              </div>
-            </div>
-          </td>
-          <td>{{ provider.type.replace("-", " ") | title }}</td>
-          <td data-provider-status>
-            {{ ui.badge(provider.state) }} {% if provider.configured %}
-            <div class="small">
-              <a
-                data-log-provider="{{ provider.id }}"
-                data-log-url="/providers/{{ provider.id }}/logs"
-                href="/providers/{{ provider.id }}/logs"
-                >Logs</a
-              >
-            </div>
-            {% endif %}
-          </td>
-          <td data-provider-usage>{{ ui.usage(provider.usage) }}</td>
-          <td data-provider-resource>
-            <span class="font-monospace text-secondary">{{ provider.resource_id or "—" }}</span>
-            {% if provider.resource_specification %}
-            <div class="small text-secondary">
-              {{ provider.resource_specification }}
-            </div>
-            {% endif %}
-          </td>
-          <td>
-            <div class="d-flex flex-wrap gap-1">
-              {% if provider.settings %}<button
-                class="btn btn-outline-secondary btn-sm"
-                data-provider-settings="{{ provider.id }}"
-                type="button"
-              >
-                Settings</button
-              >{% endif %} {% for action in provider.actions %}
-              <form
-                action="/providers/{{ provider.id }}/actions/{{ action.name }}"
-                method="post"
-              >
-                <input
-                  name="csrf_token"
-                  type="hidden"
-                  value="{{ csrf_token }}"
-                /><button
-                  class="btn {% if action.name in ['delete', 'destroy', 'terminate'] %}btn-outline-danger{% else %}btn-outline-primary{% endif %} btn-sm"
-                  {% if action.name == "deploy" %}type="button"
-                  data-deploy-provider="{{ provider.id }}"
-                  data-deploy-action="/providers/{{ provider.id }}/actions/deploy"
-                  data-deploy-options="/providers/{{ provider.id }}/deployment-options"
-                  {% endif %}
-                  {% if action.confirmation %}data-confirmation="{{ action.confirmation }}"{% endif %}
-                >
-                  {{ action.name.replace("-", " ") | title }}
-                </button>
-              </form>
-              {% endfor %}
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="provider-grid">
+    {% for provider in providers %}
+    <article class="card provider-card" id="{{ provider.id }}">
+      <header class="provider-card-header">
+        <div>
+          {% if provider.panel_url %}<a href="{{ provider.panel_url }}" target="_blank" rel="noopener noreferrer"><strong><code>{{ provider.id }}</code></strong></a>{% else %}<strong><code>{{ provider.id }}</code></strong>{% endif %}
+          <div class="small text-secondary">{{ provider.platform }} · {{ provider.type.replace("-", " ") }}</div>
+        </div>
+        {{ ui.badge(provider.state) }}
+      </header>
+      <div class="provider-card-body">
+        <section aria-label="Usage">
+          <h2>Usage</h2>
+          {{ ui.usage(provider.usage) }}
+        </section>
+        <section aria-label="Resource">
+          <h2>Resource</h2>
+          <div class="font-monospace">{{ provider.resource_id or "Not deployed" }}</div>
+          {% if provider.resource_specification %}<small class="text-secondary">{{ provider.resource_specification }}</small>{% endif %}
+        </section>
+      </div>
+      <footer class="provider-card-footer">
+        <div class="d-flex flex-wrap gap-2">
+          {% if provider.configured %}<button
+            class="btn btn-outline-secondary btn-sm"
+            data-log-provider="{{ provider.id }}"
+            data-log-url="/providers/{{ provider.id }}/logs"
+            type="button"
+          >View logs</button>{% endif %}
+          {% if provider.settings %}<button class="btn btn-outline-secondary btn-sm" data-provider-settings="{{ provider.id }}" type="button">Settings</button>{% endif %}
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          {% for action in provider.actions %}
+          <form action="/providers/{{ provider.id }}/actions/{{ action.name }}" method="post">
+            <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
+            <button
+              class="btn {% if action.name in ['delete', 'destroy', 'terminate'] %}btn-outline-danger{% else %}btn-primary{% endif %} btn-sm"
+              {% if action.name == "deploy" %}type="button" data-deploy-provider="{{ provider.id }}" data-deploy-action="/providers/{{ provider.id }}/actions/deploy" data-deploy-options="/providers/{{ provider.id }}/deployment-options"{% endif %}
+              {% if action.confirmation %}data-confirmation="{{ action.confirmation }}"{% endif %}
+            >{{ action.name.replace("-", " ") | title }}</button>
+          </form>
+          {% endfor %}
+        </div>
+      </footer>
+    </article>
+    {% endfor %}
   </div>
 </section>
 {% endblock %} {% block dialogs %}{% include "dashboard_log_dialog.html" %} {%
 for provider in providers if provider.settings %}
-<dialog
-  id="provider-settings-{{ provider.id }}"
-  aria-labelledby="provider-settings-title-{{ provider.id }}"
->
+<dialog id="provider-settings-{{ provider.id }}" aria-labelledby="provider-settings-title-{{ provider.id }}">
   <div class="modal-dialog modal-dialog-scrollable">
     <div class="modal-content">
-      <header class="gap-3 modal-header">
-        <div>
-          <small>{{ provider.id }}</small>
-          <h2
-            class="modal-title"
-            id="provider-settings-title-{{ provider.id }}"
-          >
-            {{ provider.platform }} Settings
-          </h2>
-        </div>
-        <button class="btn btn-secondary btn-sm" data-close type="button">
-          Close
-        </button>
+      <header class="gap-3 modal-header justify-content-between">
+        <div><small><code>{{ provider.id }}</code></small><h2 class="modal-title" id="provider-settings-title-{{ provider.id }}">Provider settings</h2></div>
+        <button class="btn btn-secondary btn-sm" data-close type="button">Close</button>
       </header>
-      <form
-        class="modal-body"
-        action="/providers/{{ provider.id }}/settings"
-        method="post"
-      >
+      <form class="modal-body" action="/providers/{{ provider.id }}/settings" method="post">
         <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
         <input name="revision" type="hidden" value="{{ revision }}" />
         {{ settings_ui.fields(provider.settings) }}
-        <div class="align-items-center d-flex gap-2">
-          <button class="btn btn-primary" type="submit">Save Settings</button
-          ><button class="btn btn-outline-secondary" data-close type="button">
-            Cancel
-          </button>
-        </div>
+        <div class="d-flex gap-2 mt-3"><button class="btn btn-primary" type="submit">Save changes</button><button class="btn btn-outline-secondary" data-close type="button">Cancel</button></div>
       </form>
     </div>
   </div>
@@ -155,34 +84,18 @@ for provider in providers if provider.settings %}
 <dialog id="deploy-dialog" aria-labelledby="deploy-title">
   <div class="modal-dialog modal-dialog-scrollable">
     <div class="modal-content">
-      <header class="dialog-head gap-3 modal-header">
-        <div>
-          <small>Provider Deployment</small>
-          <h2 class="modal-title" id="deploy-title">Deploy Provider</h2>
-        </div>
-        <button class="btn btn-secondary btn-sm" data-close type="button">
-          Close
-        </button>
+      <header class="gap-3 modal-header justify-content-between">
+        <div><small>Provider deployment</small><h2 class="modal-title" id="deploy-title">Deploy provider</h2></div>
+        <button class="btn btn-secondary btn-sm" data-close type="button">Close</button>
       </header>
       <form class="dialog-body modal-body" id="deploy-form" method="post">
         <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
         <input id="deploy-memory" name="memory_gb" type="hidden" />
         <input id="deploy-option" name="option_id" type="hidden" />
         <input id="deploy-variant" name="variant" type="hidden" />
-        <label class="form-label"
-          >Instance<select class="form-select" id="deploy-gpu" name="gpu">
-            <option value="">Loading Availability…</option>
-          </select></label
-        >
-        <div class="alert alert-info" id="deploy-option-detail">
-          Checking Current Availability And Pricing…
-        </div>
-        <div class="align-items-center d-flex gap-2">
-          <button class="btn btn-primary" type="submit">Deploy</button
-          ><button class="btn btn-outline-secondary" data-close type="button">
-            Cancel
-          </button>
-        </div>
+        <label class="form-label">Instance<select class="form-select" id="deploy-gpu" name="gpu"><option value="">Loading availability…</option></select></label>
+        <div class="alert alert-info" id="deploy-option-detail">Checking current availability and pricing…</div>
+        <div class="d-flex gap-2"><button class="btn btn-primary" type="submit">Deploy</button><button class="btn btn-outline-secondary" data-close type="button">Cancel</button></div>
       </form>
     </div>
   </div>

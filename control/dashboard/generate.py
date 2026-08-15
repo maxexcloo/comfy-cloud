@@ -39,7 +39,73 @@ def studio_catalogue(request: Request) -> list[dict[str, object]]:
                     ),
                 }
             )
+    configured = {
+        model.id: model for model in request.app.state.controller.config.models
+    }
+    for identifier, kind, description in (
+        (
+            "grok-image",
+            "image",
+            "Provider-managed Grok image generation through CLI Proxy API.",
+        ),
+        (
+            "grok-video",
+            "video",
+            "Provider-managed Grok video generation through CLI Proxy API.",
+        ),
+    ):
+        if identifier in configured:
+            models.append(
+                {
+                    "description": description,
+                    "id": identifier,
+                    "kind": kind,
+                    "speed": "Provider managed",
+                }
+            )
     return sorted(models, key=lambda item: str(item["id"]))
+
+
+def generation_prefill(
+    request: Request, models: list[dict[str, object]]
+) -> dict[str, object]:
+    source = request.query_params.get("source", "").strip()
+    if not source:
+        return {}
+    try:
+        asset_id = int(source)
+    except ValueError:
+        return {}
+    detail = request.app.state.controller.store.media_detail(asset_id)
+    if detail is None:
+        return {}
+    use = detail.get("primary_use") or {}
+    if not isinstance(use, dict):
+        return {}
+    parameters = use.get("parameters") or {}
+    if not isinstance(parameters, dict):
+        parameters = {}
+    available = {str(model["id"]) for model in models}
+    requested_model = str(use.get("model") or "")
+    model = requested_model if requested_model in available else ""
+    return {
+        "asset_id": asset_id,
+        "content_type": detail.get("content_type", ""),
+        "filename": next(
+            (
+                item.get("filename")
+                for item in detail.get("uses", [])
+                if item.get("filename")
+            ),
+            f"Media {asset_id}",
+        ),
+        "model": model,
+        "n": parameters.get("n", 1),
+        "prompt": use.get("prompt") or parameters.get("prompt") or "",
+        "provider": use.get("provider") or "",
+        "seed": parameters.get("seed", ""),
+        "size": parameters.get("size", "1024x1024"),
+    }
 
 
 @router.get("/", include_in_schema=False)
@@ -68,6 +134,7 @@ async def generate(request: Request) -> Response:
         "generate.html",
         "generate",
         models=models,
+        prefill=generation_prefill(request, models),
         providers=providers,
     )
 
@@ -92,6 +159,15 @@ async def create_generation(request: Request) -> Response:
     kind = str(details["kind"])
     job_id = f"image_{uuid.uuid4().hex}" if kind == "image" else uuid.uuid4().hex
     payload: dict[str, object] = {"model": model, "prompt": prompt}
+    source_asset_id = str(form.get("source_asset_id", "")).strip()
+    if source_asset_id:
+        try:
+            source_id = int(source_asset_id)
+        except ValueError:
+            return error("source media is invalid", 400, "invalid_media")
+        if request.app.state.controller.store.media_asset(source_id) is None:
+            return error("source media was not found", 404, "not_found")
+        payload["_source_asset_id"] = source_id
     if provider := str(form.get("provider", "")).strip():
         payload["provider"] = provider
     try:

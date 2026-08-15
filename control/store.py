@@ -1302,6 +1302,38 @@ class ControlStore:
                 source_url=source_url,
             )
 
+    def link_input_asset(self, history_id: str, asset_id: int, field_name: str) -> None:
+        """Link an existing media asset as an input without duplicating its file."""
+        with self.lock, self.connection:
+            asset = self.connection.execute(
+                "SELECT id, path FROM media_assets WHERE id = ?", (asset_id,)
+            ).fetchone()
+            history = self.connection.execute(
+                "SELECT 1 FROM history WHERE id = ?", (history_id,)
+            ).fetchone()
+            if asset is None or history is None:
+                return
+            position = self.connection.execute(
+                "SELECT COUNT(*) AS count FROM generation_media "
+                "WHERE history_id = ? AND role = 'input' AND field_name IS ?",
+                (history_id, field_name),
+            ).fetchone()["count"]
+            self.connection.execute(
+                """
+                INSERT OR IGNORE INTO generation_media (
+                    history_id, asset_id, role, field_name, position, filename,
+                    source_url, legacy_media_id
+                ) VALUES (?, ?, 'input', ?, ?, ?, NULL, NULL)
+                """,
+                (
+                    history_id,
+                    asset_id,
+                    field_name,
+                    int(position),
+                    Path(str(asset["path"])).name,
+                ),
+            )
+
     def media_asset(self, asset_id: int) -> MediaAsset | None:
         with self.lock:
             row = self.connection.execute(

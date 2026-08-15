@@ -5,9 +5,12 @@ const formatDate = (timestamp) =>
     timeZone: document.body.dataset.timeZone || "Australia/Sydney",
   }).format(new Date(Number(timestamp) * 1000));
 
-for (const time of document.querySelectorAll("[data-timestamp]")) {
-  time.textContent = formatDate(time.dataset.timestamp);
-}
+const formatTimes = (root = document) => {
+  for (const time of root.querySelectorAll("[data-timestamp]"))
+    time.textContent = formatDate(time.dataset.timestamp);
+};
+
+formatTimes();
 
 for (const control of document.querySelectorAll("[data-current]")) {
   if (control.type === "checkbox") {
@@ -512,12 +515,18 @@ if (mediaDialog) {
     ),
   ];
   const updateNavigation = () => {
-    const disabled = availableMediaIds().length < 2;
-    nextButton.disabled = disabled;
-    previousButton.disabled = disabled;
+    const ids = availableMediaIds();
+    const index = ids.indexOf(activeAssetId);
+    const results = document.getElementById("media-results");
+    const page = Number(results?.dataset.mediaPage || 1);
+    const pages = Number(results?.dataset.mediaPages || 1);
+    previousButton.disabled = index <= 0 && page <= 1;
+    nextButton.disabled = index >= ids.length - 1 && page >= pages;
   };
   const openMedia = async (assetId, updateAddress = true) => {
     activeAssetId = String(assetId);
+    for (const card of document.querySelectorAll(".media-selected"))
+      card.classList.remove("media-selected");
     const request = ++openRequest;
     updateNavigation();
     detailRoot.replaceChildren(element("p", "", "Loading…"));
@@ -572,6 +581,15 @@ if (mediaDialog) {
       mediaNotice = undefined;
     }
     body.append(preview);
+    const reuseActions = element("div", "media-detail-actions");
+    const regenerate = element(
+      "a",
+      "btn btn-primary btn-sm",
+      "Use in Generate",
+    );
+    regenerate.href = `/generate?source=${encodeURIComponent(item.id)}`;
+    reuseActions.append(regenerate);
+    body.append(reuseActions);
     if (item.content_type.startsWith("image/")) {
       const actions = element(
         "div",
@@ -671,19 +689,51 @@ if (mediaDialog) {
       body.append(section);
     }
     detailRoot.replaceChildren(body);
+    updateNavigation();
     if (updateAddress) {
       const url = new URL(window.location);
       url.searchParams.set("asset", item.id);
       history.pushState({ asset: item.id }, "", url);
     }
   };
-  const browseMedia = (direction) => {
+  const loadMediaPage = async (page) => {
+    const url = new URL(window.location);
+    url.searchParams.set("page", page);
+    url.searchParams.delete("asset");
+    const response = await fetch(url);
+    if (!response.ok) return false;
+    const documentPage = new DOMParser().parseFromString(
+      await response.text(),
+      "text/html",
+    );
+    const nextResults = documentPage.getElementById("media-results");
+    const currentResults = document.getElementById("media-results");
+    if (!nextResults || !currentResults) return false;
+    currentResults.replaceWith(nextResults);
+    formatTimes(nextResults);
+    history.replaceState({}, "", url);
+    return true;
+  };
+  const browseMedia = async (direction) => {
     const ids = availableMediaIds();
-    if (ids.length < 2) return;
     const currentIndex = ids.indexOf(activeAssetId);
-    const baseIndex =
-      currentIndex === -1 ? (direction > 0 ? -1 : 0) : currentIndex;
-    openMedia(ids[(baseIndex + direction + ids.length) % ids.length]);
+    const targetIndex = currentIndex + direction;
+    if (targetIndex >= 0 && targetIndex < ids.length) {
+      openMedia(ids[targetIndex]);
+      return;
+    }
+    const results = document.getElementById("media-results");
+    const page = Number(results?.dataset.mediaPage || 1);
+    const pages = Number(results?.dataset.mediaPages || 1);
+    const targetPage = page + direction;
+    if (
+      targetPage < 1 ||
+      targetPage > pages ||
+      !(await loadMediaPage(targetPage))
+    )
+      return;
+    const nextIds = availableMediaIds();
+    if (nextIds.length) openMedia(direction > 0 ? nextIds[0] : nextIds.at(-1));
   };
   document.addEventListener("click", (event) => {
     const action = event.target.closest("[data-media-action]");
@@ -713,6 +763,7 @@ if (mediaDialog) {
     if (event.key === "ArrowRight") browseMedia(1);
   });
   mediaDialog.addEventListener("close", () => {
+    const selectedAssetId = activeAssetId;
     activeAssetId = null;
     openRequest += 1;
     const url = new URL(window.location);
@@ -720,8 +771,29 @@ if (mediaDialog) {
       url.searchParams.delete("asset");
       history.pushState({}, "", url);
     }
+    const selected = document.querySelector(
+      `[data-media-id="${CSS.escape(selectedAssetId || "")}"]:not(.related-item)`,
+    );
+    if (selected) {
+      selected.classList.add("media-selected");
+      selected.focus({ preventScroll: true });
+      selected.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   });
   const initialAsset = new URL(window.location).searchParams.get("asset");
   updateNavigation();
   if (initialAsset) openMedia(initialAsset, false);
+}
+
+for (const form of document.querySelectorAll(".studio-layout")) {
+  const updateModelOptions = () => {
+    const kind = form.querySelector("[data-model-kind]:checked")?.dataset
+      .modelKind;
+    for (const field of form.querySelectorAll("[data-image-option]"))
+      field.hidden = kind !== "image";
+  };
+  form.addEventListener("change", (event) => {
+    if (event.target.matches("[data-model-kind]")) updateModelOptions();
+  });
+  updateModelOptions();
 }

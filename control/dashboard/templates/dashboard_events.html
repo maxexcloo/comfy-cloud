@@ -17,11 +17,11 @@
       class="form-control form-control-sm"
       name="q"
       value="{{ filters.q }}"
-      placeholder="Message, Provider, Or Request ID"
+      placeholder="Message, provider, or request ID"
   /></label>
   <label class="form-label"
     >Level<select class="form-select form-select-sm" name="level">
-      <option value="">All Levels</option>
+      <option value="">All</option>
       {% for value in levels %}
       <option
         value="{{ value }}"
@@ -34,7 +34,7 @@
   >
   <label class="form-label"
     >Provider<select class="form-select form-select-sm" name="provider">
-      <option value="">All Providers</option>
+      <option value="">All</option>
       {% for value in providers %}
       <option
         value="{{ value }}"
@@ -45,9 +45,9 @@
       {% endfor %}
     </select></label
   >
-  <div class="align-items-end d-flex">
+  <div class="filter-actions">
     <a class="btn btn-outline-secondary btn-sm" href="/events" role="button"
-      >Clear</a
+      >Clear filters</a
     >
   </div>
 </form>
@@ -91,7 +91,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="5">No Events Match These Filters.</td>
+          <td colspan="5">No events match these filters.</td>
         </tr>
         {% endfor %}
       </tbody>

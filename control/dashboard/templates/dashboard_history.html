@@ -19,7 +19,7 @@
       class="form-control form-control-sm"
       name="q"
       value="{{ filters.q }}"
-      placeholder="Prompt, Model, Provider, Or Request ID"
+      placeholder="Prompt, model, provider, or request ID"
   /></label>
   {% for name, values in [("operation", operations), ("provider", providers),
   ("model", models), ("status", statuses)] %}<label class="form-label"
@@ -27,7 +27,7 @@
       class="form-select form-select-sm"
       name="{{ name }}"
     >
-      <option value="">All {{ name | title }}</option>
+      <option value="">All</option>
       {% for value in values %}
       <option
         value="{{ value }}"
@@ -39,9 +39,9 @@
       {% endfor %}
     </select></label
   >{% endfor %}
-  <div class="align-items-end d-flex">
+  <div class="filter-actions">
     <a class="btn btn-outline-secondary btn-sm" href="/history" role="button"
-      >Clear</a
+      >Clear filters</a
     >
   </div>
 </form>
@@ -85,13 +85,13 @@
           item.media[0].asset_id }}"
               type="button"
             >
-              Open Media</button
+              View</button
             >{% else %}—{% endif %}
           </td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="6">No History Matches These Filters.</td>
+          <td colspan="6">No history matches these filters.</td>
         </tr>
         {% endfor %}
       </tbody>

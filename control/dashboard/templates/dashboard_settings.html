@@ -1,29 +1,26 @@
-{% extends "dashboard_base.html" %} {% import "dashboard_settings_fields.html"
-as ui %} {% block content %}
-<div class="mb-3 page-header">
-  <div>
-    <h2 class="page-title">Settings</h2>
-    <div class="text-secondary">Control and worker configuration.</div>
-  </div>
-</div>
-<form action="/settings" method="post">
+{% extends "dashboard_base.html" %} {% import "dashboard_settings_fields.html" as ui %} {% block content %}
+<form action="/settings" class="settings-form" id="settings-form" method="post">
   <input name="csrf_token" type="hidden" value="{{ csrf_token }}" />
   <input name="revision" type="hidden" value="{{ settings.revision }}" />
-  {% for category, groups in settings.categories.items() %}
-  <article class="card mb-3 settings-category shadow-sm">
-    <header class="card-header">
-      <h2 class="card-title">{{ category }}</h2>
-    </header>
-    <div class="card-body g-3 row">
-      {% for group, fields in groups.items() %}
-      <fieldset class="col-12">
-        <legend>{{ group }}</legend>
-        {{ ui.fields(fields) }}
-      </fieldset>
-      {% endfor %}
-    </div>
-  </article>
-  {% endfor %}
-  <button class="btn btn-primary">Save Settings</button>
+  <header class="page-header settings-header">
+    <div><h1 class="page-title">Settings</h1><p class="text-secondary">Routing, models, worker, and display preferences.</p></div>
+    <button class="btn btn-primary" type="submit">Save changes</button>
+  </header>
+  <div class="settings-sections">
+    {% for category, groups in settings.categories.items() %}
+    <details class="card settings-category" {% if loop.first %}open{% endif %}>
+      <summary><span><strong>{{ category }}</strong><small>{{ groups | length }} section{% if groups | length != 1 %}s{% endif %}</small></span></summary>
+      <div class="settings-category-body">
+        {% for group, fields in groups.items() %}
+        <fieldset class="settings-group">
+          <legend>{{ group }}</legend>
+          {{ ui.fields(fields) }}
+        </fieldset>
+        {% endfor %}
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+  <footer class="settings-save-bar"><span class="text-secondary">Changes apply after saving.</span><button class="btn btn-primary" type="submit">Save changes</button></footer>
 </form>
 {% endblock %}
