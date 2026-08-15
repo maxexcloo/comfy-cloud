@@ -1,4 +1,144 @@
 /* App-specific layout on top of Basecoat. */
+.flex {
+  display: flex;
+}
+.grid {
+  display: grid;
+}
+.hidden {
+  display: none !important;
+}
+.items-center {
+  align-items: center;
+}
+.items-baseline {
+  align-items: baseline;
+}
+.justify-between {
+  justify-content: space-between;
+}
+.justify-center {
+  justify-content: center;
+}
+.flex-wrap {
+  flex-wrap: wrap;
+}
+.grow {
+  flex-grow: 1;
+}
+.shrink-0 {
+  flex-shrink: 0;
+}
+.gap-1 {
+  gap: 0.25rem;
+}
+.gap-2 {
+  gap: 0.5rem;
+}
+.gap-3 {
+  gap: 0.75rem;
+}
+.ms-auto {
+  margin-inline-start: auto;
+}
+.mx-auto {
+  margin-inline: auto;
+}
+.my-4 {
+  margin-block: 1rem;
+}
+.mb-2 {
+  margin-bottom: 0.5rem;
+}
+.mb-3 {
+  margin-bottom: 0.75rem;
+}
+.mb-4 {
+  margin-bottom: 1rem;
+}
+.mt-2 {
+  margin-top: 0.5rem;
+}
+.p-3 {
+  padding: 0.75rem;
+}
+.p-4 {
+  padding: 1rem;
+}
+.p-6 {
+  padding: 1.5rem;
+}
+.px-4 {
+  padding-inline: 1rem;
+}
+.py-2 {
+  padding-block: 0.5rem;
+}
+.pt-3 {
+  padding-top: 0.75rem;
+}
+.w-full {
+  width: 100%;
+}
+.w-auto {
+  width: auto;
+}
+.h-full {
+  height: 100%;
+}
+.max-w-7xl {
+  max-width: 80rem;
+}
+.overflow-x-auto {
+  overflow-x: auto;
+}
+.border-b {
+  border-bottom: 1px solid var(--color-border);
+}
+.border-t {
+  border-top: 1px solid var(--color-border);
+}
+.sticky {
+  position: sticky;
+}
+.top-0 {
+  top: 0;
+}
+.z-20 {
+  z-index: 20;
+}
+.bg-background\/95 {
+  background: color-mix(in srgb, var(--color-background) 95%, transparent);
+}
+.backdrop-blur {
+  backdrop-filter: blur(8px);
+}
+.size-9 {
+  height: 2.25rem;
+  width: 2.25rem;
+}
+.self-start {
+  align-self: start;
+}
+.font-semibold {
+  font-weight: 600;
+}
+.font-normal {
+  font-weight: 400;
+}
+.text-base {
+  font-size: 1rem;
+}
+.text-sm {
+  font-size: 0.875rem;
+}
+.text-muted-foreground {
+  color: var(--color-muted-foreground);
+}
+.whitespace-nowrap {
+  white-space: nowrap;
+}
+
 .page-body {
   padding-block: 1.25rem 3rem;
 }
@@ -110,7 +250,7 @@
 .model-grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 280px));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   justify-content: center;
   margin-top: 1rem;
 }
@@ -304,6 +444,11 @@
 .filters > label {
   margin: 0;
   min-width: 145px;
+  width: auto;
+}
+
+.filters > .search {
+  width: auto;
 }
 
 .filter-actions {
@@ -378,6 +523,10 @@
   cursor: pointer;
   list-style-position: inside;
   padding: 1rem;
+}
+
+.settings-category {
+  gap: 0;
 }
 
 .settings-category > summary span {
@@ -673,6 +822,15 @@ body:has(dialog[open]) {
 }
 
 @media (max-width: 767.98px) {
+  .filters > label,
+  .filters > .search {
+    width: 100%;
+  }
+
+  .model-grid {
+    grid-template-columns: 1fr;
+  }
+
   .studio-heading {
     align-items: start;
     flex-direction: column;

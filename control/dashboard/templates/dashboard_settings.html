@@ -8,7 +8,7 @@
   </header>
   <div class="settings-sections">
     {% for category, groups in settings.categories.items() %}
-    <details class="card settings-category" {% if loop.first %}open{% endif %}>
+    <details class="card settings-category" data-size="sm" {% if loop.first %}open{% endif %}>
       <summary><span><strong>{{ category }}</strong><small>{{ groups | length }} section{% if groups | length != 1 %}s{% endif %}</small></span></summary>
       <div class="settings-category-body">
         {% for group, fields in groups.items() %}
