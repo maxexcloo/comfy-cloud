@@ -144,3 +144,18 @@ def run(
     finally:
         stop()
         log_thread.join(timeout=1)
+
+
+def main() -> None:
+    deployment_type = os.getenv("WORKER_MODE", "pod")
+    if deployment_type not in {"pod", "serverless"}:
+        raise ValueError("WORKER_MODE must be pod or serverless")
+    run(
+        deployment_type,
+        os.getenv("HOST", "0.0.0.0"),
+        int(os.getenv("PORT", "8000")),
+    )
+
+
+if __name__ == "__main__":
+    main()

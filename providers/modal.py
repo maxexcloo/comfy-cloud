@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
-import os
 import subprocess
 from collections.abc import Callable
-from pathlib import Path
 
 import httpx
 
@@ -41,16 +38,8 @@ def provider_action(
         )
         return action_response("terminated")
 
-    path = Path(
-        os.getenv("CONTROL_MODAL_APP", "/opt/comfy-control/deploy/modal/app.py")
-    )
-    if not path.is_file():
-        raise RuntimeError(f"Modal deployment asset was not found: {path}")
-    specification = importlib.util.spec_from_file_location("comfy_control_modal", path)
-    if specification is None or specification.loader is None:
-        raise RuntimeError("Modal deployment asset could not be loaded")
-    module = importlib.util.module_from_spec(specification)
-    specification.loader.exec_module(module)
+    from providers.deployment.modal import build_app
+
     environment = preferences.environment()
     environment["API_KEY"] = preferences.worker_api_key
     environment["CONTROL_UI_PASSWORD"] = settings.ui_password
@@ -58,7 +47,7 @@ def provider_action(
     environment["MODEL_PROFILES"] = ",".join(
         worker_model_profiles(provider, preferences)
     )
-    module.build_app(environment).deploy(name=management.name)
+    build_app(environment).deploy(name=management.name)
     return action_response("deployed")
 
 

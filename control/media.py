@@ -12,14 +12,14 @@ from urllib.parse import unquote, urljoin, urlparse
 import httpx
 
 from control.http import exception_message
-from control.preferences import ControlPreferences
-from control.store import ControlStore
-from worker.media import (
+from control.media_types import (
     image_media_type,
     media_extension,
     media_type_from_filename,
     safe_filename,
 )
+from control.preferences import ControlPreferences
+from control.store import ControlStore
 
 
 class ControllerContext(Protocol):

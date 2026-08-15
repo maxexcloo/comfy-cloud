@@ -23,7 +23,8 @@ def test_worker_image_uses_one_pinned_cuda_runtime():
     constraints = (ROOT / "worker/constraints.txt").read_text().splitlines()
 
     assert dockerfile.startswith("FROM python:3.12.12-slim-bookworm\n")
-    assert "--extra build --extra modal --extra vast" in dockerfile
+    assert "--extra build --extra vast" in dockerfile
+    assert "--extra modal" not in dockerfile
     assert "nvidia/cuda" not in dockerfile
     assert constraints == [
         "torch==2.13.0",

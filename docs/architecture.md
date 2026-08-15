@@ -24,8 +24,8 @@ separate modules behind a small common adapter contract. The controller coordina
 adapters without containing provider API URLs or response-shape branching.
 
 The root `control/` and `worker/` packages own their respective runtime behaviour
-and image builds. Catalogue loading lives in `catalogue/`, command-line entry points
-in `control/`, and provider integrations in `providers/`. Dashboard, inference,
+and image builds. Catalogue loading lives in `catalogue/`, and provider integrations
+and deployment implementations live in `providers/`. Dashboard, inference,
 operation and provider-deployment implementations are further split within their
 owning package; filenames do not encode their parent package.
 
@@ -122,9 +122,9 @@ status for the interface.
 
 ## Runtime Modes
 
-`comfy-control control` runs the central router and dashboard.
-`comfy-control pod` serves the ComfyUI frontend with basic authentication.
-`comfy-control serverless` blocks the frontend. Both commands provide:
+The control image runs the central router and dashboard. The worker image uses
+`WORKER_MODE=pod` to serve the ComfyUI frontend with basic authentication, or
+`WORKER_MODE=serverless` to block the frontend. Both worker modes provide:
 
 - native ComfyUI proxy routes and WebSockets;
 - `GET /health/live`, `/health/ready`, `/health` and `/metrics`;
@@ -142,9 +142,9 @@ defaults to `100`.
 seconds; `GENERATION_TIMEOUT` bounds a complete workflow and defaults to 900
 seconds.
 
-`comfy-control vast-serverless` runs Vast.ai's supported PyWorker in front of the
-normal Serverless worker. PyWorker verifies routed requests, benchmarks the backend,
-reports load and readiness, and embeds generated outputs in the Serverless response.
+Vast.ai Serverless runs its supported PyWorker in front of the normal Serverless
+worker. PyWorker verifies routed requests, benchmarks the backend, reports load and
+readiness, and embeds generated outputs in the Serverless response.
 
 Control and worker publish their live OpenAPI documents at `/openapi.json` and
 interactive documentation at `/docs`. Controller operations are under `/ops`,

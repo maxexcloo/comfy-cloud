@@ -9,7 +9,7 @@
 - Keep only `AGENTS.md` and `README.md` as root Markdown files; put other project
   documentation in `docs/`.
 - Keep pinned model sources in `catalogue/profiles/`.
-- Keep provider deployment assets grouped by provider in `deploy/`.
+- Keep provider deployment implementations in `providers/deployment/`.
 - Keep tests in `tests/`, grouped by the same runtime boundaries as the package.
 - Keep local orchestration in root `compose.yaml`.
 - Keep workflow manifests beside their API-format workflow JSON in `catalogue/`.
@@ -27,8 +27,8 @@
 - Use `.yaml`, never `.yml`, for project-owned YAML files unless external tooling
   requires a fixed filename.
 - Use Australian English throughout authored prose and every project-owned name,
-  including identifiers, configuration keys, environment variables, paths, CLI
-  commands, and options. Update every producer and consumer together; preserve only
+  including identifiers, configuration keys, environment variables, paths and
+  options. Update every producer and consumer together; preserve only
   externally defined names and terminology.
 
 ## Verification

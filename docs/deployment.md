@@ -34,9 +34,9 @@ docker compose up --build --detach
 docker compose ps
 ```
 
-Pull requests build both images and smoke-test their packaged commands.
+Pull requests build both images and smoke-test their packages.
 
-Compose starts only `comfy-control control`. Managed providers are enabled by their Modal,
+Compose starts only the control image. Managed providers are enabled by their Modal,
 RunPod, SaladCloud or Vast.ai management credential. The controller discovers
 resources by their configured stable name and refreshes provider-assigned worker
 URLs at runtime; do not store those URLs in deployment configuration. Add
@@ -48,10 +48,10 @@ dashboard viewer. There is no automatic retention deletion.
 
 ## Providers
 
-The controller builds RunPod, SaladCloud and Vast.ai requests from the selected
-model policy and current provider capacity. Only Modal requires a provider-owned
-deployment entry point under `deploy/`; shared worker runtime defaults live with
-the provider deployment code rather than in copied JSON templates.
+The controller builds Modal, RunPod, SaladCloud and Vast.ai requests from the
+selected model policy and current provider capacity. Their deployment
+implementations and shared worker defaults live together in `providers/deployment/`
+rather than in copied JSON templates.
 
 Managed providers are credential-driven. Unconfigured providers remain visible and
 link to Settings. When no named resource exists, the dashboard shows `Not deployed`
@@ -123,10 +123,9 @@ are active because it is intended as a recoverable idle transition.
 
 Use persistent storage for model weights where the provider supports it. Video job
 state and generated media are owned by the controller. The worker image defaults to
-`comfy-control pod`; override the container
-command with `comfy-control serverless` when the ComfyUI frontend should not be
-exposed. Vast.ai Serverless uses `comfy-control vast-serverless` for its request
-envelope and supported PyWorker readiness and load reporting.
+`WORKER_MODE=pod`; set `WORKER_MODE=serverless` when the ComfyUI frontend should not
+be exposed. Vast.ai Serverless starts its request gateway directly for supported
+PyWorker readiness and load reporting.
 
 The dashboard displays RunPod credit, Vast.ai credit and spend, Modal billing-cycle
 spend, SaladCloud replica quota and CLI Proxy API usage. SaladCloud monetary credit
@@ -187,25 +186,6 @@ argument with the corresponding build secret.
 The controller copies successful images and videos into `/data/media` before a
 worker is stopped. Keep `/data` on persistent storage; API image URLs and completed
 video content are then served by Comfy Control with normal authentication.
-
-## Importing a Grok catalogue export
-
-`catalogue-import` imports the complete `assets.jsonl`, `media.jsonl`,
-`messages.jsonl`, and `images/` export layout into the current control database:
-
-```sh
-comfy-control catalogue-import /path/to/catalog-research \
-  --database /data/comfy-control.db
-```
-
-The command verifies every local asset against its SHA-256 digest, copies it into
-managed media storage, preserves source records and links as indexed parameters,
-and retains metadata-only media and conversation messages in history. Original
-message timestamps are preserved. Exports without media timestamps use the export
-files' modification time.
-
-Import identifiers are deterministic, so interrupted or repeated imports are
-safe: existing histories and media links are skipped.
 
 ## Important Limits
 

@@ -11,7 +11,20 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from catalogue.workflows import Operation
-from worker.config import required_secret
+
+PLACEHOLDER_SECRETS = {"change-me", "change_me", "replace-me", "replace_me"}
+
+
+def required_secret(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    normalised = value.lower()
+    if (
+        not value
+        or normalised in PLACEHOLDER_SECRETS
+        or normalised.startswith("replace-with-")
+    ):
+        raise ValueError(f"{name} must be set to a non-placeholder value")
+    return value
 
 
 class ProviderAction(BaseModel):

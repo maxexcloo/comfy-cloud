@@ -31,9 +31,6 @@ vast = [
   "vastai @ git+https://github.com/vast-ai/vast-cli.git@f7171feb403fd037d2d9b9dcc379aebed80311a7",
 ]
 
-[project.scripts]
-comfy-control = "control.cli:main"
-
 [tool.hatch.build.targets.wheel]
 packages = ["catalogue", "control", "providers", "worker"]
 

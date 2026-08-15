@@ -109,8 +109,8 @@ async def backend_lifecycle():
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
-            "control.cli",
-            "serverless",
+            "worker.supervisor",
+            env={**os.environ, "WORKER_MODE": "serverless"},
             stderr=asyncio.subprocess.STDOUT,
             stdout=log,
         )
@@ -166,3 +166,7 @@ def build_worker():
 def main() -> None:
     os.environ.setdefault("WORKER_PORT", os.getenv("VAST_WORKER_PORT", "9000"))
     build_worker().run(host=os.getenv("VAST_WORKER_HOST", "0.0.0.0"))
+
+
+if __name__ == "__main__":
+    main()

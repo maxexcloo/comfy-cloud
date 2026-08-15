@@ -30,10 +30,9 @@ The container workflow separately builds and smoke-tests the Comfy Control image
   prose and identifiers.
 - Keep pinned weight sources in `catalogue/profiles/`.
 - Keep catalogue behaviour and data together in `catalogue/`.
-- Keep control-plane code, command-line entry points and its image build in
-  `control/`.
-- Keep provider-owned deployment entry points in `deploy/`.
+- Keep control-plane code and its image build in `control/`.
 - Keep provider behaviour in `providers/`.
+- Keep provider deployment implementations in `providers/deployment/`.
 - Keep built-in provider capabilities, lifecycle and telemetry in the provider
   registry and adapters.
 - Keep each provider's API discovery, status and telemetry in its own
@@ -42,21 +41,6 @@ The container workflow separately builds and smoke-tests the Comfy Control image
 - Keep tests grouped by the same catalogue, control, provider and worker boundaries.
 - Keep worker code and its image build in `worker/`.
 - Keep OpenAI-compatible routing in the controller and canonical execution in workers.
-
-## Command-Line Interface
-
-The `comfy-control` command supports:
-
-- `catalogue-list` and `repository-check`;
-- `control`;
-- `models-fetch`;
-- `pack` and `unpack`;
-- `pod` and `serverless` runtime services;
-- `vast-serverless`;
-- `workflow-add`.
-
-Use `workflow-add` only with an API-format ComfyUI export and restart Comfy Control
-after changing its mounted catalogue.
 
 ## API Contracts
 

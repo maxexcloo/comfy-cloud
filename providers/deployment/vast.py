@@ -215,7 +215,7 @@ async def deploy_serverless(
         "https://console.vast.ai/api/v0/template/",
         headers=headers(preferences),
         json={
-            "args_str": "comfy-control vast-serverless",
+            "args_str": "python -m worker.vast_gateway",
             "docker_login_pass": "",
             "docker_login_repo": "",
             "docker_login_user": "",

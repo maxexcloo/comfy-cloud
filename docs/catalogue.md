@@ -30,21 +30,10 @@ A workflow is advertised only when all `required_files` exist and every workflow
 `class_type` is registered by ComfyUI. Stale or incomplete workflows are hidden and
 rejected when addressed directly.
 
-Register a custom exported API workflow without modifying the image:
-
-```bash
-comfy-control workflow-add \
-  --id custom/text-to-image \
-  --operation image_generation \
-  --workflow workflow-api.json \
-  --mapping mapping.yaml \
-  --catalogue-dir /data/catalogue
-```
-
-Set `CATALOGUE_DIR=/data/catalogue` on a manually managed worker, mount that
-directory and restart the worker.
+To add a custom workflow, place its API-format `workflow.json` and `model.yaml`
+manifest in a directory mounted through `CATALOGUE_DIR`, then restart the worker.
 UI-format ComfyUI workflows are not accepted; export them using **Export (API)**.
-Run `comfy-control repository-check` after catalogue or profile changes.
+Repository checks validate bundled catalogue and profile changes.
 
 ## Bundled Models
 
@@ -97,13 +86,7 @@ hourly cost ceiling and packaged benchmark observations. Workflow aliases supply
 the public model IDs shown by the API and studio; consumers do not maintain parallel
 model-card or routing metadata.
 The control-plane Settings page defaults to `flux-2-klein-9b`; select one or more
-profile names there to change the models prepared on managed workers. Fetch a
-profile manually with:
-
-```bash
-comfy-control models-fetch catalogue/profiles/flux-2-klein-9b.yaml \
-  --models-dir /opt/ComfyUI/models
-```
+profile names there to change the models prepared on managed workers.
 
 Automation can read or replace the desired set through the typed current API at
 `GET` or `PUT /ops/model-packages`; its schema is published in `/openapi.json`.
@@ -115,15 +98,6 @@ include `filename` and `sha256`.
 
 Fetch only the profiles a deployment runs. Weight storage and GPU requirements are
 independent costs; bundling more profiles does not make a request faster.
-
-GHCR limits individual layers to 10 GB. Large files can be split into verified
-8-GiB chunks:
-
-```bash
-comfy-control pack model.safetensors model-pack/
-comfy-control unpack model-pack/model.safetensors.pack.json \
-  /opt/ComfyUI/models/diffusion_models
-```
 
 Publishing model weights may impose upstream licence obligations. Review each
 model licence before enabling public package access.

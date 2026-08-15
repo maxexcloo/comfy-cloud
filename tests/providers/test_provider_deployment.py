@@ -360,13 +360,15 @@ def test_modal_function_preserves_worker_python(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "modal", fake_modal)
 
-    runpy.run_path(ROOT / "deploy/modal/app.py")
+    module = runpy.run_path(ROOT / "providers/deployment/modal.py")
+    module["build_app"]({})
 
     assert image_options == {"force_build": True}
     assert "serialized" not in function_options
     assert function_options["env"] == {
         "MODELS_DIR": "/models",
         "MODEL_PROFILES": "",
+        "WORKER_MODE": "serverless",
     }
     assert function_options["volumes"] == {"/models": models}
 
@@ -423,7 +425,11 @@ async def test_deploys_runpod_serverless_template_and_endpoint(tmp_path, monkeyp
         payload = json.loads(request.content)
         if request.url.path == "/v1/templates":
             assert payload["containerDiskInGb"] == 100
-            assert payload["dockerStartCmd"] == ["comfy-control", "serverless"]
+            assert payload["dockerStartCmd"] == [
+                "python",
+                "-m",
+                "worker.supervisor",
+            ]
             assert payload["env"]["MODELS_DIR"] == "/runpod-volume"
             assert payload["isServerless"] is True
             return httpx.Response(200, json={"id": "template-1"})

@@ -14,17 +14,13 @@ COPY pyproject.toml uv.lock README.md ./
 COPY catalogue ./catalogue
 COPY control ./control
 COPY providers ./providers
-COPY worker ./worker
-COPY deploy ./deploy
 RUN uv export --frozen --no-dev --extra modal --no-emit-project \
       --no-hashes --output-file /tmp/requirements.txt \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /tmp/requirements.txt \
-    && uv build --wheel --out-dir /tmp/dist \
-    && uv pip install --python "${VIRTUAL_ENV}/bin/python" --no-deps /tmp/dist/*.whl \
-    && rm -rf /tmp/dist /tmp/requirements.txt
+    && rm /tmp/requirements.txt
 
 ARG COMFY_CONTROL_REVISION
 ENV COMFY_CONTROL_REVISION=${COMFY_CONTROL_REVISION}
 
 EXPOSE 8000
-CMD ["comfy-control", "control"]
+CMD ["python", "-m", "uvicorn", "control.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

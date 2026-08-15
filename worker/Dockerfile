@@ -12,6 +12,7 @@ ENV BUILTIN_CATALOGUE_DIR=/opt/comfy-control/catalogue \
     DEBIAN_FRONTEND=noninteractive \
     HF_XET_HIGH_PERFORMANCE=1 \
     MODEL_PROFILES=flux-2-klein-9b \
+    WORKER_MODE=pod \
     PATH=/opt/venv/bin:${PATH} \
     PIP_NO_CACHE_DIR=1 \
     PORT=8000 \
@@ -37,25 +38,20 @@ RUN git init /opt/ComfyUI \
 WORKDIR /opt/comfy-control
 COPY pyproject.toml uv.lock README.md ./
 COPY catalogue ./catalogue
-COPY control ./control
-COPY providers ./providers
 COPY worker ./worker
-RUN uv export --frozen --no-dev --extra build --extra modal --extra vast --no-emit-project \
+RUN uv export --frozen --no-dev --extra build --extra vast --no-emit-project \
       --no-hashes --output-file /tmp/requirements.txt \
     && uv pip install --python "${VIRTUAL_ENV}/bin/python" --requirements /tmp/requirements.txt \
-    && uv build --wheel --out-dir /tmp/dist \
-    && uv pip install --python "${VIRTUAL_ENV}/bin/python" --no-deps /tmp/dist/*.whl \
-    && rm -rf /tmp/dist /tmp/requirements.txt
+    && rm /tmp/requirements.txt
 
 RUN --mount=type=secret,id=HF_TOKEN,env=HF_TOKEN \
     --mount=type=secret,id=CIVITAI_TOKEN,env=CIVITAI_TOKEN \
     if [ -n "${MODEL_PROFILE}" ]; then \
-      comfy-control models-fetch "/opt/comfy-control/catalogue/profiles/${MODEL_PROFILE}.yaml" \
-        --models-dir /opt/ComfyUI/models; \
+      python -c 'import os; from pathlib import Path; from catalogue.fetch import fetch_profile; fetch_profile(Path("/opt/comfy-control/catalogue/profiles") / (os.environ["MODEL_PROFILE"] + ".yaml"), Path("/opt/ComfyUI/models"))'; \
     fi
 
 ARG COMFY_CONTROL_REVISION
 ENV COMFY_CONTROL_REVISION=${COMFY_CONTROL_REVISION}
 
 EXPOSE 8000
-CMD ["comfy-control", "pod"]
+CMD ["python", "-m", "worker.supervisor"]

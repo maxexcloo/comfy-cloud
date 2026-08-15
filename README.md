@@ -50,10 +50,9 @@ without restarting the control plane.
 ## Repository Layout
 
 - `catalogue/`: catalogue package, workflows, manifests and model profiles.
-- `control/`: control-plane package, CLI and image build.
-- `deploy/`: provider-owned deployment entry points.
+- `control/`: control-plane package and image build.
 - `docs/`: architecture, catalogue, development and deployment guidance.
-- `providers/`: provider adapters and deployment request builders.
+- `providers/`: provider adapters and deployment implementations.
 - `tests/`: behavioural tests grouped by runtime boundary.
 - `worker/`: worker package, image build and upstream dependency constraints.
 

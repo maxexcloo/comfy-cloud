@@ -8,7 +8,7 @@ import httpx
 from control.config import ControlSettings, Provider
 from control.preferences import ControlPreferences
 
-WORKER_COMMAND = ("comfy-control", "serverless")
+WORKER_COMMAND = ("python", "-m", "worker.supervisor")
 WORKER_HEALTH_PORT = 8000
 WORKER_INITIALISING_HEALTH_PATH = "/ping"
 WORKER_LIVE_HEALTH_PATH = "/health/live"
@@ -117,6 +117,7 @@ def serverless_environment() -> dict[str, str]:
         "MODELS_DIR": "/models",
         "PORT": str(WORKER_HEALTH_PORT),
         "PORT_HEALTH": str(WORKER_HEALTH_PORT),
+        "WORKER_MODE": "serverless",
     }
 
 

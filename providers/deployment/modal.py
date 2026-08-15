@@ -1,4 +1,5 @@
-import os
+from __future__ import annotations
+
 import subprocess
 from collections.abc import Mapping
 
@@ -6,7 +7,7 @@ import modal
 
 
 def serve() -> None:
-    subprocess.Popen(["/opt/venv/bin/comfy-control", "serverless"])
+    subprocess.Popen(["/opt/venv/bin/python", "-m", "worker.supervisor"])
 
 
 def build_app(configuration: Mapping[str, str]) -> modal.App:
@@ -19,7 +20,7 @@ def build_app(configuration: Mapping[str, str]) -> modal.App:
         configuration.get("MODAL_MODEL_VOLUME", "comfy-control-models"),
         create_if_missing=True,
     )
-    environment = {"MODELS_DIR": "/models"}
+    environment = {"MODELS_DIR": "/models", "WORKER_MODE": "serverless"}
     secret_values = {
         name: value
         for name in (
@@ -54,6 +55,3 @@ def build_app(configuration: Mapping[str, str]) -> modal.App:
     del registered_serve
 
     return app
-
-
-app = build_app(os.environ)

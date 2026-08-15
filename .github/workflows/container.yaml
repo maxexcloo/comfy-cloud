@@ -66,6 +66,6 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           sbom: true
           tags: ${{ steps.metadata.outputs.tags }}
-      - name: Smoke-test command
+      - name: Smoke-test package
         if: github.event_name == 'pull_request'
-        run: docker run --rm "${IMAGE_NAME}:${{ matrix.role }}" comfy-control --help
+        run: docker run --rm "${IMAGE_NAME}:${{ matrix.role }}" python -c "import ${{ matrix.role }}"
